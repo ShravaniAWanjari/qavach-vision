@@ -80,6 +80,8 @@ export function CameraEditor() {
       name: c!.name || title,
       resolution: `${r.width} × ${r.height}`,
       fps: Math.round(r.fps ?? c!.fps),
+      // A real camera is not an Axis or a Hanwha: say what it is instead of keeping the sample default.
+      make: r.kind === 'upload' ? 'Uploaded video' : r.kind === 'youtube' ? 'YouTube live stream' : 'Live stream',
       stream: source.kind === 'link' ? (source.url ?? '') : `uploaded: ${source.fileName ?? 'video'}`,
       source: { ...source, frameUrl: r.frameUrl, width: r.width, height: r.height, live: r.live, title: r.title },
     }));
@@ -286,7 +288,7 @@ export function CameraEditor() {
                   <span className="field__hint">mp4, mov, avi, mkv or webm. It plays in real time and starts over when it ends, like a camera that is always on. Use it when the live feed has nothing happening.</span>
                 </div>
               )}
-              {!service.online && (
+              {!service.online && !cam.source && (
                 <div className="field">
                   <label htmlFor="c-make">Make and model</label>
                   <select id="c-make" className="select" value={cam.make} onChange={(e) => set({ make: e.target.value })}>
