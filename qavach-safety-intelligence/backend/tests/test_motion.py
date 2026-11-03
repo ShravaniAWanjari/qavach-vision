@@ -35,3 +35,26 @@ def test_the_jump_limit_scales_with_the_frame():
     big.update(0.0, (300.0, 400.0), 15.0)
     big.update(0.1, (340.0, 400.0), 15.0)
     assert len(big.points) == 2
+
+
+def test_a_track_that_sat_still_for_minutes_is_not_confirmed_by_a_small_shift():
+    # a board labelled as a person: still for 60 s, then its box shifts 13 px and stays there
+    path = [(300.0, 400.0)] * 600 + [(313.0, 400.0)] * 100
+    assert not any(feed(Movement(), path, min_pixels=6.0))
+
+
+def test_a_track_that_sat_still_then_walks_off_is_confirmed():
+    path = [(300.0, 400.0)] * 100 + [(300.0 + 4 * i, 400.0) for i in range(1, 20)]
+    result = feed(Movement(), path, min_pixels=6.0)
+    assert not result[99] and result[-1]
+
+
+def test_a_small_shift_early_in_a_track_still_counts():
+    path = [(300.0, 400.0)] * 5 + [(300.0 + 3 * i, 400.0) for i in range(1, 6)]
+    assert feed(Movement(), path, min_pixels=6.0)[-1]
+
+
+def test_the_still_bar_scales_with_the_frame():
+    path = [(300.0, 400.0)] * 100 + [(330.0, 400.0)] * 20          # 30 px: past 20 on 1280 wide, short of 60 on 2560
+    assert feed(Movement(scale=1.0), path, min_pixels=6.0)[-1]
+    assert not any(feed(Movement(scale=3.0), path, min_pixels=6.0)[50:])

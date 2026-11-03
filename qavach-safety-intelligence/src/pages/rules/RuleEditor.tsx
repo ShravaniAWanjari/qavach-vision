@@ -225,7 +225,7 @@ export function RuleEditor() {
                       </button>
                     );
                   })}
-                  <span className="meta">{rule.zoneIds.length ? '' : 'None picked: the whole view'}</span>
+                  <span className="meta">{rule.zoneIds.length ? '' : realCams.length ? 'None picked: people anywhere in the view count, outside the drawn zones too' : 'None picked: the whole view'}</span>
                 </div>
               )}
             </div>
@@ -477,7 +477,10 @@ export function RuleEditor() {
           onClose={() => setPicking(false)}
           onDone={(ids) => {
             const keepZones = rule.zoneIds.filter((z) => ids.some((id) => z.startsWith(`${id}-`)));
-            set({ cameraIds: ids, zoneIds: keepZones }, 'cameras');
+            // On a real camera the zones drawn on it are what the rule is for: start with all of them picked, so a person
+            // outside them does not alert. Un-pick them all to watch the whole view.
+            const drawn = keepZones.length ? [] : cams.filter((c) => ids.includes(c.id) && c.source).flatMap((c) => c.zones.map((z) => z.id));
+            set({ cameraIds: ids, zoneIds: [...keepZones, ...drawn] }, 'cameras');
             setPicking(false);
           }}
         />
