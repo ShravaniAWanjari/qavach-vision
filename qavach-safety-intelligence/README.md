@@ -24,21 +24,23 @@ The single HTML file opens straight from disk with no server. Fonts load from Go
 For anyone who just wants to use the site: Docker Desktop is the only thing needed. The image contains the console, the detection service, CPU PyTorch, the YOLO11s and OSNet weights, BoxMOT and yt-dlp.
 
 ```bash
-git clone -b qavach-safety-intelligence https://github.com/harrythebarry/qavach-vision.git
+git clone -b intrusion-end-to-end https://github.com/ShravaniAWanjari/qavach-vision.git
 cd qavach-vision
-docker compose up -d
+./start.sh                  # Windows: double-click start.cmd, or run it in a terminal
 ```
 
-Open **http://localhost:8830**. The first start builds the image (about 3 GB to download, 10-20 minutes); after that it starts in a few seconds. The page is served by the same container, so there is nothing else to start.
+It picks a free port (8830, or the next one if that is taken), starts everything and prints the address, for example `Ready. Open:  http://localhost:8830`. The choice is remembered in `.env`, so the address stays the same next time. The first start builds the image (about 3 GB to download, 10-20 minutes); after that it starts in a few seconds. The page is served by the same container, so there is nothing else to start. (Once the pull request is merged, clone the `qavach-safety-intelligence` branch of `harrythebarry/qavach-vision` instead.)
+
+`docker compose up -d` also works on its own while port 8830 is free; if it is not, Docker says "address already in use", and `./start.sh` is the fix.
 
 ```bash
 docker compose logs -f      # what the service is doing
 docker compose down         # stop (cameras, rules, uploads and alert pictures are kept)
 docker compose down -v      # stop and forget everything
-docker compose build --no-cache && docker compose up -d     # pick up a newer yt-dlp if YouTube links stop working
+docker compose build --no-cache && ./start.sh     # pick up a newer yt-dlp if YouTube links stop working
 ```
 
-- **Needs:** Docker Desktop with at least 6 GB of memory and about 8 GB of free disk. The port is published to this PC only; to use another one, change `8830:8830` in `docker-compose.yml`.
+- **Needs:** Docker Desktop with at least 6 GB of memory and about 8 GB of free disk. The port is published to this PC only. To choose the port yourself, set `QAVACH_PORT=9000` in `.env` before running `./start.sh`.
 - **Speed:** Docker on Windows and macOS cannot use the GPU, so detection runs on the CPU. On an Apple-silicon Mac the detector took about 0.13 s per frame at the default size (about 7 frames a second per camera, measured outside Docker); expect slower on an ordinary PC. Lower `QAVACH_DETECT_SIZE` (for example `960`) under `environment:` in `docker-compose.yml` to trade accuracy on small, distant people for speed.
 - **Sources:** YouTube links, `rtsp://` / http / HLS addresses and uploaded videos all work from inside the container. A camera on the PC's own network is reachable by its address; a webcam is not.
 - **Licence:** Ultralytics (YOLO11) is AGPL-3.0; check that before anything beyond a demo.

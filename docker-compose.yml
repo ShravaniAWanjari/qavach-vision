@@ -1,11 +1,12 @@
-# Qavach Safety Intelligence on one PC:   docker compose up -d     then open http://localhost:8830
-# (clone the `qavach-safety-intelligence` branch). The first start builds the image, which downloads about 3 GB.
+# Qavach Safety Intelligence on one PC. Start it with ./start.sh (macOS / Linux) or start.cmd (Windows): they pick a free
+# port, run `docker compose up -d` and print the address to open. Plain `docker compose up -d` also works while port 8830 is
+# free. The first start builds the image, which downloads about 3 GB.
 services:
   qavach:
     build: ./qavach-safety-intelligence
     image: qavach-safety-intelligence:local
     ports:
-      - "127.0.0.1:8830:8830"          # this PC only; change the left-hand part if 8830 is taken
+      - "127.0.0.1:${QAVACH_PORT:-8830}:8830"      # this PC only; start.sh / start.cmd put a free port in .env as QAVACH_PORT
     volumes:
       - qavach-data:/data              # cameras, rules, uploaded videos and alert pictures survive restarts
     restart: unless-stopped
