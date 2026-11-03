@@ -7,6 +7,7 @@ directly, which is why cross-origin requests are allowed.
 """
 import argparse
 import asyncio
+import os
 import re
 import uuid
 from pathlib import Path
@@ -15,6 +16,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 import cv2
 
@@ -206,9 +208,13 @@ async def camera_stream(camera_id: str):
                              headers={'Cache-Control': 'no-store'})
 
 
+if config.WEB and (config.WEB / 'index.html').exists():
+    app.mount('/', StaticFiles(directory=config.WEB, html=True), name='console')       # after every /api route
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--host', default=os.environ.get('QAVACH_HOST', '127.0.0.1'))
     parser.add_argument('--port', type=int, default=8830)
     args = parser.parse_args()
     uvicorn.run(app, host=args.host, port=args.port, log_level='warning')

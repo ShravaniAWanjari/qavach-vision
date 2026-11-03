@@ -19,7 +19,31 @@ npm run build:single   # one file to email: dist/qavach-safety-intelligence.html
 
 The single HTML file opens straight from disk with no server. Fonts load from Google Fonts when online and fall back to system fonts offline.
 
-## Real cameras and real detection (intrusion)
+## Run it with Docker (no installs)
+
+For anyone who just wants to use the site: Docker Desktop is the only thing needed. The image contains the console, the detection service, CPU PyTorch, the YOLO11s and OSNet weights, BoxMOT and yt-dlp.
+
+```bash
+git clone -b qavach-safety-intelligence https://github.com/harrythebarry/qavach-vision.git
+cd qavach-vision
+docker compose up -d
+```
+
+Open **http://localhost:8830**. The first start builds the image (about 3 GB to download, 10-20 minutes); after that it starts in a few seconds. The page is served by the same container, so there is nothing else to start.
+
+```bash
+docker compose logs -f      # what the service is doing
+docker compose down         # stop (cameras, rules, uploads and alert pictures are kept)
+docker compose down -v      # stop and forget everything
+docker compose build --no-cache && docker compose up -d     # pick up a newer yt-dlp if YouTube links stop working
+```
+
+- **Needs:** Docker Desktop with at least 6 GB of memory and about 8 GB of free disk. The port is published to this PC only; to use another one, change `8830:8830` in `docker-compose.yml`.
+- **Speed:** Docker on Windows and macOS cannot use the GPU, so detection runs on the CPU. On an Apple-silicon Mac the detector took about 0.13 s per frame at the default size (about 7 frames a second per camera, measured outside Docker); expect slower on an ordinary PC. Lower `QAVACH_DETECT_SIZE` (for example `960`) under `environment:` in `docker-compose.yml` to trade accuracy on small, distant people for speed.
+- **Sources:** YouTube links, `rtsp://` / http / HLS addresses and uploaded videos all work from inside the container. A camera on the PC's own network is reachable by its address; a webcam is not.
+- **Licence:** Ultralytics (YOLO11) is AGPL-3.0; check that before anything beyond a demo.
+
+## Real cameras and real detection, without Docker
 
 The sample data above needs nothing else. To run a **real** camera and the **intrusion** rule end to end, also start the detection service in `backend/`:
 
@@ -27,7 +51,7 @@ The sample data above needs nothing else. To run a **real** camera and the **int
 cd backend && ./run.sh        # http://127.0.0.1:8830, then reload the console: the top bar says "Detection on"
 ```
 
-It uses the Python environment, YOLO11s weights and BoxMOT tracker of the `port-safety/barge-intrusion` project (override with `QAVACH_PYTHON`, `QAVACH_YOLO_WEIGHTS`, `QAVACH_REID_WEIGHTS`, `QAVACH_TRACKER_PYTHON`; see `backend/qavach/config.py`).
+It uses the Python environment and BoxMOT tracker of the `port-safety/barge-intrusion` project, and the weights in `backend/weights/` (override with `QAVACH_PYTHON`, `QAVACH_YOLO_WEIGHTS`, `QAVACH_REID_WEIGHTS`, `QAVACH_TRACKER_PYTHON`; see `backend/qavach/config.py`).
 
 The flow, as the safety admin:
 
@@ -38,7 +62,7 @@ The flow, as the safety admin:
 
 How a person triggers an alert: the bottom centre of their box (their feet) is inside a zone for the whole *For at least* time and for the *frames in a row*, the track has had one detection at least as sure as the setting, and its feet have moved at least *Must have moved (pixels)*. After an alert the same tracked person raises no new one for *Don't repeat for*. They count as having left after 2 s outside every zone. Frames are the frames the detector actually analysed (about 10 a second on a live feed on this Mac), and seconds are video seconds.
 
-**Why "must have moved".** A fixed object that the detector sometimes calls a person (a flag pole, a lamp post with signs, a bollard) gets a track, and when traffic passes and the detector flickers, that track would alert. On the ferry camera, one such pole was tracked as a person for 200 seconds and its feet moved 3 pixels in total; workers walking moved 19 to 142. A track counts as moving once its feet are at least that many pixels away from where they were a few seconds earlier (the same test as `WalkingFilter` in `barge-intrusion/src/motion_filter.py`); after that it stays confirmed, so someone who walks in and then stands still still alerts. A sudden jump of the foot point (the id latching onto a passing vehicle or another person) is not counted as movement. Pixels are in the camera's own frame: raise the number on a 4K camera and lower it on a small one. The default is 10 pixels.
+**Why "must have moved".** A fixed object that the detector sometimes calls a person (a flag pole, a lamp post with signs, a bollard) gets a track, and when traffic passes and the detector flickers, that track would alert. On the ferry camera, one such pole was tracked as a person for 200 seconds and its feet moved 3 pixels in total; workers walking moved 19 to 142. A track counts as moving once its feet are at least that many pixels away from where they were a few seconds earlier (the same test as `WalkingFilter` in `barge-intrusion/src/motion_filter.py`); after that it stays confirmed, so someone who walks in and then stands still still alerts. A track that has sat within 20 pixels of one spot for 8 seconds is held to a higher bar: it only counts as moving once it leaves that spot by 20 pixels (scaled with the frame), because a board that the detector called a person for five minutes and then shifted 13 pixels would otherwise pass a small setting for good. A sudden jump of the foot point (the id latching onto a passing vehicle or another person) is not counted as movement. Pixels are in the camera's own frame: raise the number on a 4K camera and lower it on a small one. The default is 10 pixels.
 
 Choosing the number, from a replay of 247 seconds of the live ferry camera (rule: 3 s, 12 % sure, tracks recorded in the parking grid):
 
