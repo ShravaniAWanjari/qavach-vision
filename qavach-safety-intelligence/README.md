@@ -29,7 +29,7 @@ cd qavach-vision
 ./start.sh                  # Windows: double-click start.cmd, or run it in a terminal
 ```
 
-It picks a free port (8830, or the next one if that is taken), starts everything and prints the address, for example `Ready. Open:  http://localhost:8830`. The choice is remembered in `.env`, so the address stays the same next time. The first start builds the image (about 3 GB to download, 10-20 minutes); after that it starts in a few seconds. The page is served by the same container, so there is nothing else to start. (Once the pull request is merged, clone the `qavach-safety-intelligence` branch of `harrythebarry/qavach-vision` instead.)
+It picks a free port (8830, or the next one if that is taken), starts everything and prints the address, for example `Ready. Open:  http://localhost:8830`. The choice is remembered in `.env`, so the address stays the same next time. The first start builds the image (about 5 GB on disk; it took about 8 minutes on a fast connection); after that it starts in a few seconds. The page is served by the same container, so there is nothing else to start. (Once the pull request is merged, clone the `qavach-safety-intelligence` branch of `harrythebarry/qavach-vision` instead.)
 
 `docker compose up -d` also works on its own while port 8830 is free; if it is not, Docker says "address already in use", and `./start.sh` is the fix.
 
@@ -40,7 +40,7 @@ docker compose down -v      # stop and forget everything
 docker compose build --no-cache && ./start.sh     # pick up a newer yt-dlp if YouTube links stop working
 ```
 
-- **Needs:** Docker Desktop with at least 6 GB of memory and about 8 GB of free disk. The port is published to this PC only. To choose the port yourself, set `QAVACH_PORT=9000` in `.env` before running `./start.sh`.
+- **Needs:** Docker Desktop with at least 6 GB of memory and about 10 GB of free disk. The port is published to this PC only. To choose the port yourself, set `QAVACH_PORT=9000` in `.env` before running `./start.sh`.
 - **Speed:** Docker on Windows and macOS cannot use the GPU, so detection runs on the CPU. On an Apple-silicon Mac the detector took about 0.13 s per frame at the default size (about 7 frames a second per camera, measured outside Docker); expect slower on an ordinary PC. Lower `QAVACH_DETECT_SIZE` (for example `960`) under `environment:` in `docker-compose.yml` to trade accuracy on small, distant people for speed.
 - **Sources:** YouTube links, `rtsp://` / http / HLS addresses and uploaded videos all work from inside the container. A camera on the PC's own network is reachable by its address; a webcam is not.
 - **Licence:** Ultralytics (YOLO11) is AGPL-3.0; check that before anything beyond a demo.

@@ -1,6 +1,6 @@
 # Qavach Safety Intelligence on one PC. Start it with ./start.sh (macOS / Linux) or start.cmd (Windows): they pick a free
 # port, run `docker compose up -d` and print the address to open. Plain `docker compose up -d` also works while port 8830 is
-# free. The first start builds the image, which downloads about 3 GB.
+# free. The first start builds the image, which is about 5 GB on disk.
 services:
   qavach:
     build: ./qavach-safety-intelligence
