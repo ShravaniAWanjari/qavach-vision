@@ -7,7 +7,7 @@ class FakeRunner:
     """Stands in for CameraRunner so no stream or model is touched."""
     instances = []
 
-    def __init__(self, camera, rules, get_detector, emit):
+    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None):
         self.camera, self.rules, self.emit = camera, rules, emit
         self.stats, self.state, self.error = dict(fps=0), 'running', None
         self.stopped = False
@@ -208,3 +208,68 @@ def test_the_movement_setting_travels_from_the_page_to_the_rule(registry):
     assert registry.runner('CAM-1').rules[0]['minMovePx'] == 40
     with pytest.raises(reg.Invalid):
         registry.put_rule(dict(RULE, minMovePx=-5))
+
+
+FIRE_RULE = dict(id='R-F', name='Smoke or flame', cameraIds=['CAM-1'], zoneIds=[], subject='any', condition='smoke',
+                 minFrames=4, minConfidence=0.3, repeatSec=60, fireClasses='both', schedule='always', mode='live', priority='P1')
+
+
+def test_fire_and_smoke_rules_run_for_real(registry):
+    registry.put_camera(CAM)
+    registry.put_rule(FIRE_RULE)
+    assert [r['id'] for r in FakeRunner.instances[-1].rules] == ['R-F']
+    assert registry.rules['R-F']['fireClasses'] == 'both'
+
+
+def test_other_conditions_stay_simulated(registry):
+    registry.put_camera(CAM)
+    registry.put_rule(dict(FIRE_RULE, id='R-X', condition='crowd'))
+    assert all(r['id'] != 'R-X' for r in FakeRunner.instances[-1].rules)
+
+
+def test_a_fire_rule_with_bad_settings_is_refused(registry):
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(FIRE_RULE, minFrames=12))
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(FIRE_RULE, fireClasses='gas'))
+
+
+def _runner(zones):
+    from qavach.camera_runner import CameraRunner
+    runner = CameraRunner.__new__(CameraRunner)
+    runner.camera = dict(id='CAM-1', zones=zones)
+    return runner
+
+
+def test_fire_engines_use_the_fire_watch_zones_the_rule_picked_and_every_ignore_zone():
+    square = [[10, 10], [60, 10], [60, 60], [10, 60]]
+    zones = [dict(id='W', name='Workshop', purpose='fire-watch', kind='polygon', points=square),
+             dict(id='I', name='Exhaust', purpose='fire-ignore', kind='polygon', points=[[70, 10], [90, 10], [90, 30], [70, 30]]),
+             dict(id='R', name='Restricted', purpose='restricted', kind='polygon', points=square)]
+    runner = _runner(zones)
+    runner.rules = [dict(FIRE_RULE, zoneIds=['W'])]
+    (engine, _), = runner._build_fire_engines(1000, 1000)
+    assert [z.id for z in engine.watch] == ['W'] and [z.id for z in engine.ignore] == ['I']
+    # a restricted area is not a watch area: a fire rule that picked only that has nothing to watch
+    runner.rules = [dict(FIRE_RULE, zoneIds=['R'])]
+    assert runner._build_fire_engines(1000, 1000) == []
+    # no zones picked: the whole view, minus the ignore areas
+    runner.rules = [dict(FIRE_RULE, zoneIds=[])]
+    (engine, _), = runner._build_fire_engines(1000, 1000)
+    assert engine.watch == [] and [z.id for z in engine.ignore] == ['I']
+
+
+def test_fire_alert_events_serialise_to_json_and_carry_the_hazard(tmp_path, monkeypatch):
+    import json
+
+    import numpy as np
+
+    monkeypatch.setattr(config, 'SNAPSHOTS', tmp_path)
+    runner = _runner([])
+    events = []
+    runner.stats, runner.emit = dict(alerts=0), events.append
+    runner._fire_alert(np.zeros((720, 1280, 3), dtype=np.uint8), dict(id='R-F', mode='live'),
+                       dict(hazard='smoke', confidence=0.62, box=[128.0, 72.0, 256.0, 144.0], frames=5, dwell=0.6, repeat=False,
+                            zone_id=None, zone_name=None), 1280, 720)
+    json.dumps(events[0])
+    assert events[0]['hazard'] == 'smoke' and events[0]['box'] == [10.0, 10.0, 10.0, 10.0] and events[0]['zoneName'] == 'the camera view'

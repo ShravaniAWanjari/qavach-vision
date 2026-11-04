@@ -21,6 +21,7 @@ BUNDLED = HERE / 'weights'
 YOLO_WEIGHTS = Path(os.environ.get('QAVACH_YOLO_WEIGHTS', BUNDLED / 'yolo11s.pt' if (BUNDLED / 'yolo11s.pt').exists() else BARGE / 'yolo11s.pt'))
 _REID = 'reid/osnet_ain_x1_0_msmt17.pt'
 REID_WEIGHTS = Path(os.environ.get('QAVACH_REID_WEIGHTS', BUNDLED / _REID if (BUNDLED / _REID).exists() else BARGE / 'weights' / _REID))
+FIRE_WEIGHTS = Path(os.environ.get('QAVACH_FIRE_WEIGHTS', BUNDLED / 'dfire-yolov8n.pt' if (BUNDLED / 'dfire-yolov8n.pt').exists() else PORT_SAFETY / 'YOLOv8-Fire-and-Smoke-Detection/models/dfire-yolov8n.pt'))
 TRACKER_PYTHON = Path(os.environ.get('QAVACH_TRACKER_PYTHON', BARGE / '.venv-boxmot/bin/python'))
 TRACKER_WORKER = Path(__file__).with_name('tracker_worker.py')
 

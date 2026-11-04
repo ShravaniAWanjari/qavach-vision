@@ -10,7 +10,9 @@ export interface Area {
   highOps: boolean;
 }
 
-export type ZonePurpose = 'walkway' | 'restricted' | 'exclusion' | 'deck-edge' | 'work-area' | 'vehicle-lane' | 'line';
+/** `fire-watch` and `fire-ignore` are for fire and smoke rules, which have no restricted areas: a watch area is where fire
+ *  or smoke matters, an ignore area is where it is normal (a steam vent, an exhaust stack, a flare). */
+export type ZonePurpose = 'walkway' | 'restricted' | 'exclusion' | 'deck-edge' | 'work-area' | 'vehicle-lane' | 'line' | 'fire-watch' | 'fire-ignore';
 
 export interface Zone {
   id: string;
@@ -95,6 +97,8 @@ export interface Rule {
   repeatSec?: number;
   /** The tracked person's feet must have moved this many pixels (a static pole the detector calls a person never does). 0 turns it off. */
   minMovePx?: number;
+  /** Fire and smoke rules: which of the two to look for. For them `minFrames` is how many of the last 8 frames it must be seen in. */
+  fireClasses?: 'both' | 'fire' | 'smoke';
   ppe: Ppe[];
   crowdOver: number;
   schedule: Schedule;

@@ -63,6 +63,8 @@ export const ZONE_COLORS: Record<ZonePurpose, string> = {
   'work-area': '#7D9BFF',
   'vehicle-lane': '#FFD166',
   line: '#FF5C7A',
+  'fire-watch': '#FF9F40',
+  'fire-ignore': '#A6B8BD',
 };
 
 export const PURPOSE_LABEL: Record<ZonePurpose, string> = {
@@ -73,4 +75,9 @@ export const PURPOSE_LABEL: Record<ZonePurpose, string> = {
   'work-area': 'Work area',
   'vehicle-lane': 'Vehicle lane',
   line: 'Line to cross',
+  'fire-watch': 'Fire and smoke watch area',
+  'fire-ignore': 'Ignore area (steam, exhaust, flare)',
 };
+
+/** The purposes that belong to fire and smoke rules. */
+export const FIRE_PURPOSES: ZonePurpose[] = ['fire-watch', 'fire-ignore'];

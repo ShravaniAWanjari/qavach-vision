@@ -38,6 +38,35 @@ class Detector:
         return np.concatenate([xyxy, conf, np.zeros_like(conf)], axis=1).astype(np.float32)
 
 
+class FireDetector:
+    """D-Fire YOLOv8n: finds fire and smoke in a frame. No tracking is needed: the fire rule asks whether a class keeps
+    showing up (fire.py), not which flame is which. The detector keeps everything above a low floor; the rule's
+    "sure" setting decides what counts, and the preview shows what did not as a thin grey box."""
+    NAMES = {0: 'smoke', 1: 'fire'}       # class order of the D-Fire checkpoint
+    FLOOR = 0.10
+    SIZE = 960
+
+    def __init__(self):
+        import torch
+        from ultralytics import YOLO
+        if not config.FIRE_WEIGHTS.exists():
+            raise FileNotFoundError(f'{config.FIRE_WEIGHTS} is missing; set QAVACH_FIRE_WEIGHTS or see README.md')
+        self.device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+        self.model = YOLO(str(config.FIRE_WEIGHTS))
+        self.lock = threading.Lock()
+        self.detect(np.zeros((540, 960, 3), dtype=np.uint8))          # warm up the GPU kernels
+
+    def detect(self, frame):
+        """[(class name, confidence, (x1, y1, x2, y2))] with plain floats, so the results can go straight into JSON."""
+        with self.lock:
+            result = self.model.predict(frame, conf=self.FLOOR, imgsz=self.SIZE, device=self.device, verbose=False)[0]
+        boxes = result.boxes
+        if len(boxes) == 0:
+            return []
+        rows = zip(boxes.xyxy.cpu().numpy().tolist(), boxes.conf.cpu().numpy().tolist(), boxes.cls.cpu().numpy().astype(int).tolist())
+        return [(self.NAMES[cls], float(conf), tuple(float(v) for v in box)) for box, conf, cls in rows if cls in self.NAMES]
+
+
 class TrackerClient:
     """Talks to tracker_worker.py, which runs in the BoxMOT environment. One instance per running camera."""
 

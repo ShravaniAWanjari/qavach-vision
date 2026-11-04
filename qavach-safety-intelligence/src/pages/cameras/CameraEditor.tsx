@@ -6,7 +6,7 @@ import { CameraView, Seg } from '../../components/ui';
 import { AREAS, camId } from '../../data/seed';
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
-import { PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
+import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 import { useService } from '../../state/bridge';
 import { isAdmin, removeCamera, saveCamera, saveWall, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
 import { LAYOUT_SLOTS } from '../wall/WallBody';
@@ -344,13 +344,30 @@ export function CameraEditor() {
                     <div className="stack" style={{ gap: 6, flex: 1, minWidth: 0 }}>
                       <input className="input input--sm" aria-label="Zone name" value={z.name} onChange={(e) => set({ zones: cam.zones.map((x) => (x.id === z.id ? { ...x, name: e.target.value } : x)) })} />
                       <select className="select select--sm" aria-label="What the zone is" value={z.purpose} onChange={(e) => set({ zones: cam.zones.map((x) => (x.id === z.id ? { ...x, purpose: e.target.value as ZonePurpose } : x)) })}>
-                        {(Object.keys(PURPOSE_LABEL) as ZonePurpose[])
-                          .filter((p) => (z.kind === 'line' ? p === 'line' || p === 'deck-edge' : p !== 'line'))
-                          .map((p) => (
+                        {z.kind === 'line' ? (
+                          (['line', 'deck-edge'] as ZonePurpose[]).map((p) => (
                             <option key={p} value={p}>
                               {PURPOSE_LABEL[p]}
                             </option>
-                          ))}
+                          ))
+                        ) : (
+                          <>
+                            <optgroup label="People and vehicles">
+                              {(['restricted', 'exclusion', 'walkway', 'work-area', 'vehicle-lane'] as ZonePurpose[]).map((p) => (
+                                <option key={p} value={p}>
+                                  {PURPOSE_LABEL[p]}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Fire and smoke">
+                              {FIRE_PURPOSES.map((p) => (
+                                <option key={p} value={p}>
+                                  {PURPOSE_LABEL[p]}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </>
+                        )}
                       </select>
                       <span className="meta">
                         {z.kind === 'line' ? 'Line' : `Area · ${z.points.length} corners`}

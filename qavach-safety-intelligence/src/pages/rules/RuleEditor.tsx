@@ -63,12 +63,14 @@ export function RuleEditor() {
   const [backtest, setBacktest] = useState<{ total: number; hits: { cam: Camera; at: number }[] }>();
 
   const chosen = cams.filter((c) => rule.cameraIds.includes(c.id));
-  const zoneOptions = useZoneOptions(chosen);
+  const isFire = rule.condition === 'smoke';
+  const zoneOptions = useZoneOptions(chosen, isFire);
+  const ignoreAreas = chosen.flatMap((c) => c.zones.filter((z) => z.purpose === 'fire-ignore').map((z) => z.name));
   const selectedZoneNames = zoneOptions.filter((o) => o.ids.some((id) => rule.zoneIds.includes(id))).map((o) => o.name);
   const policy = policies.find((p) => p.priority === rule.priority);
   const realCams = chosen.filter((c) => c.source);
   const matches = useMatches().filter((m) => m.ruleId === rule.id);
-  const steady = { frames: rule.minFrames ?? 3, sure: Math.round((rule.minConfidence ?? 0.25) * 100), repeat: rule.repeatSec ?? 120, move: rule.minMovePx ?? 10 };
+  const steady = { frames: rule.minFrames ?? (isFire ? 4 : 3), sure: Math.round((rule.minConfidence ?? 0.25) * 100), repeat: rule.repeatSec ?? 120, move: rule.minMovePx ?? 10 };
 
   if (ruleId && !existing) {
     return (
@@ -203,11 +205,15 @@ export function RuleEditor() {
             </div>
 
             <div className={`field${aiCls('zones')}`}>
-              <span className="field__label">Zones</span>
+              <span className="field__label">{isFire ? 'Watch areas' : 'Zones'}</span>
               {chosen.length === 0 ? (
                 <span className="meta">Choose cameras first.</span>
               ) : zoneOptions.length === 0 ? (
-                <span className="meta">These cameras have no zones yet, so the rule watches the whole view. Draw zones on the Cameras page.</span>
+                <span className="meta">
+                  {isFire
+                    ? 'These cameras have no fire and smoke watch areas, so the rule watches the whole view. To limit it, draw an area on the Cameras page and set it to "Fire and smoke watch area".'
+                    : 'These cameras have no zones yet, so the rule watches the whole view. Draw zones on the Cameras page.'}
+                </span>
               ) : (
                 <div className="row-wrap">
                   {zoneOptions.map((o) => {
@@ -225,13 +231,21 @@ export function RuleEditor() {
                       </button>
                     );
                   })}
-                  <span className="meta">{rule.zoneIds.length ? '' : realCams.length ? 'None picked: people anywhere in the view count, outside the drawn zones too' : 'None picked: the whole view'}</span>
+                  <span className="meta">
+                    {rule.zoneIds.length ? '' : isFire ? 'None picked: the whole view' : realCams.length ? 'None picked: people anywhere in the view count, outside the drawn zones too' : 'None picked: the whole view'}
+                  </span>
                 </div>
               )}
             </div>
 
+            {isFire && ignoreAreas.length > 0 && (
+              <span className="meta">
+                Always left out, because they are set as ignore areas: {ignoreAreas.join(', ')}. Fire or smoke centred there never counts.
+              </span>
+            )}
+
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className={`field${aiCls('subject')}`}>
+              <div className={`field${aiCls('subject')}`} style={isFire ? { display: 'none' } : undefined}>
                 <label htmlFor="r-subj">Who or what</label>
                 <select id="r-subj" className="select" value={rule.subject} onChange={(e) => set({ subject: e.target.value as Subject }, 'subject')}>
                   {(Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => (
@@ -243,7 +257,13 @@ export function RuleEditor() {
               </div>
               <div className={`field${aiCls('condition')}`}>
                 <label htmlFor="r-cond">Does what</label>
-                <select id="r-cond" className="select" value={rule.condition} onChange={(e) => set({ condition: e.target.value as Condition }, 'condition')}>
+                <select id="r-cond" className="select" value={rule.condition} onChange={(e) => {
+                    const condition = e.target.value as Condition;
+                    // Fire and smoke is about neither a person nor a vehicle, and its areas are of a different kind.
+                    if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: [], minFrames: 4, fireClasses: 'both' }, 'condition');
+                    else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: [], minFrames: 3 }, 'condition');
+                    else set({ condition }, 'condition');
+                  }}>
                   {(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => (
                     <option key={c} value={c}>
                       {CONDITION_LABEL[c]}
@@ -274,7 +294,7 @@ export function RuleEditor() {
             )}
 
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className={`field${aiCls('duration')}`}>
+              <div className={`field${aiCls('duration')}`} style={isFire ? { display: 'none' } : undefined}>
                 <label htmlFor="r-dur">For at least</label>
                 <div className="row">
                   <input id="r-dur" className="input" type="number" min={0} value={rule.durationSec >= 120 && rule.durationSec % 60 === 0 ? rule.durationSec / 60 : rule.durationSec} onChange={(e) => set({ durationSec: Math.max(0, Number(e.target.value)) * (rule.durationSec >= 120 && rule.durationSec % 60 === 0 ? 60 : 1) }, 'duration')} style={{ maxWidth: 110 }} />
@@ -321,9 +341,40 @@ export function RuleEditor() {
                 </div>
               </div>
             )}
+            {isFire && (
+              <div className="field steady">
+                <span className="field__label">How steady and how sure</span>
+                <div className="grid-3" style={{ gap: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+                  <div className="field">
+                    <label htmlFor="r-look">Look for</label>
+                    <select id="r-look" className="select" value={rule.fireClasses ?? 'both'} onChange={(e) => set({ fireClasses: e.target.value as 'both' | 'fire' | 'smoke' })}>
+                      <option value="both">Fire and smoke</option>
+                      <option value="fire">Fire only</option>
+                      <option value="smoke">Smoke only</option>
+                    </select>
+                    <span className="field__hint">Each one raises its own alert.</span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="r-hits">Frames seen, of the last 8</label>
+                    <input id="r-hits" className="input" type="number" min={1} max={8} value={steady.frames} onChange={(e) => set({ minFrames: Math.min(8, Math.max(1, Math.round(Number(e.target.value)) || 1)) })} />
+                    <span className="field__hint">Ignores a one-frame glint. They need not be in a row.</span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="r-sure">Detector at least (%) sure</label>
+                    <input id="r-sure" className="input" type="number" min={0} max={100} value={steady.sure} onChange={(e) => set({ minConfidence: Math.min(100, Math.max(0, Number(e.target.value) || 0)) / 100 })} />
+                    <span className="field__hint">Lower to catch small or thin smoke; raise if steam, fog or glare alerts.</span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="r-repeat">Don't repeat for (seconds)</label>
+                    <input id="r-repeat" className="input" type="number" min={0} value={steady.repeat} onChange={(e) => set({ repeatSec: Math.max(0, Number(e.target.value) || 0) })} />
+                    <span className="field__hint">After an alert, fire or smoke raises no new one for this long.</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {realCams.length > 0 && (
-              <span className={`chip ${rule.condition === 'enters' && rule.subject !== 'vehicle' ? 'chip--good' : 'chip--warn'}`}>
-                {rule.condition === 'enters' && rule.subject !== 'vehicle'
+              <span className={`chip ${isFire || (rule.condition === 'enters' && rule.subject !== 'vehicle') ? 'chip--good' : 'chip--warn'}`}>
+                {isFire || (rule.condition === 'enters' && rule.subject !== 'vehicle')
                   ? `Runs for real on ${realCams.length} camera${realCams.length === 1 ? '' : 's'} with a live link or uploaded video`
                   : 'Only "enters the zone" for people runs on real cameras so far; this rule will not alert on them'}
               </span>
@@ -479,7 +530,7 @@ export function RuleEditor() {
             const keepZones = rule.zoneIds.filter((z) => ids.some((id) => z.startsWith(`${id}-`)));
             // On a real camera the zones drawn on it are what the rule is for: start with all of them picked, so a person
             // outside them does not alert. Un-pick them all to watch the whole view.
-            const drawn = keepZones.length ? [] : cams.filter((c) => ids.includes(c.id) && c.source).flatMap((c) => c.zones.map((z) => z.id));
+            const drawn = keepZones.length ? [] : cams.filter((c) => ids.includes(c.id) && c.source).flatMap((c) => c.zones.filter((z) => (isFire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
             set({ cameraIds: ids, zoneIds: [...keepZones, ...drawn] }, 'cameras');
             setPicking(false);
           }}
@@ -489,12 +540,14 @@ export function RuleEditor() {
   );
 }
 
-function useZoneOptions(chosen: Camera[]) {
+/** The zones a rule can pick. Fire and smoke picks watch areas; every other condition leaves the fire areas out, because
+ *  a fire and smoke area is not a restricted area and a restricted area is not a place to watch for fire. */
+function useZoneOptions(chosen: Camera[], fire: boolean) {
   return useMemo(() => {
     const m = new Map<string, string[]>();
-    for (const c of chosen) for (const z of c.zones) m.set(z.name, [...(m.get(z.name) ?? []), z.id]);
+    for (const c of chosen) for (const z of c.zones) if (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-')) m.set(z.name, [...(m.get(z.name) ?? []), z.id]);
     return [...m.entries()].map(([name, ids]) => ({ name, ids }));
-  }, [chosen]);
+  }, [chosen, fire]);
 }
 
 function CameraPicker({ selected, onClose, onDone }: { selected: string[]; onClose: () => void; onDone: (ids: string[]) => void }) {

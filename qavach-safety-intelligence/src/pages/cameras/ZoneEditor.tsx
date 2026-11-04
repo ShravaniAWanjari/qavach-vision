@@ -3,7 +3,7 @@ import { Icon } from '../../components/Icon';
 import { CameraView } from '../../components/ui';
 import type { Camera, Pt, Zone, ZonePurpose } from '../../data/types';
 import { uid } from '../../lib/persist';
-import { ZONE_COLORS } from '../../scenes/zones';
+import { PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 
 // The admin draws every zone by hand on the camera's picture: areas as
 // polygons, edges and gates as lines. Nothing is detected automatically.
@@ -17,6 +17,8 @@ const pts = (p: Pt[]) => p.map((q) => `${q[0]},${q[1]}`).join(' ');
 
 export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnly }: { cam: Camera; zones: Zone[]; onChange: (z: Zone[]) => void; selectedId?: string; onSelect: (id?: string) => void; readOnly?: boolean }) {
   const [tool, setTool] = useState<Tool>('select');
+  // What a new area is for. Fire and smoke have no restricted areas: their areas are watch areas or ignore areas.
+  const [drawAs, setDrawAs] = useState<ZonePurpose>('restricted');
   const [draft, setDraft] = useState<Pt[]>([]);
   const [hover, setHover] = useState<Pt | null>(null);
   const drag = useRef<{ zone: string; i: number } | null>(null);
@@ -29,8 +31,9 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
 
   const finish = (points: Pt[], kind: 'polygon' | 'line') => {
     const n = zones.length + 1;
-    const purpose: ZonePurpose = kind === 'line' ? 'line' : 'restricted';
-    const z: Zone = { id: `${cam.id}-${uid('Z')}`, name: kind === 'line' ? `Line ${n}` : `Zone ${n}`, purpose, kind, points };
+    const purpose: ZonePurpose = kind === 'line' ? 'line' : drawAs;
+    const label = purpose === 'fire-watch' ? 'Watch area' : purpose === 'fire-ignore' ? 'Ignore area' : 'Zone';
+    const z: Zone = { id: `${cam.id}-${uid('Z')}`, name: kind === 'line' ? `Line ${n}` : `${label} ${n}`, purpose, kind, points };
     onChange([...zones, z]);
     onSelect(z.id);
     setDraft([]);
@@ -107,6 +110,22 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
             <Icon name="polygon" size={16} />
             Draw an area
           </button>
+          <label className="zedit__as">
+            <span className="sr-only">What a new area is for</span>
+            <select className="select select--sm" value={drawAs} onChange={(e) => setDrawAs(e.target.value as ZonePurpose)} title="What a new area is for">
+              <optgroup label="People and vehicles">
+                <option value="restricted">{PURPOSE_LABEL.restricted}</option>
+                <option value="exclusion">{PURPOSE_LABEL.exclusion}</option>
+                <option value="walkway">{PURPOSE_LABEL.walkway}</option>
+                <option value="work-area">{PURPOSE_LABEL['work-area']}</option>
+                <option value="vehicle-lane">{PURPOSE_LABEL['vehicle-lane']}</option>
+              </optgroup>
+              <optgroup label="Fire and smoke">
+                <option value="fire-watch">{PURPOSE_LABEL['fire-watch']}</option>
+                <option value="fire-ignore">{PURPOSE_LABEL['fire-ignore']}</option>
+              </optgroup>
+            </select>
+          </label>
           <button
             type="button"
             aria-pressed={tool === 'line'}

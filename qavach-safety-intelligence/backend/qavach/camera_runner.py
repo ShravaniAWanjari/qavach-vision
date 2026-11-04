@@ -14,9 +14,11 @@ import numpy as np
 
 from qavach import config, sources
 from qavach.detector import TrackerClient
+from qavach.fire import FireEngine, FireRule
 from qavach.intrusion import IntrusionRule, Rule, zones_to_pixels
 
 RED, AMBER, GREY = (60, 60, 235), (30, 170, 245), (190, 190, 190)
+FIRE_RED, FIRE_ORANGE = (60, 60, 235), (40, 150, 255)      # BGR: fire, smoke
 STATIC = (200, 175, 130)        # in a zone, but not (yet) shown to be moving: a light, thin box with no label
 WHOLE_VIEW = dict(id='__view__', name='the camera view', kind='polygon', points=[[0, 0], [100, 0], [100, 100], [0, 100]])
 STALL_SECONDS = 20          # a live stream that sends nothing for this long is treated as dropped
@@ -59,6 +61,16 @@ def detection_region(engines, width, height):
 def detect_size(region):
     long_side = max(region[2] - region[0], region[3] - region[1])
     return min(config.DETECT_SIZE, int(math.ceil(long_side / 32) * 32))
+
+
+def fire_rule(data):
+    """The detection settings of a front-end rule as a fire and smoke FireRule. Raises ValueError when out of range."""
+    return FireRule.from_dict(dict(classes=data.get('fireClasses'), min_confidence=data.get('minConfidence'),
+                                   min_hits=data.get('minFrames'), repeat_seconds=data.get('repeatSec')))
+
+
+def is_fire(rule):
+    return rule.get('condition') == 'smoke'
 
 
 class LiveReader(threading.Thread):
@@ -106,13 +118,14 @@ class LiveReader(threading.Thread):
 
 
 class CameraRunner:
-    def __init__(self, camera, rules, get_detector, emit):
+    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None):
         """camera: dict(id, name, source, zones). rules: front-end rules this camera runs. get_detector: callable that
         returns the shared Detector. emit: called with each alert event dict."""
         self.camera, self.rules, self.get_detector, self.emit = camera, rules, get_detector, emit
+        self.get_fire_detector = get_fire_detector
         self.state = 'starting'          # starting | running | reconnecting | error | stopped
         self.error = None
-        self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, frames=0, detecting=False, alerts=0, width=0, height=0)
+        self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
         self.jpeg = None
         self.seq = 0
         self.full = None                 # latest full-size frame
@@ -147,11 +160,29 @@ class CameraRunner:
     def _build_engines(self, width, height):
         engines = []
         for rule in self.rules:
+            if is_fire(rule):
+                continue
             wanted = set(rule.get('zoneIds') or [])
             zones = [z for z in self.camera['zones'] if z['id'] in wanted] if wanted else [WHOLE_VIEW]
             pixels = zones_to_pixels(zones, width, height)
             if pixels:          # a rule whose zones were deleted or are only lines has nothing to watch
                 engines.append((IntrusionRule(pixels, intrusion_rule(rule), scale=width / 1280), rule))
+        return engines
+
+    def _build_fire_engines(self, width, height):
+        """One engine per fire and smoke rule. Its watch areas are the camera's fire-watch zones the rule picked (none
+        picked: the whole view); the camera's fire-ignore zones always apply, because they mark known false sources."""
+        engines = []
+        zones = self.camera['zones']
+        ignore = zones_to_pixels([z for z in zones if z.get('purpose') == 'fire-ignore'], width, height)
+        for rule in self.rules:
+            if not is_fire(rule):
+                continue
+            wanted = set(rule.get('zoneIds') or [])
+            watch = zones_to_pixels([z for z in zones if z['id'] in wanted and z.get('purpose') == 'fire-watch'], width, height)
+            if wanted and not watch:        # the areas it was set to watch were deleted or are not areas: nothing to watch
+                continue
+            engines.append((FireEngine(fire_rule(rule), watch, ignore), rule))
         return engines
 
     def _session(self):
@@ -162,7 +193,8 @@ class CameraRunner:
         fps = fps if 1 <= fps <= 120 else 25.0
         width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         engines = self._build_engines(width, height)
-        tracker = detector = region = None
+        fire_engines = self._build_fire_engines(width, height)
+        tracker = detector = region = fire_detector = None
         reader = None
         try:
             if engines:
@@ -170,18 +202,21 @@ class CameraRunner:
                 tracker = TrackerClient()
                 tracker.reset(fps)
                 region = detection_region(engines, width, height)
-            self.stats.update(source_fps=round(fps, 1), width=width, height=height, detecting=bool(engines))
+            if fire_engines:
+                fire_detector = self.get_fire_detector()
+            self.stats.update(source_fps=round(fps, 1), width=width, height=height, detecting=bool(engines or fire_engines))
             self.state, self.error = 'running', None
             if source.live:
                 reader = LiveReader(capture, fps)
                 reader.start()
             done, busy, opened = 0, 0.0, time.time()
-            for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines))):
+            for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines))):
                 tick = time.time()
-                rows = self._process(frame, seconds, engines, tracker, detector, region, width, height)
+                rows, fires = self._process(frame, seconds, engines, tracker, detector, region, width, height, fire_engines, fire_detector)
                 done += 1
                 busy += time.time() - tick
-                self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=len(rows), frames=self.stats['frames'] + 1)
+                self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=len(rows),
+                                  hazards=sum(1 for f in fires if f[3] == 'counted'), frames=self.stats['frames'] + 1)
                 if reader:      # how fast the stream itself delivers, to tell a slow stream from a slow detector
                     self.stats['stream_fps'] = round(reader.count / max(time.time() - opened, 1e-6), 1)
         finally:
@@ -235,7 +270,7 @@ class CameraRunner:
             wanted = index + max(floor, math.ceil((time.time() - began) * fps))
 
     # ── per frame ───────────────────────────────────────────────────────────────────────────────────────────────
-    def _process(self, frame, seconds, engines, tracker, detector, region, width, height):
+    def _process(self, frame, seconds, engines, tracker, detector, region, width, height, fire_engines=(), fire_detector=None):
         self.full = frame
         rows, flagged, inside, waiting = [], set(), set(), set()
         if engines:
@@ -256,8 +291,43 @@ class CameraRunner:
                 for event in events:
                     if event['type'] == 'alert':
                         self._alert(frame, rows, rule, event, width, height)
-        self._draw(frame, rows, flagged, inside, waiting - flagged)
-        return rows
+        fires = self._process_fire(frame, seconds, fire_engines, fire_detector, width, height)
+        self._draw(frame, rows, flagged, inside, waiting - flagged, fires)
+        return rows, fires
+
+    def _process_fire(self, frame, seconds, fire_engines, fire_detector, width, height):
+        """Run the fire and smoke detector once on the frame and give every fire rule its detections. Returns
+        (class, confidence, box, status) for the preview, where status is 'counted' for a detection that counts for at
+        least one rule and 'ignored' for one that counts for none."""
+        if not fire_engines:
+            return []
+        detections = fire_detector.detect(frame)
+        counted = [False] * len(detections)
+        now = datetime.now()
+        for engine, rule in fire_engines:
+            if not schedule_active(rule.get('schedule', 'always'), now):
+                continue
+            info, events = engine.update(seconds, detections)
+            for i, status in enumerate(info):
+                counted[i] = counted[i] or status == 'counted'
+            for event in events:
+                if event['type'] == 'alert':
+                    self._fire_alert(frame, rule, event, width, height)
+        return [(name, conf, box, 'counted' if ok else 'ignored') for (name, conf, box), ok in zip(detections, counted)]
+
+    def _fire_alert(self, frame, rule, event, width, height):
+        x1, y1, x2, y2 = event['box']
+        event_id = f'EV-{uuid.uuid4().hex[:8]}'
+        config.SNAPSHOTS.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(config.SNAPSHOTS / f'{event_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        self.stats['alerts'] += 1
+        self.emit(dict(
+            id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
+            zoneId=event['zone_id'], zoneName=event['zone_name'] or WHOLE_VIEW['name'], hazard=event['hazard'],
+            trackId=0, confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
+            reentry=event['repeat'], moved=0.0, mode=rule.get('mode', 'test'),
+            box=[round(100 * x1 / width, 1), round(100 * y1 / height, 1), round(100 * (x2 - x1) / width, 1),
+                 round(100 * (y2 - y1) / height, 1)]))
 
     def _alert(self, frame, rows, rule, event, width, height):
         row = next((r for r in rows if r[0] == event['id']), None)
@@ -282,7 +352,7 @@ class CameraRunner:
         cv2.putText(view, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(view, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
 
-    def _draw(self, frame, rows, flagged, inside, waiting=frozenset()):
+    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=()):
         """The live preview: the frame, downscaled, with a box on every tracked person. Zones are drawn by the page."""
         height, width = frame.shape[:2]
         scale = min(1.0, config.PREVIEW_WIDTH / width)
@@ -293,6 +363,14 @@ class CameraRunner:
             cv2.rectangle(view, p1, p2, colour, 2 if track_id in flagged else 1)
             if track_id in flagged:
                 self._label(view, f'#{track_id}', (p1[0], max(12, p1[1] - 4)), colour)
+        for name, conf, (x1, y1, x2, y2), status in fires:
+            p1, p2 = (int(x1 * scale), int(y1 * scale)), (int(x2 * scale), int(y2 * scale))
+            if status == 'ignored':
+                cv2.rectangle(view, p1, p2, GREY, 1)            # seen, but outside the watch areas or in an ignore area
+                continue
+            colour = FIRE_RED if name == 'fire' else FIRE_ORANGE
+            cv2.rectangle(view, p1, p2, colour, 2)
+            self._label(view, f'{name.upper()} {int(conf * 100)}%', (p1[0], max(12, p1[1] - 5)), colour)
         ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
         self.jpeg = buffer.tobytes()
         self.seq += 1

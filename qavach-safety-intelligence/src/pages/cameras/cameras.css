@@ -28,3 +28,5 @@
 .zonerow { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--q-border); border-radius: var(--q-r); cursor: pointer; }
 .zonerow.is-sel { border-color: var(--q-ai); background: var(--q-ai-wash); }
 .zonerow__swatch { width: 6px; border-radius: 3px; flex: 0 0 auto; }
+.zedit__as { display: inline-flex; align-items: center; margin-left: 4px; }
+.zedit__as .select { width: auto; min-width: 210px; }

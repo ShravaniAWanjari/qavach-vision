@@ -56,6 +56,8 @@ export interface BackendEvent {
   zoneId: string | null;
   zoneName: string;
   trackId: number;
+  /** Set for fire and smoke alerts: which one was seen. */
+  hazard?: 'fire' | 'smoke';
   confidence: number;
   dwell: number;
   frames: number;

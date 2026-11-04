@@ -47,6 +47,10 @@ function applyStatus(statuses: Record<string, CameraStatus>) {
   activityStore.set((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(statuses).map(([id, s]) => [id, s.people])) }));
 }
 
+/** Whether this window has sent its cameras and rules to the service since it came up. A window that was a follower
+ *  when it loaded (another window held the lead for a few seconds) has not, so it syncs the moment it takes the lead. */
+let synced = false;
+
 async function connect() {
   const { epoch } = await backend.health();
   if (cursorStore.get().epoch !== epoch) cursorStore.set(() => ({ epoch, seq: 0 }));
@@ -59,6 +63,7 @@ async function connect() {
   if (problems.length) toast(`Detection service skipped: ${problems.join('; ')}`, { tone: 'alert' });
   setOnline(true);
   serviceStore.set(() => ({ online: true }));
+  synced = true;
 }
 
 async function pollOnce() {
@@ -81,6 +86,7 @@ export function useBackendBridge() {
     const goOffline = () => {
       if (isOnline()) toast('Lost the detection service. Real cameras keep their last picture until it is back.', { tone: 'alert' });
       setOnline(false);
+      synced = false;
       serviceStore.set(() => ({ online: false }));
     };
     const tick = async () => {
@@ -98,6 +104,7 @@ export function useBackendBridge() {
             serviceStore.set(() => ({ online: true }));
           }
         } else if (isLeader(now)) {
+          if (!synced) await connect();
           await pollOnce();
         }
       } catch {

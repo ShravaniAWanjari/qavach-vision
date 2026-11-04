@@ -80,7 +80,7 @@ The pole moved 3 px in the whole recording; workers standing about moved 5 to 12
 
 Things to know:
 
-- **Only "a person enters the zone" runs for real.** The other conditions in the rule editor (no PPE, crowd, smoke, vehicle stopped, outside, line crossing) stay demo-only, and the editor says so on real cameras. The sample cameras and their rules still run on the simulator; real cameras never do.
+- **Two conditions run for real: "a person enters the zone" and "smoke or flame seen".** The others in the rule editor (no PPE, crowd, vehicle stopped, outside, line crossing) stay demo-only, and the editor says so on real cameras. The sample cameras and their rules still run on the simulator; real cameras never do.
 - **Pictures on the wall and elsewhere follow the camera.** A live view (wall tiles, the click-through view, "Live now") plays the service's live preview, with boxes on the people it sees. Still thumbnails (Cameras list, busy walls, rule preview) fetch a fresh frame every few seconds. Only the zone editor and the connection test keep the frame taken at connection, so zones can be drawn on a steady picture, and an alert opened as a snapshot shows the moment it was raised.
 - **An uploaded video plays in real time and starts over when it ends**, with fresh tracking, like a camera that is always on. Use it when the live feed has nothing happening. It also takes about 40 s for a clip of that length to show its first alert.
 - **The ferry camera shows pedestrians about 20 px tall**, so detections near the 25 % default are borderline and can change with a few pixels of zone or crop. Lower *Detector at least (%) sure* to see more; raise it to see fewer. A rule with no zone watches the whole view and is noisy on a busy camera.
@@ -91,6 +91,23 @@ Things to know:
 - `npm run build:single` still opens from disk; the real-camera features need the service on `http://127.0.0.1:8830`, otherwise the top bar says "Detection offline" and the sample flow is used.
 
 Back-end tests: `backend/run.sh` uses the same Python; run `"$QAVACH_PYTHON" -m pytest backend/tests`.
+
+## Fire and smoke
+
+The second real condition. **Does what: smoke or flame seen** runs the D-Fire YOLOv8n detector (`backend/weights/dfire-yolov8n.pt`, 6 MB) on every analysed frame of a real camera. It is a different rule from intrusion, so the zones work differently:
+
+- **There are no restricted areas.** Fire and smoke are not about who is where. When you draw an area on the camera, choose what it is for next to *Draw an area*: **Fire and smoke watch area** (where fire or smoke matters: a workshop, a reefer stack, a hazardous cargo bay) or **Ignore area** (where it is normal: a steam vent, an exhaust stack, a flare, a chimney). A rule for fire and smoke only offers watch areas, and a rule for people never offers them.
+- **Watch areas are optional.** Pick none and the rule watches the whole view. Pick some and only fire or smoke whose box is centred inside one counts, and the alert names that area.
+- **Ignore areas always apply.** Fire or smoke centred in one never counts, whatever areas the rule picked. In the live preview, detections that do not count are drawn as thin grey boxes; ones that count are orange (smoke) or red (fire) with their confidence.
+
+How it decides: a class (fire or smoke) raises an alert when a counted detection of it appears in **K of the last 8 analysed frames** (default 4; they need not be in a row), which removes one-frame glints. It clears after 2 s without a persistent detection. After an alert, the same class raises no new one for *Don't repeat for* (default 120 s). The settings in the rule editor are **Look for** (fire and smoke, fire only, smoke only), **Frames seen, of the last 8**, **Detector at least (%) sure** (default 25) and **Don't repeat for**. The alert shows the frame it was raised on with a box on the fire or smoke, and follows the notification policy of its level like any other alert.
+
+Things to know:
+
+- **Not measured on port cameras.** It was run on four real incident clips (a yacht fire, pontoon flames, quayside smoke, a container terminal at night), not on fixed CCTV; there is no accuracy figure and the night clip is the weakest. The fire project's own last conclusion was that no fine-tuned model beat this base model yet.
+- **Steam, fog, dust, exhaust and sun glare are the false alarms to expect.** Use ignore areas for fixed sources, and raise *Detector at least (%) sure* for the rest.
+- A black smoke plume can fill a quarter of the frame, so one alert's box is large. A clip of a burning boat raises one fire alert and one smoke alert, then a new pair each time the clip loops (an uploaded video restarts with fresh counting).
+- The model card lists AGPL-3.0, like the people detector: check licensing before anything beyond a demo.
 
 ## Five-minute demo
 

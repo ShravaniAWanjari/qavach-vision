@@ -7,7 +7,7 @@ import threading
 import uuid
 
 from qavach import config, sources
-from qavach.camera_runner import CameraRunner, intrusion_rule
+from qavach.camera_runner import CameraRunner, fire_rule, intrusion_rule, is_fire
 
 ID = re.compile(r'^[A-Za-z0-9_-]{1,48}$')
 
@@ -19,8 +19,11 @@ class Invalid(ValueError):
 def supported(rule):
     """Rules the back-end runs for real. The rule editor offers more conditions (PPE, smoke, crowd...); those stay
     demo-only for now."""
-    return rule.get('condition') == 'enters' and rule.get('subject', 'person') in ('person', 'any') \
-        and rule.get('mode', 'test') in ('test', 'live')
+    if rule.get('mode', 'test') not in ('test', 'live'):
+        return False
+    if rule.get('condition') == 'smoke':           # fire and smoke: the subject is not a person or a vehicle
+        return True
+    return rule.get('condition') == 'enters' and rule.get('subject', 'person') in ('person', 'any')
 
 
 def clean_zone(z):
@@ -38,6 +41,7 @@ class Registry:
         self.cameras, self.rules, self.runners = {}, {}, {}
         self.events, self.seq, self.epoch = [], 0, uuid.uuid4().hex[:8]
         self._detector = None
+        self._fire_detector = None
         # Runner threads emit events and ask for the detector while a request holds `lock` and waits for them to stop,
         # so those two use locks of their own.
         self.events_lock = threading.Lock()
@@ -51,9 +55,16 @@ class Registry:
                 self._detector = Detector()
             return self._detector
 
+    def get_fire_detector(self):
+        with self.detector_lock:
+            if self._fire_detector is None:
+                from qavach.detector import FireDetector
+                self._fire_detector = FireDetector()
+            return self._fire_detector
+
     @property
     def detector_loaded(self):
-        return self._detector is not None
+        return self._detector is not None or self._fire_detector is not None
 
     # ── events ───────────────────────────────────────────────────────────────────────────────────────────────────
     def emit(self, event):
@@ -102,11 +113,11 @@ class Registry:
         if not ID.match(rule_id):
             raise Invalid('A rule needs an id')
         try:
-            intrusion_rule(data)
+            fire_rule(data) if is_fire(data) else intrusion_rule(data)
         except (ValueError, TypeError) as error:
             raise Invalid(f'The rule settings are out of range: {error}') from error
         rule = {k: data.get(k) for k in ('id', 'name', 'cameraIds', 'zoneIds', 'subject', 'condition', 'durationSec',
-                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'schedule', 'mode', 'priority')}
+                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'fireClasses', 'schedule', 'mode', 'priority')}
         rule['cameraIds'] = [str(c) for c in (rule['cameraIds'] or [])]
         rule['zoneIds'] = [str(z) for z in (rule['zoneIds'] or [])]
         with self.lock:
@@ -164,7 +175,7 @@ class Registry:
                 continue
             if current:
                 current[1].stop()
-            self.runners[cam_id] = (signature, CameraRunner(camera, rules, self.get_detector, self.emit))
+            self.runners[cam_id] = (signature, CameraRunner(camera, rules, self.get_detector, self.emit, get_fire_detector=self.get_fire_detector))
 
     def runner(self, cam_id):
         with self.lock:

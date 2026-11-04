@@ -151,15 +151,17 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     cameraId: cam.id,
     zoneId: ev.zoneId ?? undefined,
     priority: rule.priority,
-    title: rule.name,
-    detail: `Inside ${where} for ${ev.dwell.toFixed(1)} s (rule: ${rule.durationSec} s or more) · moved ${Math.round(ev.moved)} px${ev.reentry ? ' · came back' : ''}`,
+    title: ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name,
+    detail: ev.hazard
+      ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${ev.reentry ? ' · came back' : ''}`
+      : `Inside ${where} for ${ev.dwell.toFixed(1)} s (rule: ${rule.durationSec} s or more) · moved ${Math.round(ev.moved)} px${ev.reentry ? ' · came back' : ''}`,
     at: ev.at,
     state: 'new',
     box: ev.box,
     confidence: ev.confidence,
     snapshot: ev.snapshot,
     deliveries: deliveriesFor(policy, cam, ev.at),
-    activity: [{ at: ev.at, text: `Detected by the edge model · person #${ev.trackId}`, actor: 'system' }],
+    activity: [{ at: ev.at, text: ev.hazard ? `Detected by the edge model · ${ev.hazard}` : `Detected by the edge model · person #${ev.trackId}`, actor: 'system' }],
   };
   addAlert(alert);
   toast(`${alert.priority} · ${alert.title} · ${cam.id} ${cam.name}`, { tone: alert.priority === 'P1' || alert.priority === 'P2' ? 'alert' : undefined, link: `/alerts/${alert.id}` });
