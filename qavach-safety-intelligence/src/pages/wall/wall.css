@@ -42,14 +42,14 @@
 .wtile--empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--q-night-muted); font-size: 12.5px; border: 1.5px dashed var(--q-night-line); }
 .wall--editing .wtile { outline: 2px dashed var(--q-night-line); }
 .wtile--over { outline: 3px solid var(--q-night-accent) !important; }
-.wtile--alert { outline: 3px solid #FF5C7A; }
+.wtile--alert { outline: 3px solid #E5456D; }
 .wtile--P1 { animation: pulse-ring 1.4s infinite; }
-.wtile--P2 { outline-color: #FFB45C; }
+.wtile--P2 { outline-color: #FF9F40; }
 .wtile--P3, .wtile--P4 { outline-color: #FFD166; }
 
 .wtile__top { position: absolute; top: 6px; left: 6px; right: 6px; display: flex; align-items: center; gap: 5px; pointer-events: none; }
 .wtile__tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #E8EDF3; background: rgba(11, 24, 40, .72); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
-.wtile__tag--alert { background: #B42341; color: #fff; }
+.wtile__tag--alert { background: var(--q-danger); color: #fff; }
 .wtile__tag--busy { background: rgba(45, 91, 255, .85); color: #fff; }
 .wtile__actions { display: inline-flex; gap: 4px; opacity: 0; transition: opacity .15s; pointer-events: auto; }
 .wtile:hover .wtile__actions, .wtile:focus-within .wtile__actions, .wtile__actions--on { opacity: 1; }

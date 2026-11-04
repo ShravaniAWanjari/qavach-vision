@@ -211,6 +211,14 @@ async def camera_stream(camera_id: str):
 if config.WEB and (config.WEB / 'index.html').exists():
     app.mount('/', StaticFiles(directory=config.WEB, html=True), name='console')       # after every /api route
 
+    @app.middleware('http')
+    async def revalidate_page(request: Request, call_next):
+        """The page itself is never cached (its script and style names change with every build); hashed assets can be."""
+        response = await call_next(request)
+        if not request.url.path.startswith(('/api', '/assets')):
+            response.headers['Cache-Control'] = 'no-cache'
+        return response
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

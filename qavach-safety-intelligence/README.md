@@ -37,7 +37,7 @@ It picks a free port (8830, or the next one if that is taken), starts everything
 docker compose logs -f      # what the service is doing
 docker compose down         # stop (cameras, rules, uploads and alert pictures are kept)
 docker compose down -v      # stop and forget everything
-docker compose build --no-cache && ./start.sh     # pick up a newer yt-dlp if YouTube links stop working
+./start.sh                 # rebuilds when the code changed; add `docker compose build --no-cache` first to pick up a newer yt-dlp
 ```
 
 - **Needs:** Docker Desktop with at least 6 GB of memory and about 10 GB of free disk. The port is published to this PC only. To choose the port yourself, set `QAVACH_PORT=9000` in `.env` before running `./start.sh`.

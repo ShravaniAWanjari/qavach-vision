@@ -35,7 +35,7 @@ if (-not $port) {
 Set-Content -Path .env -Value "QAVACH_PORT=$port" -Encoding ascii
 Write-Host "Starting Qavach on port $port (the first run builds the image and can take 10-20 minutes)..."
 $env:QAVACH_PORT = "$port"
-docker compose up -d --wait
+docker compose up -d --build --wait
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host ""
 Write-Host "Ready. Open:  http://localhost:$port"

@@ -234,7 +234,7 @@ function Quay({ id, pal = BOX_PALETTES[0], r = Math.random, still, mirror }: Dra
       {stacks}
       <path d="M0 96 L640 84 L640 186 L0 198 Z" fill="#1F3247" />
       <path d="M0 186 L640 174 L640 186 L0 198 Z" fill="#7A2A2A" />
-      <Label x={510} y={150} mirror={mirror} fill="#E8EDF3" opacity=".55" fontSize="20" fontFamily="Instrument Sans, sans-serif" fontWeight="700" letterSpacing="4">
+      <Label x={510} y={150} mirror={mirror} fill="#E8EDF3" opacity=".55" fontSize="20" fontFamily="Exo 2, sans-serif" fontWeight="700" letterSpacing="4">
         NORDIC STAR
       </Label>
       <defs>
@@ -423,7 +423,7 @@ function Gate({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
         </g>
       ))}
       {[[0, 140], [140, 300], [300, 460], [460, 640]].map(([a, b], i) => (
-        <Label key={i} x={(a + b) / 2} y={62} mirror={mirror} fill="#2B2F33" fontSize="16" fontWeight="700" fontFamily="Instrument Sans, sans-serif">
+        <Label key={i} x={(a + b) / 2} y={62} mirror={mirror} fill="#2B2F33" fontSize="16" fontWeight="700" fontFamily="Exo 2, sans-serif">
           LANE {mirror ? 4 - i : i + 1}
         </Label>
       ))}
@@ -521,10 +521,10 @@ function Hazmat({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
       <path d="M60 236 L250 236 L250 300 L60 300 Z" fill={`url(#${id('mesh')})`} stroke="#9AA1A8" strokeWidth="2" />
       <path d="M390 236 L580 236 L580 300 L390 300 Z" fill={`url(#${id('mesh')})`} stroke="#9AA1A8" strokeWidth="2" />
       <rect x="290" y="306" width="62" height="34" fill="#F2F3F4" stroke="#2B2F33" />
-      <Label x={321} y={320} mirror={mirror} fontSize="9" fontWeight="700" fill="#B42341" fontFamily="Instrument Sans, sans-serif">
+      <Label x={321} y={320} mirror={mirror} fontSize="9" fontWeight="700" fill="#B42341" fontFamily="Exo 2, sans-serif">
         IMDG
       </Label>
-      <Label x={321} y={333} mirror={mirror} fontSize="7" fill="#2B2F33" fontFamily="Instrument Sans, sans-serif">
+      <Label x={321} y={333} mirror={mirror} fontSize="7" fill="#2B2F33" fontFamily="Exo 2, sans-serif">
         AUTHORISED ONLY
       </Label>
       <Mover path="M120 346 L560 340 L120 346" dur={30} begin={4} still={still}>

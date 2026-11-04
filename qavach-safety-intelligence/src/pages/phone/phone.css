@@ -1,18 +1,18 @@
-.phonepage { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 56px; padding: 32px; background: radial-gradient(circle at 30% 20%, #16263C, #0A1626 60%); color: var(--q-night-text); }
+.phonepage { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 56px; padding: 32px; background: radial-gradient(circle at 30% 20%, #12303A, #0C323D 60%); color: var(--q-night-text); }
 .phonepage__side { max-width: 300px; display: flex; flex-direction: column; gap: 14px; }
 .phonepage__side h1 { font-size: 26px; }
 .phonepage__side p { color: var(--q-night-muted); }
 .phonepage__side .field__label { color: var(--q-night-muted); }
-.phone { width: 390px; height: 820px; max-height: calc(100vh - 40px); border-radius: 44px; background: var(--q-canvas); color: var(--q-ink); border: 10px solid #04090F; box-shadow: 0 30px 80px rgba(0, 0, 0, .55); overflow: hidden; display: flex; flex-direction: column; }
+.phone { width: 390px; height: 820px; max-height: calc(100vh - 40px); border-radius: 44px; background: var(--q-canvas); color: var(--q-ink); border: 10px solid #081F27; box-shadow: 0 30px 80px rgba(0, 0, 0, .55); overflow: hidden; display: flex; flex-direction: column; }
 @media (max-width: 760px) {
   .phonepage { padding: 0; display: block; background: var(--q-canvas); }
   .phonepage__side { display: none; }
   .phone { width: 100%; height: 100vh; max-height: none; border-radius: 0; border: 0; box-shadow: none; }
 }
-.phone__status { display: flex; align-items: center; gap: 6px; padding: 10px 24px 4px; font-size: 13px; font-weight: 600; background: #021E54; color: #fff; }
-.phone__bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 12px; background: #021E54; color: #fff; font-size: 16px; }
+.phone__status { display: flex; align-items: center; gap: 6px; padding: 10px 24px 4px; font-size: 13px; font-weight: 600; background: var(--q-dock-active); color: #fff; }
+.phone__bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 12px; background: var(--q-dock-active); color: #fff; font-size: 16px; }
 .phone__back { border: 0; background: none; color: #fff; padding: 0; display: inline-flex; margin-left: -6px; }
-.phone__count { font-size: 12.5px; background: #FF5C7A; padding: 2px 9px; border-radius: 10px; font-weight: 700; }
+.phone__count { font-size: 12.5px; background: #E5456D; padding: 2px 9px; border-radius: 10px; font-weight: 700; }
 .phone__tabs { display: flex; gap: 6px; padding: 10px 14px 0; }
 .phone__tabs button { flex: 1; height: 34px; border: 1px solid var(--q-border-strong); background: var(--q-surface); border-radius: 17px; font-size: 13px; font-weight: 600; color: var(--q-ink-2); }
 .phone__tabs button[aria-pressed='true'] { background: var(--q-ink); border-color: var(--q-ink); color: #fff; }

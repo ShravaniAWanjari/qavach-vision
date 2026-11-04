@@ -1,109 +1,249 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useService } from '../state/bridge';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { SITE, USERS } from '../data/seed';
 import { resetAll, useStore } from '../lib/persist';
 import { ago, hms, useNow } from '../lib/time';
-import { isAdmin, isOpen, sessionStore, toastStore, useAlerts, useCameras, useMe, useRules, useSession, userName } from '../state/store';
+import { isAdmin, isOpen, sessionStore, toast, toastStore, useAlerts, useCameras, useMe, useRules, useSession, userName } from '../state/store';
 import { Icon, Logo, type IconName } from './Icon';
 import { CHANNEL, PriorityBadge } from './ui';
 import './Shell.css';
 
-const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
-  { to: '/', label: 'Overview', icon: 'home', end: true },
-  { to: '/wall', label: 'Video wall', icon: 'wall' },
-  { to: '/alerts', label: 'Alerts', icon: 'bell' },
-];
-const SETUP: { to: string; label: string; icon: IconName }[] = [
-  { to: '/cameras', label: 'Cameras', icon: 'camera' },
-  { to: '/rules', label: 'Rules', icon: 'rule' },
-  { to: '/notifications', label: 'Notify', icon: 'route' },
+/** The module's own screens. In Qavach they sit under Autonomous Safety, QAI, CCTV Analyzer. */
+const TABS: { to: string; label: string; end?: boolean; external?: boolean }[] = [
+  { to: '/', label: 'Overview', end: true },
+  { to: '/wall', label: 'Video wall' },
+  { to: '/alerts', label: 'Alerts' },
+  { to: '/cameras', label: 'Cameras' },
+  { to: '/rules', label: 'Rules' },
+  { to: '/notifications', label: 'Notify' },
+  { to: '#/m', label: 'Phone view', external: true },
 ];
 
+const PAGE_NAMES: [string, string][] = [
+  ['/wall', 'Video wall'],
+  ['/alerts', 'Alerts'],
+  ['/cameras', 'Cameras'],
+  ['/rules', 'Rules'],
+  ['/notifications', 'Notify'],
+];
+
+/** Qavach's left menu. Only Autonomous Safety leads anywhere in this demo. */
+const SIDE: { label: string; icon: IconName; to?: string }[] = [
+  { label: 'Home', icon: 'home' },
+  { label: 'Dashboard', icon: 'dash' },
+  { label: 'Management Report', icon: 'report' },
+  { label: 'Autonomous Safety', icon: 'autonomous', to: '/' },
+  { label: 'Risk Assessment', icon: 'risk' },
+  { label: 'Unsafe Action', icon: 'unsafe' },
+  { label: 'Observation', icon: 'observe' },
+  { label: 'Incident Management', icon: 'incmgmt' },
+  { label: 'Inspection', icon: 'inspect' },
+];
+
+const FLY: { label: string; icon: IconName }[] = [
+  { label: 'Dashboard', icon: 'dash' },
+  { label: 'UIN', icon: 'uin' },
+  { label: 'Polaris', icon: 'compass' },
+  { label: 'Analyzer', icon: 'analyzer' },
+  { label: 'Intelligence', icon: 'intel' },
+  { label: 'Listing', icon: 'listing' },
+  { label: 'Review', icon: 'review' },
+  { label: 'Inspection', icon: 'eye' },
+  { label: 'RCA', icon: 'rca' },
+  { label: 'Action Management', icon: 'wheel' },
+  { label: 'Workflow', icon: 'workflow' },
+  { label: 'Reports', icon: 'stack' },
+  { label: 'Configuration', icon: 'config' },
+];
+
+const INTEL_MENU = ['Geo-Location Tracker', 'Heat Map', 'Hotspot Evolution', 'Live Operations Map', 'CCTV Analyzer'];
+
+const notInDemo = (what: string) => toast(`${what} is part of Qavach but not of this demo.`);
+
 export function Shell() {
-  const alerts = useAlerts();
-  const open = alerts.filter(isOpen).length;
   const me = useMe();
   const [profile, setProfile] = useState(false);
   const [bell, setBell] = useState(false);
 
   return (
     <div className="app">
-      <div className="rail">
-        <nav className="dock" aria-label="Safety Intelligence">
-          <Link to="/" className="dock__logo" aria-label="Safety Intelligence overview">
-            <Logo />
-          </Link>
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `dock__item${isActive ? ' is-active' : ''}`}>
-              <Icon name={n.icon} />
-              <span>{n.label}</span>
-              {n.to === '/alerts' && open > 0 && <span className="dock__badge dock__badge--alert">{open}</span>}
-            </NavLink>
-          ))}
-          <div className="dock__sep" />
-          <span className="dock__group">Set up</span>
-          {SETUP.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => `dock__item${isActive ? ' is-active' : ''}`}>
-              <Icon name={n.icon} />
-              <span>{n.label}</span>
-            </NavLink>
-          ))}
-          <div className="dock__sep" />
-          <a href="#/m" target="_blank" rel="noopener" className="dock__item" title="Opens the supervisor's phone view in a new window">
-            <Icon name="mobile" />
-            <span>Phone</span>
-          </a>
-          <div className="dock__spacer" />
-          <div className="dock__profile">
-            <button type="button" className="dock__avatar" onClick={() => setProfile((v) => !v)} aria-expanded={profile} aria-label={`Signed in as ${me.name}, ${me.role}`}>
-              {me.name
-                .split(' ')
-                .map((p) => p[0])
-                .join('')}
-            </button>
-          </div>
-        </nav>
-      </div>
-
+      <SideMenu />
+      <TopBar onBell={() => setBell(true)} onProfile={() => setProfile((v) => !v)} />
       <div className="main">
-        <TopBar onBell={() => setBell(true)} />
         <main className="content">
+          <ModuleTabs />
           <Outlet />
         </main>
       </div>
+      <button type="button" className="polaris" onClick={() => notInDemo('Polaris')} aria-label="Polaris">
+        <span>POLARIS</span>
+        <Icon name="compass" size={22} />
+      </button>
 
       {profile && <ProfileMenu onClose={() => setProfile(false)} />}
       {bell && <NotificationsDrawer onClose={() => setBell(false)} />}
       <Toasts />
+      <span className="sr-only">Signed in as {me.name}, {me.role}</span>
     </div>
   );
 }
 
-function TopBar({ onBell }: { onBell: () => void }) {
+function SideMenu() {
+  const nav = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [fly, setFly] = useState(false);
+  const [intel, setIntel] = useState(false);
+  const [flyTop, setFlyTop] = useState(240);
+  const timer = useRef<number>(0);
+  const close = () => {
+    window.clearTimeout(timer.current);
+    setOpen(false);
+    setFly(false);
+    setIntel(false);
+  };
+  // A short grace period, so a pointer that leaves for a moment (or jumps to the menu) does not close it.
+  const later = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(close, 220);
+  };
+  const keep = () => {
+    window.clearTimeout(timer.current);
+    setOpen(true);
+  };
+  return (
+    <>
+      {open && <div className="side__scrim" onClick={close} />}
+      <aside className={`side${open ? ' is-open' : ''}`} aria-label="Qavach" onMouseEnter={keep} onMouseMove={keep} onMouseLeave={later} onFocus={keep}>
+        <Link to="/" className="side__logo" aria-label="Qavach">
+          <Logo size={44} />
+          <span className="side__brand">QAVACH</span>
+        </Link>
+        <nav className="side__nav">
+          {SIDE.map((n) => {
+            const active = n.label === 'Autonomous Safety';
+            return (
+              <button
+                key={n.label}
+                type="button"
+                className={`side__item${active ? ' is-active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                onMouseEnter={(e) => {
+                  setFly(active);
+                  if (active) setFlyTop(Math.max(96, e.currentTarget.getBoundingClientRect().top - 72));
+                }}
+                onClick={() => {
+                  if (n.to) {
+                    setFly((v) => !v);
+                  } else if (n.label === 'Home') {
+                    nav('/');
+                    close();
+                  } else notInDemo(n.label);
+                }}
+              >
+                <Icon name={n.icon} size={26} stroke={1.5} />
+                <span className="side__label">{n.label}</span>
+                <Icon name={open && fly && active ? 'chevron-left' : 'chevron-right'} size={18} stroke={2.4} className="side__more" />
+              </button>
+            );
+          })}
+        </nav>
+        {open && fly && (
+          <div className="fly" style={{ top: flyTop }} role="menu" aria-label="Autonomous Safety">
+            <div className="fly__grid">
+              {FLY.map((f) => (
+                <button
+                  key={f.label}
+                  type="button"
+                  className={`fly__tile${f.label === 'Intelligence' && intel ? ' is-on' : ''}`}
+                  role="menuitem"
+                  onMouseEnter={() => setIntel(f.label === 'Intelligence')}
+                  onClick={() => (f.label === 'Intelligence' ? setIntel((v) => !v) : notInDemo(f.label))}
+                >
+                  <Icon name={f.icon} size={46} stroke={1.3} />
+                  <span>{f.label}</span>
+                  {f.label === 'Intelligence' && intel && (
+                    <span className="fly__sub" role="menu" aria-label="Intelligence">
+                      {INTEL_MENU.map((m) => (
+                        <span
+                          key={m}
+                          role="menuitem"
+                          tabIndex={0}
+                          className={`fly__subitem${m === 'CCTV Analyzer' ? ' is-on' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (m === 'CCTV Analyzer') {
+                              nav('/');
+                              close();
+                            } else notInDemo(m);
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
+                        >
+                          {m}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </aside>
+    </>
+  );
+}
+
+function ModuleTabs() {
+  return (
+    <nav className="mtabs" aria-label="CCTV Analyzer">
+      {TABS.map((t) =>
+        t.external ? (
+          <a key={t.to} href={t.to} target="_blank" rel="noopener" className="mtabs__tab" title="Opens the supervisor's phone view in a new window">
+            {t.label}
+            <Icon name="external" size={14} />
+          </a>
+        ) : (
+          <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => `mtabs__tab${isActive ? ' is-active' : ''}`}>
+            {t.label}
+          </NavLink>
+        ),
+      )}
+    </nav>
+  );
+}
+
+function TopBar({ onBell, onProfile }: { onBell: () => void; onProfile: () => void }) {
   const { live } = useSession();
   const me = useMe();
   const alerts = useAlerts();
   const now = useNow(1000);
   const service = useService();
+  const { pathname } = useLocation();
   const mine = alerts.filter((a) => isOpen(a) && a.deliveries.some((d) => d.to === me.id)).length;
+  const page = PAGE_NAMES.find(([p]) => pathname.startsWith(p))?.[1];
+  const title = page ?? 'CCTV Analyzer';
   return (
-    <header className="bar">
-      <div className="bar__module">
-        <Icon name="cctv" size={20} />
-        <div className="stack" style={{ gap: 0 }}>
-          <strong>Safety Intelligence</strong>
-          <span className="meta">Qavach · CCTV monitoring</span>
-        </div>
+    <header className="hdr">
+      <div className="hdr__title">
+        <nav className="crumbs" aria-label="Breadcrumb">
+          <Link to="/">Home</Link>
+          <Icon name="chevron-right" size={14} stroke={2.4} />
+          <span>QAI</span>
+          <Icon name="chevron-right" size={14} stroke={2.4} />
+          {page ? <Link to="/">CCTV Analyzer</Link> : <span className="is-last">CCTV Analyzer</span>}
+          {page && (
+            <>
+              <Icon name="chevron-right" size={14} stroke={2.4} />
+              <span className="is-last">{page}</span>
+            </>
+          )}
+        </nav>
+        <div className="hdr__h">{title}</div>
       </div>
-      <span className="bar__site">
-        <Icon name="map" size={17} />
-        <span className="ellipsis">{SITE.name}</span>
-        <span className="muted">All areas</span>
-      </span>
       <Search />
       <span className="spacer" />
-      <span className={`bar__service${service.online ? ' is-on' : ''}`} title={service.online ? 'Connected to the detection service: real cameras and rules run for real.' : 'The detection service is not running. Sample data only. Start it with backend/run.sh.'}>
+      <span className={`bar__service${service.online ? ' is-on' : ''}`} title={service.online ? 'Connected to the detection service: real cameras and rules run for real.' : 'The detection service is not running. Sample data only. Start it with ./start.sh or backend/run.sh.'}>
         <span className="bar__live-dot" />
         {service.online ? 'Detection on' : 'Detection offline'}
       </span>
@@ -117,9 +257,47 @@ function TopBar({ onBell }: { onBell: () => void }) {
         <span className="mono">{hms(now)}</span>
         <span>{live ? 'Live' : 'Paused'}</span>
       </button>
-      <button type="button" className="btn btn--secondary btn--icon bar__bell" onClick={onBell} aria-label={`Notifications${mine ? `, ${mine} open alerts sent to you` : ''}`}>
-        <Icon name="bell" />
-        {mine > 0 && <span className="bar__dot">{mine}</span>}
+      <div className="hdr__icons">
+        <button type="button" className="hdr__icon" aria-label="QAI assistant" title="QAI assistant" onClick={() => notInDemo('The QAI assistant')}>
+          <Icon name="spark" size={26} stroke={1.5} />
+        </button>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Messages" title="Messages" onClick={() => notInDemo('Messages')}>
+          <Icon name="chat" size={26} stroke={1.5} />
+        </button>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Support" title="Support" onClick={() => notInDemo('Support')}>
+          <Icon name="headset" size={26} stroke={1.5} />
+        </button>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Language" title="Language" onClick={() => notInDemo('Language')}>
+          <Icon name="translate" size={26} stroke={1.5} />
+        </button>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Mail" title="Mail" onClick={() => notInDemo('Mail')}>
+          <Icon name="mail" size={26} stroke={1.5} />
+        </button>
+        <button type="button" className="hdr__icon" onClick={onBell} aria-label={`Notifications${mine ? `, ${mine} open alerts sent to you` : ''}`} title="Notifications">
+          <Icon name="bell" size={26} stroke={1.5} />
+          {mine > 0 && <span className="hdr__badge">{mine > 99 ? '99+' : mine}</span>}
+        </button>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Help" title="Help" onClick={() => notInDemo('Help')}>
+          <Icon name="help" size={26} stroke={1.8} />
+        </button>
+        <button type="button" className="hdr__icon hdr__opt hdr__yt" aria-label="Training videos" title="Training videos" onClick={() => notInDemo('Training videos')}>
+          <Icon name="youtube" size={30} stroke={1.8} />
+        </button>
+        <button type="button" className="hdr__icon" aria-label="Account menu" title="Account and roles" onClick={onProfile}>
+          <Icon name="power" size={26} stroke={1.8} />
+        </button>
+      </div>
+      <button type="button" className="hdr__user" onClick={onProfile} aria-label={`Signed in as ${me.name}, ${me.role}`}>
+        <span className="hdr__who">
+          <strong>{me.name}</strong>
+          <span>{me.role}</span>
+        </span>
+        <span className="hdr__avatar">
+          {me.name
+            .split(' ')
+            .map((p) => p[0])
+            .join('')}
+        </span>
       </button>
     </header>
   );

@@ -25,6 +25,6 @@ fi
 
 printf 'QAVACH_PORT=%s\n' "$port" > .env
 echo "Starting Qavach on port $port (the first run builds the image and can take 10-20 minutes)..."
-QAVACH_PORT="$port" docker compose up -d --wait
+QAVACH_PORT="$port" docker compose up -d --build --wait
 echo
 echo "Ready. Open:  http://localhost:$port"
