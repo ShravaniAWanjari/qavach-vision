@@ -55,6 +55,42 @@ export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSe
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+const DETECTED_WHO: Record<Subject, string> = { person: 'Person', vehicle: 'Vehicle', any: 'Person or vehicle' };
+
+/** The first line of an alert's activity: what the camera saw, e.g. "Smoke detected" or "Person detected in RTG lane". */
+export function detectedText(r: Pick<Rule, 'subject' | 'condition' | 'ppe' | 'fireClasses'> | undefined, zoneName?: string, hazard?: 'fire' | 'smoke'): string {
+  if (hazard) return `${cap(hazard)} detected`;
+  if (!r) return 'Hazard detected';
+  const who = DETECTED_WHO[r.subject];
+  // "Crane exclusion zone" → "the crane exclusion zone"; names that start with an acronym ("RTG lane") keep it.
+  const zone = zoneName && `the ${/^[A-Z]{2}/.test(zoneName) ? zoneName : zoneName.charAt(0).toLowerCase() + zoneName.slice(1)}`;
+  const at = (prep: string) => (zone ? ` ${prep} ${zone}` : '');
+  switch (r.condition) {
+    case 'enters':
+      return `${who} detected${at('in')}`;
+    case 'outside':
+      return zone ? `${who} detected outside ${zone}` : `${who} detected`;
+    case 'dwells':
+      return `${who} detected staying${at('in')}`;
+    case 'crosses':
+      return `${who} detected crossing${zone ? ` ${zone}` : ' a line'}`;
+    case 'no-ppe':
+      return `${who} without ${r.ppe.length ? `a ${r.ppe.join(' or ')}` : 'PPE'} detected${at('at')}`;
+    case 'crowd':
+      return `Crowd detected${at('in')}`;
+    case 'smoke':
+      return r.fireClasses === 'fire' ? 'Fire detected' : 'Smoke detected';
+    case 'stopped':
+      return `Stopped vehicle detected${at('on')}`;
+  }
+}
+
+/** Alerts raised before activity said what was seen read "Detected by the edge model"; show them the new way. */
+export function activityText(text: string, r: Rule | undefined, zoneName?: string): string {
+  if (!text.startsWith('Detected by the edge model')) return text;
+  return detectedText(r, zoneName, /· fire\b/.test(text) ? 'fire' : /· smoke\b/.test(text) ? 'smoke' : undefined);
+}
+
 export interface RuleDraft {
   rule: Pick<Rule, 'name' | 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver' | 'schedule' | 'priority' | 'qavach' | 'classification' | 'cameraIds' | 'zoneIds'>;
   understood: string[];

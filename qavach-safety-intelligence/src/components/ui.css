@@ -10,7 +10,7 @@
 @container (max-width: 220px) { .camview__caption { font-size: 10px; padding: 10px 6px 3px; } .camview__time { display: none; } }
 .camview__id { font-family: var(--q-mono); font-size: 10.5px; font-weight: 600; background: rgba(255, 255, 255, .14); padding: 0 5px; border-radius: 3px; flex: 0 0 auto; }
 .camview__rec { width: 7px; height: 7px; border-radius: 50%; background: #FF4D5E; animation: blink 2s steps(1) infinite; flex: 0 0 auto; }
-.camview__time { font-family: var(--q-mono); font-size: 10.5px; color: #C9D3DE; flex: 0 0 auto; }
+.camview__time { font-family: var(--q-mono); color: #C9D3DE; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .camview__degraded { position: absolute; top: 6px; left: 6px; font-size: 10.5px; font-weight: 600; color: #3A2A00; background: #FFD166; padding: 1px 6px; border-radius: 3px; }
 
 .camview__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; }

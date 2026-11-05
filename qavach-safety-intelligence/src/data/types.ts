@@ -43,8 +43,12 @@ export interface CameraSource {
 
 export interface Camera {
   id: string;
+  /** Where the camera is, as people say it ("Berth 2 · deck port side"). Shown as the camera location. */
   name: string;
+  /** The work area it covers. */
   areaId: string;
+  /** The department that owns it. Unset means the work area's usual department. */
+  department?: string;
   scene: SceneKind;
   /** Varies the sample picture so cameras in one area don't look identical. */
   variant: number;

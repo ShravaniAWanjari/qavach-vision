@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon, Logo } from '../../components/Icon';
-import { CameraView, PRIORITY_NAME, StateChip } from '../../components/ui';
+import { CameraView, Choice, PRIORITY_NAME, StateChip } from '../../components/ui';
 import { USERS } from '../../data/seed';
 import type { Alert, Classification, QavachRecordType } from '../../data/types';
 import { draftRecord } from '../../lib/qai';
@@ -28,16 +28,7 @@ export function Phone() {
         <Logo size={34} />
         <h1>Supervisor's phone</h1>
         <p>This is what a shift supervisor gets on the Qavach app when an alert is sent to them. It stays in step with the console and the wall.</p>
-        <label className="field">
-          <span className="field__label">Viewing as</span>
-          <select className="select" value={asId} onChange={(e) => setAsId(e.target.value)}>
-            {SUPERVISORS.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} · {TEAMS_BY_ID[u.teamId]?.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Choice id="phone-as" label="Viewing As" value={asId} onChange={setAsId} options={SUPERVISORS.map((u) => ({ value: u.id, label: `${u.name} · ${TEAMS_BY_ID[u.teamId]?.name}` }))} />
       </div>
       <div className="phone" role="region" aria-label="Phone">
         <div className="phone__status">
@@ -59,7 +50,18 @@ function useMyAlerts(userId: string) {
   const areas = TEAMS_BY_ID[me.teamId]?.areaIds ?? [];
   return useMemo(() => {
     const camArea = new Map(cams.map((c) => [c.id, c.areaId]));
-    return alerts.filter((a) => a.deliveries.some((d) => d.to === userId) || areas.includes(camArea.get(a.cameraId) ?? ''));
+    // Alerts of a camera that has since been removed have nothing to show, and a camera that keeps firing (a looping
+    // test clip) would bury the rest: one row per camera and kind of alert, the newest, and no more than 25 rows.
+    const seen = new Set<string>();
+    return alerts
+      .filter((a) => camArea.has(a.cameraId) && (a.deliveries.some((d) => d.to === userId) || areas.includes(camArea.get(a.cameraId) ?? '')))
+      .filter((a) => {
+        const key = `${a.cameraId}|${a.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 25);
   }, [alerts, cams, userId, areas]);
 }
 
@@ -91,6 +93,11 @@ function PhoneList({ userId }: { userId: string }) {
           return (
             <Link key={a.id} to={`/m/${a.id}`} className={`pitem pitem--${a.priority}`}>
               <span className="pitem__bar" />
+              {cam && (
+                <span className="pitem__thumb">
+                  <CameraView cam={cam} still alert={a} photoOnAlert caption={false} />
+                </span>
+              )}
               <span className="stack" style={{ gap: 2, minWidth: 0, flex: 1 }}>
                 <span className="pitem__top">
                   <strong>
@@ -159,7 +166,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
           {open && policy && policy.escalateTo !== 'none' && alert.state === 'new' && <span className="pbanner__due">Escalates to the {roleText(policy.escalateTo)} in {duration(Math.max(0, due))}</span>}
           {alert.state === 'escalated' && <span className="pbanner__due">Escalated: not acknowledged in time</span>}
         </div>
-        <CameraView cam={cam} still alert={alert} zones={cam.zones.filter((z) => z.id === alert.zoneId)} />
+        <CameraView cam={cam} still alert={alert} photoOnAlert zones={cam.zones.filter((z) => z.id === alert.zoneId)} />
         <dl className="pfacts">
           <dt>What</dt>
           <dd>{alert.detail}</dd>
@@ -236,7 +243,6 @@ function PhoneReport({ alert, userId, onDone }: { alert: Alert; userId: string; 
   const [type, setType] = useState<QavachRecordType>(d.type);
   const [cls, setCls] = useState<Classification>(d.classification);
   const [note, setNote] = useState(d.immediateAction);
-  const [noteEdited, setNoteEdited] = useState(false);
   return (
     <div className="preport">
       <strong>Report in Qavach</strong>
@@ -254,16 +260,13 @@ function PhoneReport({ alert, userId, onDone }: { alert: Alert; userId: string; 
           </button>
         ))}
       </div>
-      <label className={`field${noteEdited ? '' : ' qai-field'}`}>
-        <span className="field__label">{noteEdited ? 'What you did' : 'What you did · QAI suggestion'}</span>
+      <label className="field">
+        <span className="field__label">What you did</span>
         <textarea
           className="textarea"
           rows={3}
           value={note}
-          onChange={(e) => {
-            setNote(e.target.value);
-            setNoteEdited(true);
-          }}
+          onChange={(e) => setNote(e.target.value)}
         />
       </label>
       <span className="meta">

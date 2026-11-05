@@ -35,7 +35,7 @@ const router = createHashRouter([
           { path: '/cameras/new', element: <CameraEditor /> },
           { path: '/cameras/:cameraId', element: <CameraEditor /> },
           { path: '/rules', element: <Rules /> },
-          { path: '/rules/new', element: <RuleEditor /> },
+          { path: '/rules/new', element: <Rules key="new" startNew /> },
           { path: '/rules/:ruleId', element: <RuleEditor /> },
           { path: '/notifications', element: <Notifications /> },
         ],

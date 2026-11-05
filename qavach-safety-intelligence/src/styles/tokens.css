@@ -47,6 +47,14 @@
   --q-good-border: #B6E3CE;
   --q-live: #39BD86;
 
+  /* Alert levels, from the design system's swatches only: Brand/Red, then the label colours from darkest to
+     lightest. Text on P4 is Label/Primary; on the others it is white. */
+  --q-p1: #E5456D;
+  --q-p2: #0C323D;
+  --q-p3: #567C87;
+  --q-p4: #A6B8BD;
+  --q-p4-ink: #0C323D;
+
   --q-night: #0B1828;
   --q-night-2: #0E1D31;
   --q-night-3: #1B2D45;
@@ -65,7 +73,8 @@
   --q-chart-5: #5F6B6D;
 
   --q-font: 'Exo 2', sans-serif;
-  --q-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* IDs and clock times: Exo 2 like everything else, with even-width digits so columns of them still line up. */
+  --q-mono: 'Exo 2', sans-serif;
 
   /* radius 4px on controls only; cards are square */
   --q-r-sm: 4px;

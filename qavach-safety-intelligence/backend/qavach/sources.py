@@ -109,6 +109,8 @@ def stream_address(source):
         return str(path), ''
     if source.kind == 'youtube':
         return resolve_youtube(source.url)
+    if config.DEMO_RTSP_URL and urlsplit(source.url).scheme.lower() in ('rtsp', 'rtsps'):
+        return resolve_youtube(config.DEMO_RTSP_URL)[0], ''      # demo stand-in for a camera; see config.DEMO_RTSP_URL
     return with_credentials(source.url, source.user, source.password), ''
 
 

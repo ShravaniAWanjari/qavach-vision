@@ -197,7 +197,7 @@ function SceneImpl({ kind, variant = 0, still, subject, offline, className, titl
       {offline && (
         <g>
           <rect width={SCENE_W} height={SCENE_H} fill="#0B1828" opacity=".88" />
-          <text x={SCENE_W / 2} y={SCENE_H / 2} textAnchor="middle" fill="#9FB1C6" fontSize="22" fontFamily="JetBrains Mono, monospace">
+          <text x={SCENE_W / 2} y={SCENE_H / 2} textAnchor="middle" fill="#9FB1C6" fontSize="22" fontFamily="Exo 2, sans-serif">
             NO SIGNAL
           </text>
         </g>

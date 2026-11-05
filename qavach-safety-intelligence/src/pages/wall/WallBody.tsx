@@ -142,7 +142,7 @@ export function WallBody({
   wall,
   model,
   editing,
-  onAck,
+  onAlert,
   onOpen,
   onPinToggle,
   onDropCam,
@@ -152,7 +152,8 @@ export function WallBody({
   wall: Wall;
   model: WallModel & { secsLeft: number; paused: boolean };
   editing?: boolean;
-  onAck?: (a: Alert) => void;
+  /** The tile's priority badge was clicked: show this camera's alerts. */
+  onAlert?: (a: Alert) => void;
   onOpen?: (cam: Camera) => void;
   onPinToggle?: (cam: Camera, pinned: boolean) => void;
   onDropCam?: (slot: number, camId: string) => void;
@@ -244,23 +245,17 @@ export function WallBody({
           )}
         </div>
         {alert && (
-          <div className="wtile__alert">
-            <span className={`prio prio--${alert.priority}`}>
-              {alert.priority} {PRIORITY_NAME[alert.priority]}
-            </span>
-            <span className="ellipsis wtile__alert-text">
-              <strong>{alert.title}</strong>
-              <span>
-                {alert.state === 'escalated' ? 'Escalated · ' : ''}
-                {ago(alert.at, now)}
-              </span>
-            </span>
-            {onAck && (
-              <button type="button" className="btn btn--sm" onClick={() => onAck(alert)}>
-                Acknowledge
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            className={`wtile__prio wtile__prio--${alert.priority}`}
+            disabled={!onAlert}
+            onClick={() => onAlert?.(alert)}
+            title={`${alert.priority} ${PRIORITY_NAME[alert.priority]} · ${alert.title} · ${ago(alert.at, now)}. Click to see this camera's alerts.`}
+            aria-label={`${alert.priority} ${PRIORITY_NAME[alert.priority]} alert on ${cam.id}. Show this camera's alerts`}
+          >
+            <Icon name="warning" size={16} stroke={2.2} />
+            {alert.priority}
+          </button>
         )}
       </div>
     );

@@ -1,6 +1,6 @@
 import { backend, isOnline } from '../lib/backend';
 import { createStore, uid, useStore } from '../lib/persist';
-import { POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
+import { AREA_DEPARTMENT, POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
 import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordType, Rule, User, Wall } from '../data/types';
 
 // Shared state for every screen. Seed times are relative to the first time the
@@ -22,6 +22,9 @@ const counters = createStore<{ alert: number; Incident: number; Observation: num
   'Near miss': 188,
 });
 
+/** When this browser last opened the Qavach reports panel; reports raised after it count as new. */
+export const reportsSeenStore = createStore<number>('reportsSeen', 0);
+
 /** Live people/vehicle counts per camera, from the engine. Memory only. */
 export const activityStore = createStore<Record<string, number>>('activity', {}, { persist: false });
 
@@ -32,6 +35,7 @@ export const useWalls = () => useStore(wallStore);
 export const usePolicies = () => useStore(policyStore);
 export const useSession = () => useStore(sessionStore);
 export const useActivity = () => useStore(activityStore);
+export const useReportsSeen = () => useStore(reportsSeenStore);
 
 export const TEAMS_BY_ID = Object.fromEntries(TEAMS.map((t) => [t.id, t]));
 export const USERS_BY_ID = Object.fromEntries(USERS.map((u) => [u.id, u]));
@@ -49,6 +53,7 @@ export const isAdmin = (u: User) => u.role === 'Safety admin';
 /** A role name inside a sentence: lower case, but HSE stays HSE. */
 export const roleText = (r: string) => r.toLowerCase().replace('hse', 'HSE');
 
+export const departmentOf = (cam: Camera) => cam.department ?? AREA_DEPARTMENT[cam.areaId] ?? 'Unassigned';
 export const teamOfCamera = (cam: Camera) => TEAMS.find((t) => t.id !== 't-hse' && t.areaIds.includes(cam.areaId))?.id ?? 't-hse';
 
 /** People of a role who look after a camera's area: its team first, otherwise anyone with that role. */

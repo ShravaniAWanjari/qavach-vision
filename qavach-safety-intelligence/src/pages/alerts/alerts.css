@@ -1,15 +1,17 @@
-.alerts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+.alerts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 12px; align-items: start; }
 @media (max-width: 1100px) { .alerts { grid-template-columns: 1fr; } }
-.alerts__list { overflow: hidden; }
-.alerts__filters { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--q-divider); }
+.alerts__list { min-width: 0; }
 .alerts__hint { min-height: 320px; display: flex; align-items: center; justify-content: center; }
-.alist { list-style: none; margin: 0; padding: 4px; max-height: calc(100vh - 290px); overflow-y: auto; }
-.alist__item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; background: none; border-radius: var(--q-r); text-align: left; }
-.alist__item:hover { background: var(--q-surface-2); }
+.alist { list-style: none; margin: 0; padding: 0 2px 2px; max-height: calc(100vh - 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 13px; }
+.alist__item { width: 100%; display: flex; align-items: center; gap: 15px; padding: 16.7px 15px; border: 0; background: #fff; border-radius: 4px; box-shadow: 0 1px 2px rgba(0, 0, 0, .1); text-align: left; font-size: 14px; line-height: 21px; color: var(--q-muted); }
+.alist__item:hover { background: #F1FBFE; }
 .alist__item.is-selected { background: var(--q-ai-wash); box-shadow: inset 3px 0 0 var(--q-ai); }
-.alist__item.is-open .alist__title { font-weight: 700; }
-.alist__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.alist__title { font-weight: 600; font-size: 13.5px; }
+/* A slot as wide as the P1 badge, so every title starts at the same place; the badge sits on the title line. */
+.alist__lvl { flex: 0 0 51px; display: flex; align-self: flex-start; margin-top: -1.5px; }
+.alist__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; align-self: flex-start; }
+.alist__title { font-weight: 700; font-size: 14px; line-height: 21px; color: #2D4046; }
+.alist__id { font-size: 14px; line-height: 21px; color: #09D1E7; }
+.alist__main .meta { font-size: 14px; color: var(--q-muted); }
 .alist__side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
 
 .adetail { position: sticky; top: 76px; max-height: calc(100vh - 92px); display: flex; flex-direction: column; }
@@ -22,6 +24,7 @@
 .adetail__due.is-late svg { color: var(--q-danger); }
 .adetail__media { display: flex; flex-direction: column; gap: 8px; }
 .adetail__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.grid-2.adetail__cols { grid-template-columns: minmax(0, 1fr); } /* one above the other: the delivery table needs the full width */
 .adetail__cols h3 { font-size: 13.5px; }
 
 .qrec { border: 1px solid var(--q-border); border-left: 4px solid var(--q-good); border-radius: var(--q-r-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; background: var(--q-surface-2); font-size: 13.5px; }
@@ -32,9 +35,21 @@
 .rulecard { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--q-border); border-radius: var(--q-r); color: var(--q-ink); }
 .rulecard:hover { border-color: var(--q-ai-border); background: var(--q-ai-wash); color: var(--q-ink); }
 
-.timeline { list-style: none; margin: 0; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; border-left: 2px solid var(--q-divider); }
-.timeline li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding-left: 10px; position: relative; }
-.timeline li::before { content: ''; position: absolute; left: -6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--q-border-strong); }
-.timeline li:first-child::before { background: var(--q-ink); }
+/* Newest first: a dot per entry on one continuous line, the newest filled. The dot sits on the text's first line. */
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.timeline li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 0 0 16px 24px; }
+.timeline li:last-child { padding-bottom: 0; }
+.timeline li::before { content: ''; position: absolute; left: 0; top: 5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--q-p4); background: #fff; }
+.timeline li::after { content: ''; position: absolute; left: 4px; top: 17px; bottom: -3px; width: 2px; background: #D7DEE0; }
+.timeline li:last-child::after { display: none; }
+.timeline li:first-child::before { border-color: var(--q-p2); background: var(--q-p2); }
+.timeline__text { font-size: 14px; line-height: 20px; color: var(--q-p2); }
+.timeline__meta { font-size: 12px; line-height: 16px; color: var(--q-p3); }
 
 .table--compact th, .table--compact td { padding: 7px 8px; font-size: 12.5px; }
+
+/* "Camera WSH-01 · Workshop bay 1 ×": the list is showing one camera's alerts */
+.camfilter { display: inline-flex; align-items: center; gap: 6px; height: 32px; margin-right: 16px; padding: 0 6px 0 10px; border: 1px solid var(--q-ai-border); border-radius: var(--q-r); background: var(--q-ai-tint); color: var(--q-ai-deep); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.camfilter__name { font-weight: 400; }
+.camfilter button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--q-ai-deep); }
+.camfilter button:hover { background: rgba(0, 0, 0, .06); }

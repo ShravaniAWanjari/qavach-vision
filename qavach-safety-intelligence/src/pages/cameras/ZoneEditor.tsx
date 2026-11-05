@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Icon } from '../../components/Icon';
-import { CameraView } from '../../components/ui';
+import { CameraView, Choice } from '../../components/ui';
 import type { Camera, Pt, Zone, ZonePurpose } from '../../data/types';
 import { uid } from '../../lib/persist';
 import { PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
@@ -14,6 +14,12 @@ type Tool = 'select' | 'polygon' | 'line';
 const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)) * 10) / 10;
 const near = (a: Pt, b: Pt) => Math.abs(a[0] - b[0]) < 2.2 && Math.abs(a[1] - b[1]) < 3.5;
 const pts = (p: Pt[]) => p.map((q) => `${q[0]},${q[1]}`).join(' ');
+
+/** What a drawn area can be for, grouped as in the camera's zone list. */
+const AREA_PURPOSES: { value: ZonePurpose; label: string; group: string }[] = [
+  ...(['restricted', 'exclusion', 'walkway', 'work-area', 'vehicle-lane'] as ZonePurpose[]).map((p) => ({ value: p, label: PURPOSE_LABEL[p], group: 'People and vehicles' })),
+  ...(['fire-watch', 'fire-ignore'] as ZonePurpose[]).map((p) => ({ value: p, label: PURPOSE_LABEL[p], group: 'Fire and smoke' })),
+];
 
 export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnly }: { cam: Camera; zones: Zone[]; onChange: (z: Zone[]) => void; selectedId?: string; onSelect: (id?: string) => void; readOnly?: boolean }) {
   const [tool, setTool] = useState<Tool>('select');
@@ -110,22 +116,7 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
             <Icon name="polygon" size={16} />
             Draw an area
           </button>
-          <label className="zedit__as">
-            <span className="sr-only">What a new area is for</span>
-            <select className="select select--sm" value={drawAs} onChange={(e) => setDrawAs(e.target.value as ZonePurpose)} title="What a new area is for">
-              <optgroup label="People and vehicles">
-                <option value="restricted">{PURPOSE_LABEL.restricted}</option>
-                <option value="exclusion">{PURPOSE_LABEL.exclusion}</option>
-                <option value="walkway">{PURPOSE_LABEL.walkway}</option>
-                <option value="work-area">{PURPOSE_LABEL['work-area']}</option>
-                <option value="vehicle-lane">{PURPOSE_LABEL['vehicle-lane']}</option>
-              </optgroup>
-              <optgroup label="Fire and smoke">
-                <option value="fire-watch">{PURPOSE_LABEL['fire-watch']}</option>
-                <option value="fire-ignore">{PURPOSE_LABEL['fire-ignore']}</option>
-              </optgroup>
-            </select>
-          </label>
+          <Choice small className="zedit__as" label="What a new area is for" value={drawAs} onChange={setDrawAs} options={AREA_PURPOSES} />
           <button
             type="button"
             aria-pressed={tool === 'line'}

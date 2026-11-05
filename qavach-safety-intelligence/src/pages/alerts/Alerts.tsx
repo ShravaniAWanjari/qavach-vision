@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { AckDialog, EscalateDialog, NoteDialog, RaiseDialog } from '../../components/AlertDialogs';
 import { Icon } from '../../components/Icon';
-import { CameraView, CHANNEL, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
+import { QavachReportsLink } from '../../components/QavachReports';
+import { CameraView, CHANNEL, Choice, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Alert, Priority } from '../../data/types';
-import { describeRule } from '../../lib/qai';
+import { activityText, describeRule } from '../../lib/qai';
 import { ago, dayTime, duration, hms, useNow } from '../../lib/time';
 import { AREAS_BY_ID, isOpen, roleText, useAlerts, useCameras, usePolicies, useRules, userName, USERS_BY_ID } from '../../state/store';
 import './alerts.css';
@@ -25,9 +26,15 @@ export function Alerts() {
   const [prio, setPrio] = useState<Priority | 'all'>('all');
   const [area, setArea] = useState('all');
   const [q, setQ] = useState('');
+  const [settings, setSettings] = useState(false);
+  // Opened from a camera (its badge on the video wall): only that camera's alerts, kept while you click through them.
+  const [params] = useSearchParams();
+  const onlyCam = params.get('camera') ?? '';
+  const keep = onlyCam ? `?camera=${encodeURIComponent(onlyCam)}` : '';
   const camById = useMemo(() => new Map(cams.map((c) => [c.id, c])), [cams]);
 
   const filtered = alerts.filter((a) => {
+    if (onlyCam && a.cameraId !== onlyCam) return false;
     if (!inTab(a, tab)) return false;
     if (prio !== 'all' && a.priority !== prio) return false;
     const cam = camById.get(a.cameraId);
@@ -36,61 +43,88 @@ export function Alerts() {
     return !t || `${a.id} ${a.title} ${cam?.id} ${cam?.name} ${a.qavach?.ref ?? ''}`.toLowerCase().includes(t);
   });
   const selected = alerts.find((a) => a.id === alertId);
-  const counts = { open: alerts.filter(isOpen).length, acknowledged: alerts.filter((a) => a.state === 'acknowledged').length };
-  const sentToQavach = alerts.filter((a) => a.qavach).length;
-  const acked = alerts.filter((a) => a.ackAt);
-  const medianAck = acked.length ? acked.map((a) => a.ackAt! - a.at).sort((x, y) => x - y)[Math.floor(acked.length / 2)] : 0;
+  const openCount = alerts.filter(isOpen).length;
 
   return (
     <div className="page page--wide">
-      <div className="page__head">
-        <div className="page__title">
-          <span className="page__eyebrow">Alerts and notifications</span>
-          <h1>Alerts</h1>
-          <span className="page__sub">
-            {counts.open} open · {counts.acknowledged} acknowledged · median time to acknowledge {medianAck ? duration(medianAck) : '–'} · {sentToQavach} sent to Qavach
-          </span>
+      <div className="qsearch qsearch--first">
+        <div className="qsearch__fields">
+          <Choice
+            id="al-state"
+            label="Alert State"
+            value={tab}
+            clearTo="all"
+            onChange={setTab}
+            options={[
+              { value: 'all' as Tab, label: 'All' },
+              { value: 'open' as Tab, label: `Open${openCount ? ` (${openCount})` : ''}` },
+              { value: 'acknowledged' as Tab, label: 'Acknowledged' },
+              { value: 'closed' as Tab, label: 'Closed' },
+            ]}
+          />
+          <Choice id="al-level" label="Alert Level" clearTo="all" value={prio} onChange={setPrio} options={[{ value: 'all' as Priority | 'all', label: 'All levels' }, ...(['P1', 'P2', 'P3', 'P4'] as const).map((p) => ({ value: p as Priority | 'all', label: `${p} ${PRIORITY_NAME[p]}` }))]} />
+          <Choice id="al-area" label="Area" clearTo="all" value={area} onChange={setArea} options={[{ value: 'all', label: 'All areas' }, ...AREAS.map((a) => ({ value: a.id, label: a.name }))]} />
+          <div className="field">
+            <label htmlFor="al-q">Search</label>
+            <input id="al-q" className="input" placeholder="Search alerts" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
         </div>
-        <div className="page__actions">
-          <Link to="/notifications" className="btn btn--secondary">
-            <Icon name="route" size={16} />
-            Who gets told
-          </Link>
-        </div>
+        <button
+          type="button"
+          className="qsearch__clear"
+          onClick={() => {
+            setTab('all');
+            setPrio('all');
+            setArea('all');
+            setQ('');
+          }}
+        >
+          Clear Search
+        </button>
       </div>
 
-      <div className={`alerts${selected ? ' alerts--detail' : ''}`}>
-        <section className="card alerts__list">
-          <div className="alerts__filters">
-            <Seg
-              label="Alert state"
-              small
-              value={tab}
-              onChange={setTab}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'open', label: `Open ${counts.open ? `(${counts.open})` : ''}` },
-                { value: 'acknowledged', label: 'Acknowledged' },
-                { value: 'closed', label: 'Closed' },
-              ]}
-            />
-            <div className="row-wrap">
-              {(['all', 'P1', 'P2', 'P3', 'P4'] as const).map((p) => (
-                <button key={p} type="button" className="chip chip--outline" aria-pressed={prio === p} onClick={() => setPrio(p)}>
-                  {p === 'all' ? 'All levels' : p}
-                </button>
-              ))}
-              <select className="select select--sm" style={{ width: 'auto' }} value={area} onChange={(e) => setArea(e.target.value)} aria-label="Area">
-                <option value="all">All areas</option>
-                {AREAS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-              <input className="input input--sm" style={{ flex: '1 1 160px', width: 'auto' }} placeholder="Search alerts" aria-label="Search alerts" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="listing-row">
+        <span className="listing-tag">
+          Listing 1 - {filtered.length} Of {alerts.length} · {openCount} open · <QavachReportsLink />
+        </span>
+        {onlyCam && (
+          <span className="camfilter">
+            <Icon name="camera" size={16} />
+            Camera {onlyCam}
+            {camById.get(onlyCam) && <span className="camfilter__name">· {camById.get(onlyCam)!.name}</span>}
+            <button type="button" onClick={() => nav(`/alerts${alertId ? `/${alertId}` : ''}`)} aria-label="Show all cameras" title="Show all cameras">
+              <Icon name="close" size={14} stroke={2.2} />
+            </button>
+          </span>
+        )}
+        <button type="button" className="listing-row__gear" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
+          <img src="/qv/hdr/gear.png" width={24} height={24} alt="" />
+        </button>
+      </div>
+
+      {settings && (
+        <>
+          <div className="qset-scrim" onClick={() => setSettings(false)} />
+          <aside className="qset" role="dialog" aria-modal="true" aria-label="Settings">
+            <strong className="qset__title">Settings</strong>
+            <div className="qset__body">
+              <div className="qset__sub">Alerts</div>
+              <button type="button" className="qset__item" onClick={() => nav('/notifications')}>
+                Configure alerts
+                <Icon name="chevron-right" size={16} stroke={2} />
+              </button>
             </div>
-          </div>
+            <div className="qset__foot">
+              <button type="button" className="btn qset__cancel" onClick={() => setSettings(false)}>
+                Cancel
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
+      <div className={`alerts${selected ? ' alerts--detail' : ''}`}>
+        <section className="alerts__list">
           {filtered.length === 0 ? (
             <Empty icon="shield" title="No alerts here">
               Change the filters to see more.
@@ -101,12 +135,15 @@ export function Alerts() {
                 const cam = camById.get(a.cameraId);
                 return (
                   <li key={a.id}>
-                    <button type="button" className={`alist__item${a.id === alertId ? ' is-selected' : ''}${isOpen(a) ? ' is-open' : ''}`} onClick={() => nav(`/alerts/${a.id}`)}>
-                      <PriorityBadge p={a.priority} short />
+                    <button type="button" className={`alist__item${a.id === alertId ? ' is-selected' : ''}${isOpen(a) ? ' is-open' : ''}`} onClick={() => nav(`/alerts/${a.id}${keep}`)}>
+                      <span className="alist__lvl">
+                        <PriorityBadge p={a.priority} short />
+                      </span>
                       <span className="alist__main">
                         <span className="alist__title">{a.title}</span>
+                        <span className="alist__id">{a.id}</span>
                         <span className="meta ellipsis">
-                          <span className="mono">{a.id}</span> · {cam?.id} {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+                          {cam?.id} {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
                         </span>
                       </span>
                       <span className="alist__side">
@@ -122,7 +159,7 @@ export function Alerts() {
           )}
         </section>
         {selected ? (
-          <AlertDetail alert={selected} onClose={() => nav('/alerts')} />
+          <AlertDetail alert={selected} onClose={() => nav(`/alerts${keep}`)} />
         ) : (
           <section className="card alerts__hint">
             <Empty icon="bell" title="Pick an alert">
@@ -147,6 +184,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
   const policy = policies.find((p) => p.priority === alert.priority);
   if (!cam) return null;
   const zoneNames = cam.zones.filter((z) => rule?.zoneIds.includes(z.id)).map((z) => z.name);
+  const zoneName = cam.zones.find((z) => z.id === alert.zoneId)?.name ?? (zoneNames.length === 1 ? zoneNames[0] : undefined);
   const open = isOpen(alert);
   const dueAt = policy ? alert.at + policy.ackWithinMin * 60000 : 0;
 
@@ -281,17 +319,17 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
             <ol className="timeline">
               {[...alert.activity].reverse().map((e, i) => (
                 <li key={i}>
-                  <span className="mono meta">{hms(e.at)}</span>
-                  <span>
-                    {e.text}
-                    {e.actor !== 'system' && <span className="meta"> · {userName(e.actor)}</span>}
+                  <span className="timeline__text">{activityText(e.text, rule, zoneName)}</span>
+                  <span className="timeline__meta">
+                    <span className="mono">{hms(e.at)}</span>
+                    {e.actor !== 'system' && ` · ${userName(e.actor)}`}
                   </span>
                 </li>
               ))}
             </ol>
           </div>
           <div className="stack">
-            <h3>Who was told ({alert.deliveries.length})</h3>
+            <h3>People Alerted ({alert.deliveries.length})</h3>
             <table className="table table--compact">
               <thead>
                 <tr>

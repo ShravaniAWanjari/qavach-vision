@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { draftRecord } from '../lib/qai';
+import { detectedText, draftRecord } from '../lib/qai';
 import { hm } from '../lib/time';
 import type { Alert, Camera, Delivery, Policy, Rule, Zone } from '../data/types';
 import type { BackendEvent } from '../lib/backend';
@@ -133,7 +133,7 @@ export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}
     box: boxFor(rule, zone),
     confidence: 0.82 + Math.random() * 0.16,
     deliveries: deliveriesFor(policy, cam, now),
-    activity: [{ at: now, text: 'Detected by the edge model', actor: 'system' }],
+    activity: [{ at: now, text: detectedText(rule, zone?.name), actor: 'system' }],
   };
   addAlert(alert);
   if (!opts.quiet) toast(`${alert.priority} · ${title} · ${cam.id} ${cam.name}`, { tone: alert.priority === 'P1' || alert.priority === 'P2' ? 'alert' : undefined, link: `/alerts/${alert.id}` });
@@ -161,7 +161,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     confidence: ev.confidence,
     snapshot: ev.snapshot,
     deliveries: deliveriesFor(policy, cam, ev.at),
-    activity: [{ at: ev.at, text: ev.hazard ? `Detected by the edge model · ${ev.hazard}` : `Detected by the edge model · person #${ev.trackId}`, actor: 'system' }],
+    activity: [{ at: ev.at, text: detectedText(rule, ev.zoneName || undefined, ev.hazard || undefined), actor: 'system' }],
   };
   addAlert(alert);
   toast(`${alert.priority} · ${alert.title} · ${cam.id} ${cam.name}`, { tone: alert.priority === 'P1' || alert.priority === 'P2' ? 'alert' : undefined, link: `/alerts/${alert.id}` });

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Scene, SCENE_H, SCENE_W } from '../scenes/Scene';
 import { demoPhoto } from '../scenes/photos';
 import { ZONE_COLORS } from '../scenes/zones';
@@ -52,6 +52,317 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
   );
 }
 
+/**
+ * Qavach's dropdown (its "basic auto complete"): a 56px field with the label inside, a solid ▼ at the right, and a
+ * list attached flush under the box. You can type in the box to narrow the list. Opens on click; closes on a click
+ * outside, Escape, or when the page scrolls under it. The list floats over the page (fixed, measured from the box)
+ * so cards, dialogs and scrolling panels never clip it, and opens upwards when there is no room below.
+ */
+function useDropdown() {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<{ style: CSSProperties; up: boolean }>({ style: {}, up: false });
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const r = ref.current!.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12;
+    const up = below < 240 && r.top > below;
+    setPlace({ up, style: { left: r.left, width: r.width, ...(up ? { bottom: window.innerHeight - r.top - 1 } : { top: r.bottom - 1 }) } });
+    const away = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    // A resize comes from the window itself, which is not inside anything.
+    const moved = (e: Event) => !(e.target instanceof Node && ref.current?.contains(e.target)) && setOpen(false);
+    document.addEventListener('mousedown', away);
+    window.addEventListener('scroll', moved, true);
+    window.addEventListener('resize', moved);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      window.removeEventListener('scroll', moved, true);
+      window.removeEventListener('resize', moved);
+    };
+  }, [open]);
+  return { open, setOpen, ref, place };
+}
+
+/** The typing, keyboard and list state both dropdowns share. */
+function useSearchList<O extends { label: string }>(options: O[], open: boolean, startAt: number) {
+  const [query, setQuery] = useState('');
+  const [mark, setMark] = useState(0);
+  const shown = query.trim() ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase())) : options;
+  useEffect(() => {
+    if (!open) setQuery('');
+    else setMark(Math.max(0, startAt));
+  }, [open]);
+  useEffect(() => setMark(0), [query]);
+  return { query, setQuery, mark, setMark, shown };
+}
+
+type ChoiceOption<T> = { value: T; label: string; group?: string };
+
+function Arrow() {
+  return <span className="msel__arrow" aria-hidden="true" />;
+}
+
+/**
+ * Pick one option. `clearTo` adds Qavach's × for filters: it puts the field back to that value (usually "all").
+ * `small` is the 40px box for toolbars and tight panels; it has no label inside, so pass the label for screen readers.
+ */
+export function Choice<T extends string | number>({ id, label, options, value, onChange, disabled, small, className, prefix, clearTo }: { id?: string; label: string; options: ChoiceOption<T>[]; value: T; onChange: (v: T) => void; disabled?: boolean; small?: boolean; className?: string; prefix?: string; clearTo?: T }) {
+  const { open, setOpen, ref, place } = useDropdown();
+  const input = useRef<HTMLInputElement>(null);
+  const current = options.find((o) => o.value === value);
+  const { query, setQuery, mark, setMark, shown } = useSearchList(options, open, options.indexOf(current!));
+  const off = () => disabled || !!input.current?.matches(':disabled');
+  const pick = (o: ChoiceOption<T>) => {
+    onChange(o.value);
+    setOpen(false);
+  };
+  const keys = (e: ReactKeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return setOpen(true);
+      setMark((m) => (e.key === 'ArrowDown' ? Math.min(shown.length - 1, m + 1) : Math.max(0, m - 1)));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open && shown[mark]) pick(shown[mark]);
+      else setOpen(true);
+    } else if (e.key === 'Escape') setOpen(false);
+  };
+  return (
+    <div className={`msel${small ? ' msel--sm' : ''}${open ? ' is-open' : ''}${open && place.up ? ' is-up' : ''}${disabled ? ' is-disabled' : ''}${className ? ` ${className}` : ''}`} ref={ref}>
+      <div
+        className="msel__box"
+        onClick={() => {
+          if (off()) return;
+          setOpen((v) => !v);
+          input.current?.focus();
+        }}
+      >
+        {!small && (
+          <label className="msel__label" htmlFor={id}>
+            {label}
+          </label>
+        )}
+        <div className="msel__row">
+          {!query && (
+            <span className="msel__value" title={current?.label}>
+              {prefix && <span className="msel__prefix">{prefix} </span>}
+              {current?.label ?? 'Select'}
+            </span>
+          )}
+          <input
+            ref={input}
+            id={id}
+            className="msel__search"
+            role="combobox"
+            aria-expanded={open}
+            aria-label={small ? label : undefined}
+            autoComplete="off"
+            disabled={disabled}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={keys}
+          />
+        </div>
+        {clearTo !== undefined && value !== clearTo && (
+          <button
+            type="button"
+            className="msel__clear"
+            aria-label={`Clear ${label}`}
+            title="Clear"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(clearTo);
+              setOpen(false);
+            }}
+          >
+            ×
+          </button>
+        )}
+        <Arrow />
+      </div>
+      {open && (
+        <div className={`msel__menu${place.up ? ' is-up' : ''}`} style={place.style} role="listbox" aria-label={label}>
+          <div className="msel__items">
+            {shown.length === 0 && <div className="msel__none">No items found</div>}
+            {shown.map((o, i) => (
+              <div key={String(o.value)} style={{ display: 'contents' }}>
+                {o.group && o.group !== shown[i - 1]?.group && <div className="msel__group">{o.group}</div>}
+                <div
+                  role="option"
+                  aria-selected={o.value === value}
+                  className={`msel__opt${o.value === value ? ' is-on' : ''}${i === mark ? ' is-mark' : ''}`}
+                  onMouseEnter={() => setMark(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(o)}
+                >
+                  {o.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export type CascadeField<K extends string, D extends string> = { key: K; label: string; options: { value: D; label: string }[] };
+
+/**
+ * A sort picker with two levels: the main list says what to sort by; clicking one opens a side list with its
+ * directions (A to Z, Z to A, ...). Picking a direction applies it and closes both. Styled as Qavach's dropdown.
+ */
+export function CascadeSelect<K extends string, D extends string>({ label, prefix, fields, value, onChange, className }: { label: string; prefix: string; fields: CascadeField<K, D>[]; value: { key: K; dir: D }; onChange: (v: { key: K; dir: D }) => void; className?: string }) {
+  const { open, setOpen, ref, place } = useDropdown();
+  const [side, setSide] = useState<{ key: K; style: CSSProperties } | null>(null);
+  useEffect(() => {
+    if (!open) setSide(null);
+  }, [open]);
+  const current = fields.find((f) => f.key === value.key);
+  const text = `${current?.label ?? ''} · ${current?.options.find((o) => o.value === value.dir)?.label ?? ''}`;
+  const openSide = (f: CascadeField<K, D>, el: HTMLElement) => {
+    if (side?.key === f.key) return setSide(null);
+    const menu = el.closest('.msel__menu')!.getBoundingClientRect();
+    const row = el.getBoundingClientRect();
+    const room = window.innerWidth - menu.right - 12;
+    setSide({ key: f.key, style: { top: row.top, width: 190, ...(room >= 194 ? { left: menu.right + 2 } : { right: window.innerWidth - menu.left + 2 }) } });
+  };
+  const sideField = fields.find((f) => f.key === side?.key);
+  return (
+    <div className={`msel msel--sm${open ? ' is-open' : ''}${className ? ` ${className}` : ''}`} ref={ref}>
+      <button type="button" className="msel__box" aria-haspopup="menu" aria-expanded={open} aria-label={`${label}: ${text}`} onClick={() => setOpen((v) => !v)} title={text}>
+        <span className="msel__row">
+          <span className="msel__value">
+            <span className="msel__prefix">{prefix} </span>
+            {text}
+          </span>
+        </span>
+        <Arrow />
+      </button>
+      {open && (
+        <>
+          <div className={`msel__menu${place.up ? ' is-up' : ''}`} style={place.style} role="menu" aria-label={label}>
+            <div className="msel__items">
+              {fields.map((f) => (
+                <button key={f.key} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={side?.key === f.key} className={`msel__opt msel__opt--main${f.key === value.key ? ' is-on' : ''}${side?.key === f.key ? ' is-mark' : ''}`} onClick={(e) => openSide(f, e.currentTarget)}>
+                  <span>{f.label}</span>
+                  <Icon name="chevron-right" size={16} stroke={2.2} />
+                </button>
+              ))}
+            </div>
+          </div>
+          {side && sideField && (
+            <div className="msel__menu msel__side" style={side.style} role="menu" aria-label={`${sideField.label} order`}>
+              <div className="msel__items">
+                {sideField.options.map((o) => {
+                  const on = value.key === sideField.key && value.dir === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={on}
+                      className={`msel__opt${on ? ' is-on' : ''}`}
+                      onClick={() => {
+                        onChange({ key: sideField.key, dir: o.value });
+                        setOpen(false);
+                      }}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pick any number of options from a checklist, as Qavach's multiple dropdown: the box shows the first pick and how
+ * many more ("Accident, 1 More..."). `clearable` adds the × that empties it.
+ */
+export function MultiSelect<T extends string>({ id, label, options, value, onChange, placeholder = 'Select', disabled, clearable }: { id: string; label: string; options: { value: T; label: string; icon?: IconName }[]; value: T[]; onChange: (v: T[]) => void; placeholder?: string; disabled?: boolean; clearable?: boolean }) {
+  const { open, setOpen, ref, place } = useDropdown();
+  const input = useRef<HTMLInputElement>(null);
+  const { query, setQuery, mark, setMark, shown } = useSearchList(options, open, 0);
+  const chosen = options.filter((o) => value.includes(o.value));
+  const text = chosen.length === 0 ? placeholder : chosen.length === 1 ? chosen[0].label : `${chosen[0].label}, ${chosen.length - 1} More...`;
+  const off = () => disabled || !!input.current?.matches(':disabled');
+  // Keep picks in the options' order, whatever order they were ticked in.
+  const toggle = (v: T) => {
+    const next = value.includes(v) ? value.filter((x) => x !== v) : [...value, v];
+    onChange(options.map((o) => o.value).filter((x) => next.includes(x)));
+  };
+  const keys = (e: ReactKeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return setOpen(true);
+      setMark((m) => (e.key === 'ArrowDown' ? Math.min(shown.length - 1, m + 1) : Math.max(0, m - 1)));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open && shown[mark]) toggle(shown[mark].value);
+      else setOpen(true);
+    } else if (e.key === 'Escape') setOpen(false);
+  };
+  return (
+    <div className={`msel${open ? ' is-open' : ''}${open && place.up ? ' is-up' : ''}${disabled ? ' is-disabled' : ''}`} ref={ref}>
+      <div
+        className="msel__box"
+        title={chosen.map((o) => o.label).join(', ')}
+        onClick={() => {
+          if (off()) return;
+          setOpen((v) => !v);
+          input.current?.focus();
+        }}
+      >
+        <label className="msel__label" htmlFor={id}>
+          {label}
+        </label>
+        <div className="msel__row">
+          {!query && <span className={`msel__value${chosen.length ? '' : ' is-empty'}`}>{text}</span>}
+          <input ref={input} id={id} className="msel__search" role="combobox" aria-expanded={open} autoComplete="off" disabled={disabled} value={query} onChange={(e) => (setQuery(e.target.value), setOpen(true))} onKeyDown={keys} />
+        </div>
+        {clearable && chosen.length > 0 && (
+          <button
+            type="button"
+            className="msel__clear"
+            aria-label={`Clear ${label}`}
+            title="Clear all"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange([]);
+              setOpen(false);
+            }}
+          >
+            ×
+          </button>
+        )}
+        <Arrow />
+      </div>
+      {open && (
+        <div className={`msel__menu${place.up ? ' is-up' : ''}`} style={place.style} role="listbox" aria-multiselectable="true" aria-label={label}>
+          <div className="msel__items">
+            {shown.length === 0 && <div className="msel__none">No items found</div>}
+            {shown.map((o, i) => (
+              <label key={o.value} className={`msel__opt msel__opt--check${value.includes(o.value) ? ' is-on' : ''}${i === mark ? ' is-mark' : ''}`} onMouseEnter={() => setMark(i)} onMouseDown={(e) => e.preventDefault()}>
+                <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
+                <span>{o.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Seg<T extends string | number>({ options, value, onChange, small, label }: { options: { value: T; label: ReactNode; title?: string }[]; value: T; onChange: (v: T) => void; small?: boolean; label: string }) {
   return (
     <div className={`seg${small ? ' seg--sm' : ''}`} role="group" aria-label={label}>
@@ -81,9 +392,12 @@ export function Modal({ title, onClose, children, footer, wide, icon }: { title:
           {icon}
           <h2>{title}</h2>
           <span className="spacer" />
-          <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={18} />
-          </button>
+          {/* Qavach's pop-ups close from their Cancel button; only one without buttons gets a close cross. */}
+          {!footer && (
+            <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Close">
+              <Icon name="close" size={18} />
+            </button>
+          )}
         </div>
         <div className="modal__body">{children}</div>
         {footer && <div className="modal__foot">{footer}</div>}
@@ -178,7 +492,9 @@ export function ZoneOverlay({ zones, highlight, box, aspect = SCENE_W / SCENE_H 
   );
 }
 
-const BOX_COLOR: Record<Priority, [string, string]> = { P1: ['#FF5C7A', '#B42341'], P2: ['#FFB45C', '#B9520C'], P3: ['#FFD166', '#8A6400'], P4: ['#FFD166', '#8A6400'] };
+// Detection boxes on the picture: [box line, label fill, label text], from the design system's swatches. Lines stay
+// light enough to see on video; the label matches the level's chip.
+const BOX_COLOR: Record<Priority, [string, string, string]> = { P1: ['#E5456D', '#E5456D', '#fff'], P2: ['#D7DEE0', '#0C323D', '#fff'], P3: ['#A6B8BD', '#567C87', '#fff'], P4: ['#A6B8BD', '#A6B8BD', '#0C323D'] };
 
 // A person on a wide camera is often 10 to 20 px tall, so a box drawn exactly on them is smaller than its own
 // outline and reads as a blob. The box is grown around the person to a minimum size (in the overlay's 360-high units,
@@ -189,7 +505,7 @@ const BOX_MIN_H = 30;
 
 function DetectionBox({ alert, W, H }: { alert: Alert; W: number; H: number }) {
   const [x, y, w, h] = alert.box;
-  const [stroke, fill] = BOX_COLOR[alert.priority];
+  const [stroke, fill, ink] = BOX_COLOR[alert.priority];
   const vw = 100 * W;
   const vh = 100 * H;
   const bw = Math.max(w * W + 2 * BOX_PAD, BOX_MIN_W);
@@ -206,7 +522,7 @@ function DetectionBox({ alert, W, H }: { alert: Alert; W: number; H: number }) {
       <rect x={bx} y={by} width={bw} height={bh} fill="none" stroke="#000" strokeOpacity={0.45} strokeWidth={3.5} vectorEffect="non-scaling-stroke" />
       <rect x={bx} y={by} width={bw} height={bh} fill="none" stroke={stroke} strokeWidth={2} vectorEffect="non-scaling-stroke" />
       <rect x={lx} y={ly} width={lw} height={lh} fill={fill} />
-      <text x={lx + 4} y={ly + lh - 3.5} fill="#fff" fontSize={9} fontWeight={600} fontFamily="JetBrains Mono, monospace">
+      <text x={lx + 4} y={ly + lh - 3.5} fill={ink} fontSize={9} fontWeight={600} fontFamily="Exo 2, sans-serif">
         {label}
       </text>
     </g>

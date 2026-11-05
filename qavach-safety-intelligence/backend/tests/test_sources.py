@@ -32,3 +32,16 @@ def test_source_from_the_page_is_validated(tmp_path, monkeypatch):
                 dict(kind='upload', uploadId='000000000000'), dict(kind='nope')):
         with pytest.raises(sources.SourceError):
             sources.source_from_dict(bad)
+
+
+def test_demo_rtsp_address_is_served_from_the_demo_live_link(monkeypatch):
+    monkeypatch.setattr(config, 'DEMO_RTSP_URL', 'https://www.youtube.com/live/demo')
+    seen = []
+    monkeypatch.setattr(sources, 'resolve_youtube', lambda url: (seen.append(url) or 'https://cdn/stream.m3u8', 'A title'))
+    rtsp = sources.Source('stream', url='rtsp://10.40.1.57:554/Streaming/Channels/101', user='svc', password='pw')
+    assert sources.stream_address(rtsp) == ('https://cdn/stream.m3u8', '')
+    assert seen == ['https://www.youtube.com/live/demo']
+    http = sources.Source('stream', url='https://cams.example.com/hls/berth2.m3u8')
+    assert sources.stream_address(http) == ('https://cams.example.com/hls/berth2.m3u8', '')
+    monkeypatch.setattr(config, 'DEMO_RTSP_URL', '')
+    assert sources.stream_address(rtsp)[0] == 'rtsp://svc:pw@10.40.1.57:554/Streaming/Channels/101'

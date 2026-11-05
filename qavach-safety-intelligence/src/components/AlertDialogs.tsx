@@ -5,7 +5,7 @@ import { draftRecord } from '../lib/qai';
 import { hm } from '../lib/time';
 import { acknowledge, AREAS_BY_ID, escalate, markFalse, raiseInQavach, resolve, toast, useCameras, useMe, usePolicies, useRules } from '../state/store';
 import { Icon } from './Icon';
-import { CameraView, Modal, PriorityBadge, QaiLabel } from './ui';
+import { CameraView, Choice, Modal, PriorityBadge } from './ui';
 
 type Draft = Omit<QavachRecord, 'ref' | 'at' | 'createdBy' | 'source'>;
 
@@ -22,39 +22,24 @@ function useContext(alert: Alert) {
   return { cam, rule, policy, draft };
 }
 
-/** Fields QAI filled stay blue until a person changes them. */
+/** The Qavach record's fields, filled in from the alert; plain Qavach form fields the person checks and edits. */
 function RecordFields({ value, onChange, edited, setEdited }: { value: Draft; onChange: (d: Draft) => void; edited: Set<string>; setEdited: (s: Set<string>) => void }) {
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
     onChange({ ...value, [k]: v });
     setEdited(new Set(edited).add(k));
   };
-  const cls = (k: string) => `field${edited.has(k) ? '' : ' qai-field'}`;
+  const cls = (_k: string) => 'field';
   return (
     <div className="stack">
       <div className="grid-3" style={{ gap: 12 }}>
         <div className={cls('type')}>
-          <label htmlFor="rec-type">Qavach record</label>
-          <select id="rec-type" className="select" value={value.type} onChange={(e) => set('type', e.target.value as QavachRecordType)}>
-            <option>Incident</option>
-            <option>Observation</option>
-            <option>Near miss</option>
-          </select>
+          <Choice id="rec-type" label="Qavach Record" value={value.type} onChange={(v) => set('type', v)} options={(['Incident', 'Observation', 'Near miss'] as QavachRecordType[]).map((v) => ({ value: v, label: v }))} />
         </div>
         <div className={cls('classification')}>
-          <label htmlFor="rec-class">Classification</label>
-          <select id="rec-class" className="select" value={value.classification} onChange={(e) => set('classification', e.target.value as Classification)}>
-            <option>Unsafe act</option>
-            <option>Unsafe condition</option>
-          </select>
+          <Choice id="rec-class" label="Classification" value={value.classification} onChange={(v) => set('classification', v)} options={(['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v }))} />
         </div>
         <div className={cls('severity')}>
-          <label htmlFor="rec-sev">Severity</label>
-          <select id="rec-sev" className="select" value={value.severity} onChange={(e) => set('severity', e.target.value as Draft['severity'])}>
-            <option>Critical</option>
-            <option>High</option>
-            <option>Medium</option>
-            <option>Low</option>
-          </select>
+          <Choice id="rec-sev" label="Severity" value={value.severity} onChange={(v) => set('severity', v)} options={(['Critical', 'High', 'Medium', 'Low'] as Draft['severity'][]).map((v) => ({ value: v, label: v }))} />
         </div>
       </div>
       <div className={cls('title')}>
@@ -126,12 +111,10 @@ export function AckDialog({ alert, via, onClose }: { alert: Alert; via: 'wall' |
           </label>
         )}
         {raise && rec && (
-          <div className="qai" style={{ padding: 14 }}>
-            <div className="row" style={{ marginBottom: 10 }}>
-              <QaiLabel>QAI drafted this from the alert. Check it before you raise it.</QaiLabel>
-            </div>
+          <section className="recsection">
+            <h3 className="recsection__title">{rec.type} details</h3>
             <RecordFields value={rec} onChange={setRec} edited={edited} setEdited={setEdited} />
-          </div>
+          </section>
         )}
       </div>
     </Modal>
@@ -176,12 +159,10 @@ export function RaiseDialog({ alert, onClose }: { alert: Alert; onClose: () => v
             {alert.id} · {cam.id} {cam.name} · {hm(alert.at)}
           </span>
         </div>
-        <div className="qai" style={{ padding: 14 }}>
-          <div className="row" style={{ marginBottom: 10 }}>
-            <QaiLabel>QAI drafted this from the alert. Fields you change turn black.</QaiLabel>
-          </div>
+        <section className="recsection">
+          <h3 className="recsection__title">{rec.type} details</h3>
           <RecordFields value={rec} onChange={setRec} edited={edited} setEdited={setEdited} />
-        </div>
+        </section>
       </div>
     </Modal>
   );
@@ -245,16 +226,7 @@ export function EscalateDialog({ alert, onClose }: { alert: Alert; onClose: () =
       }
     >
       <div className="stack">
-        <div className="field">
-          <label htmlFor="esc-to">Escalate to</label>
-          <select id="esc-to" className="select" value={to} onChange={(e) => setTo(e.target.value)}>
-            {options.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} · {u.role}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Choice id="esc-to" label="Escalate To" value={to} onChange={setTo} options={options.map((u) => ({ value: u.id, label: `${u.name} · ${u.role}` }))} />
         <div className="field">
           <label htmlFor="esc-why">Reason</label>
           <input id="esc-why" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: Supervisor not answering the radio" />

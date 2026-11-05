@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, CHANNEL, Modal, PRIORITY_NAME, PriorityBadge, QaiLabel, Seg, useConfirm } from '../../components/ui';
+import { CameraView, CHANNEL, Choice, Modal, PRIORITY_NAME, PriorityBadge, Seg, useConfirm } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
@@ -13,7 +13,7 @@ import { raiseFor } from '../../state/engine';
 import { deleteRule, isAdmin, nextRuleId, roleText, saveRule, toast, useCameras, useMe, usePolicies, useRules } from '../../state/store';
 import './rules.css';
 
-const EXAMPLES = [
+export const EXAMPLES = [
   'Alert me when a person moves away from the deck walkway for at least 5 seconds',
   'Someone without a helmet or vest on the quay apron for 3 seconds',
   'A truck stopped on the pedestrian crossing for 2 minutes',
@@ -59,7 +59,6 @@ export function RuleEditor() {
   );
   const [text, setText] = useState(existing?.plainText ?? '');
   const [draft, setDraft] = useState<RuleDraft>();
-  const [ai, setAi] = useState<Set<AiField>>(new Set());
   const [picking, setPicking] = useState(false);
   const [backtest, setBacktest] = useState<{ total: number; hits: { cam: Camera; at: number }[] }>();
 
@@ -81,20 +80,17 @@ export function RuleEditor() {
     );
   }
 
-  const touch = (f: AiField) => setAi((s) => (s.has(f) ? new Set([...s].filter((x) => x !== f)) : s));
-  const set = (p: Partial<Rule>, f?: AiField) => {
+  // The second argument names the part of the form a change belongs to; callers pass it, nothing reads it now.
+  const set = (p: Partial<Rule>, _f?: AiField) => {
     setRule({ ...rule, ...p });
-    if (f) touch(f);
     setBacktest(undefined);
   };
-  const aiCls = (f: AiField) => (ai.has(f) ? ' qai-field' : '');
 
   const runDraft = (t = text) => {
     if (!t.trim()) return;
     const d = draftRuleFromText(t, cams, AREAS);
     setDraft(d);
     setRule({ ...rule, ...d.rule, plainText: t });
-    setAi(new Set(['name', 'cameras', 'zones', 'subject', 'condition', 'duration', 'schedule', 'priority', 'qavach']));
     setBacktest(undefined);
   };
 
@@ -121,22 +117,18 @@ export function RuleEditor() {
     <div className="page">
       <div className="page__head">
         <div className="page__title">
-          <span className="page__eyebrow">
-            <Link to="/rules">Rules</Link> / {existing ? rule.id : 'New rule'}
-          </span>
-          <h1>{existing ? rule.name : 'New rule'}</h1>
+          <span className="page__sub">{existing ? `${rule.id} · ${rule.name}` : 'New rule'}</span>
         </div>
       </div>
       {confirm.dialog}
       <ReadOnlyNote>Only the safety admin creates and changes rules.</ReadOnlyNote>
 
       <fieldset className="plain" disabled={!admin}>
-        <section className="qai ruleai">
-          <QaiLabel>Describe the rule in your own words</QaiLabel>
+        <section className="card ruleai">
+          <h3 className="recsection__title">Describe the rule in your own words</h3>
           <div className="ruleai__row">
             <textarea className="textarea" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="For example: Alert me when a person moves away from the deck walkway for at least 5 seconds" />
-            <button type="button" className="btn btn--ai" onClick={() => runDraft()} disabled={!text.trim()}>
-              <Icon name="spark" size={16} />
+            <button type="button" className="btn" onClick={() => runDraft()} disabled={!text.trim()}>
               Draft the rule
             </button>
           </div>
@@ -147,7 +139,7 @@ export function RuleEditor() {
                 <button
                   key={e}
                   type="button"
-                  className="chip chip--ai"
+                  className="chip chip--outline"
                   onClick={() => {
                     setText(e);
                     runDraft(e);
@@ -161,7 +153,7 @@ export function RuleEditor() {
           {draft && (
             <div className="ruleai__out">
               <div>
-                <strong className="qai__label">QAI understood</strong>
+                <strong className="recsection__title">Understood</strong>
                 <ul>
                   {draft.understood.map((u) => (
                     <li key={u}>{u}</li>
@@ -170,7 +162,7 @@ export function RuleEditor() {
               </div>
               {draft.assumed.length > 0 && (
                 <div>
-                  <strong className="qai__label">QAI assumed, so check</strong>
+                  <strong className="recsection__title">Assumed, please check</strong>
                   <ul>
                     {draft.assumed.map((u) => (
                       <li key={u}>{u}</li>
@@ -178,23 +170,23 @@ export function RuleEditor() {
                   </ul>
                 </div>
               )}
-              <p className="meta">Blue fields below came from QAI. They turn black when you change them. Nothing is saved until you press Save.</p>
+              <p className="meta">The fields below are filled in from your description. Check them; nothing is saved until you press Save.</p>
             </div>
           )}
         </section>
 
         <div className="ruleedit">
           <div className="card card--pad stack ruleform">
-            <div className={`field${aiCls('name')}`}>
+            <div className="field">
               <label htmlFor="r-name">Rule name</label>
               <input id="r-name" className="input" value={rule.name} onChange={(e) => set({ name: e.target.value }, 'name')} placeholder="For example: Person away from the deck walkway" />
             </div>
 
-            <div className={`field${aiCls('cameras')}`}>
+            <div className="field">
               <span className="field__label">Cameras</span>
               <div className="row-wrap">
                 {chosen.slice(0, 10).map((c) => (
-                  <span key={c.id} className={`chip ${ai.has('cameras') ? 'chip--ai' : 'chip--outline'}`}>
+                  <span key={c.id} className="chip chip--outline">
                     <span className="mono">{c.id}</span>
                   </span>
                 ))}
@@ -206,7 +198,7 @@ export function RuleEditor() {
               </div>
             </div>
 
-            <div className={`field${aiCls('zones')}`}>
+            <div className="field">
               <span className="field__label">{isFire ? 'Watch areas' : 'Zones'}</span>
               {chosen.length === 0 ? (
                 <span className="meta">Choose cameras first.</span>
@@ -224,8 +216,8 @@ export function RuleEditor() {
                       <button
                         key={o.name}
                         type="button"
-                        className={`chip ${ai.has('zones') && on ? 'chip--ai' : 'chip--outline'}`}
-                        aria-pressed={on && !ai.has('zones')}
+                        className="chip chip--outline"
+                        aria-pressed={on}
                         onClick={() => set({ zoneIds: on ? rule.zoneIds.filter((id) => !o.ids.includes(id)) : [...rule.zoneIds, ...o.ids] }, 'zones')}
                       >
                         {on && <Icon name="check" size={13} />}
@@ -247,38 +239,29 @@ export function RuleEditor() {
             )}
 
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className={`field${aiCls('subject')}`} style={isFire ? { display: 'none' } : undefined}>
-                <label htmlFor="r-subj">Who or what</label>
-                <select id="r-subj" className="select" value={rule.subject} onChange={(e) => set({ subject: e.target.value as Subject }, 'subject')}>
-                  {(Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => (
-                    <option key={s} value={s}>
-                      {SUBJECT_LABEL[s]}
-                    </option>
-                  ))}
-                </select>
+              <div className="field" style={isFire ? { display: 'none' } : undefined}>
+                <Choice id="r-subj" label="Who or What" value={rule.subject} onChange={(subject) => set({ subject }, 'subject')} options={(Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => ({ value: s, label: SUBJECT_LABEL[s] }))} />
               </div>
-              <div className={`field${aiCls('condition')}`}>
-                <label htmlFor="r-cond">Does what</label>
-                <select id="r-cond" className="select" value={rule.condition} onChange={(e) => {
-                    const condition = e.target.value as Condition;
+              <div className="field">
+                <Choice
+                  id="r-cond"
+                  label="Does What"
+                  value={rule.condition}
+                  options={(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: CONDITION_LABEL[c] }))}
+                  onChange={(condition) => {
                     // Fire and smoke is about neither a person nor a vehicle, and its areas are of a different kind.
                     // On real cameras the rule starts with the areas drawn for its kind, as when the camera is chosen.
                     const drawnFor = (fire: boolean) => realCams.flatMap((c) => c.zones.filter((z) => (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
                     if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: drawnFor(true), minFrames: 4, fireClasses: 'both' }, 'condition');
                     else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: drawnFor(false), minFrames: 3 }, 'condition');
                     else set({ condition }, 'condition');
-                  }}>
-                  {(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => (
-                    <option key={c} value={c}>
-                      {CONDITION_LABEL[c]}
-                    </option>
-                  ))}
-                </select>
+                  }}
+                />
               </div>
             </div>
 
             {rule.condition === 'no-ppe' && (
-              <div className={`field${aiCls('condition')}`}>
+              <div className="field">
                 <span className="field__label">Missing PPE</span>
                 <div className="row-wrap">
                   {(['helmet', 'vest', 'life jacket'] as Ppe[]).map((p) => (
@@ -298,7 +281,7 @@ export function RuleEditor() {
             )}
 
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className={`field${aiCls('duration')}`} style={isFire ? { display: 'none' } : undefined}>
+              <div className="field" style={isFire ? { display: 'none' } : undefined}>
                 <label htmlFor="r-dur">For at least</label>
                 <div className="row">
                   <input id="r-dur" className="input" type="number" min={0} value={rule.durationSec >= 120 && rule.durationSec % 60 === 0 ? rule.durationSec / 60 : rule.durationSec} onChange={(e) => set({ durationSec: Math.max(0, Number(e.target.value)) * (rule.durationSec >= 120 && rule.durationSec % 60 === 0 ? 60 : 1) }, 'duration')} style={{ maxWidth: 110 }} />
@@ -306,15 +289,8 @@ export function RuleEditor() {
                 </div>
                 <span className="field__hint">Short blips under this time don't alert.</span>
               </div>
-              <div className={`field${aiCls('schedule')}`}>
-                <label htmlFor="r-when">When</label>
-                <select id="r-when" className="select" value={rule.schedule} onChange={(e) => set({ schedule: e.target.value as Schedule }, 'schedule')}>
-                  {(Object.keys(SCHEDULE_LABEL) as Schedule[]).map((s) => (
-                    <option key={s} value={s}>
-                      {SCHEDULE_LABEL[s]}
-                    </option>
-                  ))}
-                </select>
+              <div className="field">
+                <Choice id="r-when" label="When" value={rule.schedule} onChange={(schedule) => set({ schedule }, 'schedule')} options={(Object.keys(SCHEDULE_LABEL) as Schedule[]).map((s) => ({ value: s, label: SCHEDULE_LABEL[s] }))} />
               </div>
             </div>
 
@@ -350,12 +326,17 @@ export function RuleEditor() {
                 <span className="field__label">How steady and how sure</span>
                 <div className="grid-3" style={{ gap: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
                   <div className="field">
-                    <label htmlFor="r-look">Look for</label>
-                    <select id="r-look" className="select" value={rule.fireClasses ?? 'both'} onChange={(e) => set({ fireClasses: e.target.value as 'both' | 'fire' | 'smoke' })}>
-                      <option value="both">Fire and smoke</option>
-                      <option value="fire">Fire only</option>
-                      <option value="smoke">Smoke only</option>
-                    </select>
+                    <Choice
+                      id="r-look"
+                      label="Look For"
+                      value={rule.fireClasses ?? 'both'}
+                      onChange={(fireClasses) => set({ fireClasses })}
+                      options={[
+                        { value: 'both' as const, label: 'Fire and smoke' },
+                        { value: 'fire' as const, label: 'Fire only' },
+                        { value: 'smoke' as const, label: 'Smoke only' },
+                      ]}
+                    />
                     <span className="field__hint">Each one raises its own alert.</span>
                   </div>
                   <div className="field">
@@ -384,7 +365,7 @@ export function RuleEditor() {
               </span>
             )}
 
-            <div className={`field${aiCls('priority')}`}>
+            <div className="field">
               <span className="field__label">Alert level</span>
               <Seg
                 label="Alert level"
@@ -396,22 +377,25 @@ export function RuleEditor() {
                 <span className="field__hint">
                   {policy.channels.map((c) => CHANNEL[c].label).join(', ')} to the {policy.notify.map(roleText).join(' and ')}
                   {policy.escalateTo !== 'none' ? `; escalates to the ${roleText(policy.escalateTo)} if not acknowledged in ${policy.ackWithinMin} min` : ''}.{' '}
-                  <Link to="/notifications">Change who is told</Link>
+                  <Link to="/notifications">Open alert configuration</Link>
                 </span>
               )}
             </div>
 
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className={`field${aiCls('qavach')}`}>
-                <label htmlFor="r-q">Qavach record</label>
-                <select id="r-q" className="select" value={rule.qavach} onChange={(e) => set({ qavach: e.target.value as QavachRecordType | 'none' }, 'qavach')}>
-                  <option value="Incident">Incident</option>
-                  <option value="Observation">Observation</option>
-                  <option value="Near miss">Near miss</option>
-                  <option value="none">Don't create one</option>
-                </select>
+              <div className="field">
+                <Choice
+                  id="r-q"
+                  label="Qavach Record"
+                  value={rule.qavach}
+                  onChange={(qavach) => set({ qavach }, 'qavach')}
+                  options={[
+                    ...(['Incident', 'Observation', 'Near miss'] as QavachRecordType[]).map((v) => ({ value: v as QavachRecordType | 'none', label: v })),
+                    { value: 'none' as QavachRecordType | 'none', label: "Don't create one" },
+                  ]}
+                />
               </div>
-              <div className={`field${aiCls('qavach')}`}>
+              <div className="field">
                 <span className="field__label">Classification</span>
                 <Seg label="Classification" small value={rule.classification} onChange={(v) => set({ classification: v as Classification }, 'qavach')} options={[{ value: 'Unsafe act', label: 'Unsafe act' }, { value: 'Unsafe condition', label: 'Unsafe condition' }]} />
               </div>
@@ -547,7 +531,7 @@ export function RuleEditor() {
 
 /** The zones a rule can pick. Fire and smoke picks watch areas; every other condition leaves the fire areas out, because
  *  a fire and smoke area is not a restricted area and a restricted area is not a place to watch for fire. */
-function useZoneOptions(chosen: Camera[], fire: boolean) {
+export function useZoneOptions(chosen: Camera[], fire: boolean) {
   return useMemo(() => {
     const m = new Map<string, string[]>();
     for (const c of chosen) for (const z of c.zones) if (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-')) m.set(z.name, [...(m.get(z.name) ?? []), z.id]);

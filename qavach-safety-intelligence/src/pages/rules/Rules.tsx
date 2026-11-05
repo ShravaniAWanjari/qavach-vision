@@ -1,12 +1,35 @@
-import { Link, useNavigate } from 'react-router';
+import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { PriorityBadge, Switch } from '../../components/ui';
-import { describeRule, SCHEDULE_LABEL } from '../../lib/qai';
+import { CascadeSelect, type CascadeField, PRIORITY_NAME, PriorityBadge, Switch } from '../../components/ui';
+import type { Classification, Condition, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
+import { CONDITION_LABEL, describeRule, SCHEDULE_LABEL, SUBJECT_LABEL } from '../../lib/qai';
 import { AREAS_BY_ID, isAdmin, saveRule, toast, useAlerts, useCameras, useMe, useRules } from '../../state/store';
+import { NewRulePanel } from './NewRulePanel';
 import './rules.css';
 
-export function Rules() {
+const LEVELS: Priority[] = ['P1', 'P2', 'P3', 'P4'];
+const RECORDS: (QavachRecordType | 'none')[] = ['Incident', 'Near miss', 'Observation', 'none'];
+
+type SortField = 'id' | 'name' | 'priority' | 'alerts' | 'status';
+type SortDir = 'a' | 'b';
+/** What a rule list can be ordered by, each with its two directions: the first is the one most people want. */
+const SORT_FIELDS: CascadeField<SortField, SortDir>[] = [
+  { key: 'id', label: 'Rule ID', options: [{ value: 'a', label: 'Lowest first' }, { value: 'b', label: 'Highest first' }] },
+  { key: 'name', label: 'Name', options: [{ value: 'a', label: 'A to Z' }, { value: 'b', label: 'Z to A' }] },
+  { key: 'priority', label: 'Priority Level', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
+  { key: 'alerts', label: 'Alerts', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
+  { key: 'status', label: 'Live / Test', options: [{ value: 'a', label: 'Live first' }, { value: 'b', label: 'Testing first' }] },
+];
+
+/** Every way a rule can be narrowed down. Each group keeps the rules that match any ticked option. */
+type FilterKey = 'level' | 'status' | 'record' | 'classification' | 'condition' | 'subject' | 'schedule' | 'area';
+type Filters = Record<FilterKey, string[]>;
+const NO_FILTERS: Filters = { level: [], status: [], record: [], classification: [], condition: [], subject: [], schedule: [], area: [] };
+
+export function Rules({ startNew = false }: { startNew?: boolean }) {
+  const [creating, setCreating] = useState(startNew);
   const rules = useRules();
   const cams = useCameras();
   const alerts = useAlerts();
@@ -15,26 +38,122 @@ export function Rules() {
   const admin = isAdmin(me);
   const live = rules.filter((r) => r.mode === 'live').length;
   const dayAgo = Date.now() - 86400000;
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ key: SortField; dir: SortDir }>({ key: 'id', dir: 'a' });
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [panel, setPanel] = useState(false);
+  const active = Object.values(filters).reduce((n, v) => n + v.length, 0);
+
+  const camsOf = (r: Rule) => cams.filter((c) => r.cameraIds.includes(c.id));
+  const zonesOf = (r: Rule) => [...new Set(camsOf(r).flatMap((c) => c.zones.filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name)))];
+  const alertsOf = (r: Rule) => alerts.filter((a) => a.ruleId === r.id && a.at > dayAgo).length;
+  const facets = (r: Rule): Record<FilterKey, string[]> => ({
+    level: [r.priority],
+    status: [r.mode],
+    record: [r.qavach],
+    classification: r.qavach === 'none' ? [] : [r.classification],
+    condition: [r.condition],
+    subject: [r.subject],
+    schedule: [r.schedule],
+    area: [...new Set(camsOf(r).map((c) => c.areaId))],
+  });
+
+  const t = q.trim().toLowerCase();
+  const shown = rules
+    .filter((r) => {
+      const f = facets(r);
+      if ((Object.keys(filters) as FilterKey[]).some((k) => filters[k].length && !filters[k].some((v) => f[k].includes(v)))) return false;
+      if (!t) return true;
+      const text = [r.id, r.name, r.plainText ?? '', describeRule(r, zonesOf(r)), SCHEDULE_LABEL[r.schedule], PRIORITY_NAME[r.priority], r.qavach, ...camsOf(r).map((c) => `${c.id} ${c.name} ${AREAS_BY_ID[c.areaId]?.name ?? ''}`)].join(' ').toLowerCase();
+      return text.includes(t);
+    })
+    .sort((x, y) => {
+      const byId = x.id.localeCompare(y.id, undefined, { numeric: true });
+      const d = sort.dir === 'a' ? 1 : -1;
+      switch (sort.key) {
+        case 'name': return d * x.name.localeCompare(y.name) || byId;
+        case 'priority': return d * x.priority.localeCompare(y.priority) || byId;
+        case 'alerts': return d * (alertsOf(y) - alertsOf(x)) || byId;
+        case 'status': return d * ((x.mode === 'live' ? 0 : 1) - (y.mode === 'live' ? 0 : 1)) || byId;
+        default: return d * byId;
+      }
+    });
+
+  const areaIds = [...new Set(rules.flatMap((r) => camsOf(r).map((c) => c.areaId)))];
+  const groups: { key: FilterKey; title: string; options: { value: string; label: string }[] }[] = [
+    { key: 'level', title: 'Level', options: LEVELS.map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` })) },
+    { key: 'status', title: 'Status', options: [{ value: 'live', label: 'Live' }, { value: 'test', label: 'Testing' }] },
+    { key: 'record', title: 'Qavach record', options: RECORDS.map((v) => ({ value: v, label: v === 'none' ? 'None' : v })) },
+    { key: 'classification', title: 'Classification', options: (['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v })) },
+    { key: 'condition', title: 'Detects', options: (Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: CONDITION_LABEL[c][0].toUpperCase() + CONDITION_LABEL[c].slice(1) })) },
+    { key: 'subject', title: 'Who or what', options: (Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => ({ value: s, label: SUBJECT_LABEL[s] })) },
+    { key: 'schedule', title: 'When', options: (Object.keys(SCHEDULE_LABEL) as Schedule[]).map((s) => ({ value: s, label: SCHEDULE_LABEL[s] })) },
+    { key: 'area', title: 'Area', options: areaIds.map((a) => ({ value: a, label: AREAS_BY_ID[a]?.name ?? a })) },
+  ];
+  const toggle = (k: FilterKey, v: string) => setFilters((f) => ({ ...f, [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] }));
 
   return (
     <div className="page">
-      <div className="page__head">
-        <div className="page__title">
-          <span className="page__eyebrow">Set up · step 3</span>
-          <h1>Rules</h1>
-          <span className="page__sub">
-            {rules.length} rules · {live} live · {rules.length - live} in test. A rule picks cameras and zones, says what to look for and for how long, and sets the alert level.
-          </span>
-        </div>
-        <div className="page__actions">
-          {admin && (
-            <Link to="/rules/new" className="btn">
-              <Icon name="plus" size={17} />
-              New rule
-            </Link>
-          )}
-        </div>
+      <div className="listbar">
+        <span className="listing-tag">
+          Listing 1 - {shown.length} Of {rules.length} · {live} live · {rules.length - live} in test
+        </span>
+        <label className="listbar__search">
+          <Icon name="search" size={18} />
+          <input className="input input--sm" placeholder="Search rules" aria-label="Search rules" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <button type="button" className={`qact__btn listbar__filter${active ? ' is-on' : ''}`} onClick={() => setPanel(true)}>
+          <Icon name="filter" size={22} stroke={2} />
+          Filter
+          {active > 0 && <span className="listbar__count">{active}</span>}
+        </button>
+        <CascadeSelect className="listbar__sort" label="Sort rules by" prefix="Sort by:" fields={SORT_FIELDS} value={sort} onChange={setSort} />
+        {admin && (
+          <button type="button" className="qact__btn" onClick={() => setCreating(true)}>
+            <Icon name="add-circle" size={24} />
+            New rule
+          </button>
+        )}
       </div>
+
+      {creating && (
+        <NewRulePanel
+          onClose={() => {
+            setCreating(false);
+            if (startNew) nav('/rules', { replace: true });
+          }}
+        />
+      )}
+      {panel && (
+        <>
+          <div className="qset-scrim" onClick={() => setPanel(false)} />
+          <aside className="qset" role="dialog" aria-modal="true" aria-label="Filters">
+            <strong className="qset__title">Filters</strong>
+            <div className="qset__body">
+              {groups.map((g) => (
+                <div key={g.key} className="qset__group">
+                  <div className="qset__sub">{g.title}</div>
+                  {g.options.map((o) => (
+                    <label key={o.value} className="qset__check">
+                      <input type="checkbox" checked={filters[g.key].includes(o.value)} onChange={() => toggle(g.key, o.value)} />
+                      <span>{o.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="qset__foot">
+              <button type="button" className="btn qset__cancel" onClick={() => setFilters(NO_FILTERS)} disabled={!active}>
+                Clear all
+              </button>
+              <button type="button" className="btn" onClick={() => setPanel(false)}>
+                Show {shown.length} {shown.length === 1 ? 'rule' : 'rules'}
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
       <ReadOnlyNote>Only the safety admin creates and changes rules.</ReadOnlyNote>
       <div className="card">
         <table className="table">
@@ -49,23 +168,28 @@ export function Rules() {
             </tr>
           </thead>
           <tbody>
-            {rules.map((r) => {
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={6} className="meta" style={{ textAlign: 'center' }}>
+                  No rules match. Change the search or{' '}
+                  <button type="button" className="linkbtn" onClick={() => { setQ(''); setFilters(NO_FILTERS); }}>
+                    clear the filters
+                  </button>
+                  .
+                </td>
+              </tr>
+            )}
+            {shown.map((r) => {
               const rc = cams.filter((c) => r.cameraIds.includes(c.id));
               const zoneNames = [...new Set(rc.flatMap((c) => c.zones.filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name)))];
               const areas = [...new Set(rc.map((c) => AREAS_BY_ID[c.areaId]?.name.split(' ·')[0]))];
-              const n = alerts.filter((a) => a.ruleId === r.id && a.at > dayAgo).length;
+              const n = alertsOf(r);
               return (
                 <tr key={r.id} className="is-clickable" onClick={() => nav(`/rules/${r.id}`)}>
                   <td style={{ maxWidth: 420 }}>
                     <div className="row" style={{ gap: 6 }}>
                       <span className="mono faint">{r.id}</span>
                       <strong>{r.name}</strong>
-                      {r.plainText && (
-                        <span className="chip chip--ai" title={`Drafted from: “${r.plainText}”`}>
-                          <Icon name="spark" size={12} />
-                          From plain words
-                        </span>
-                      )}
                     </div>
                     <div className="meta">
                       {describeRule(r, zoneNames)}

@@ -1,41 +1,32 @@
-.ovkpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 24px; margin-bottom: 24px; }
-@media (max-width: 1300px) { .ovkpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .ovkpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.ovkpis .kpi { padding: 18px 10px 14px; justify-content: space-between; min-height: 114px; }
-.ovkpis .kpi__label { font-size: 15px; line-height: 1.25; }
 
-.ovrow { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr) minmax(0, 1.4fr); gap: 24px; align-items: stretch; margin-bottom: 24px; }
-.ovrow--charts { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.ovrow { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: stretch; margin-bottom: 12px; }
+.ovrow--one { grid-template-columns: 1fr; }
 .ovrow--lists { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-@media (max-width: 1300px) { .ovrow, .ovrow--charts, .ovrow--lists { grid-template-columns: 1fr; } }
+@media (max-width: 1300px) { .ovrow, .ovrow--lists { grid-template-columns: 1fr; } }
 
-.pie { display: flex; align-items: center; gap: 24px; padding: 20px; flex-wrap: wrap; }
-.pie__svg { width: 190px; height: 190px; flex: 0 0 auto; }
-.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1 1 140px; font-size: 13px; color: var(--q-muted); }
-.legend li { display: flex; align-items: center; gap: 8px; }
-.legend strong { margin-left: auto; color: var(--q-ink); }
-.legend__sw { width: 12px; height: 12px; flex: 0 0 auto; }
 
 .workarea { list-style: none; margin: 0; padding: 0; }
-.workarea__row { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--q-divider); color: var(--q-ink); font-size: 14px; font-weight: 600; }
+.workarea__row { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 15px; border-top: 1px solid rgba(122, 122, 122, .3); color: var(--q-ink); font-size: 12px; line-height: 19px; font-weight: 600; }
 .workarea li:first-child .workarea__row { border-top: 0; }
 .workarea__row:hover { background: #F1FBFE; color: var(--q-ink); }
-.workarea__n { margin-left: auto; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 15px; background: var(--q-dock-active); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.workarea__n { margin-left: auto; min-width: 30px; height: 30px; padding: 3px; border-radius: 50%; background: var(--q-ink); color: #fff; font-size: 10px; line-height: 15px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 
-.ovtable { margin: 0; }
-.ovtable td.tint-blue { background: #E6F4FC; }
-.ovtable td.tint-yellow { background: #FBF8E1; }
 
-.chart { padding: 8px 16px 16px; }
-.chart svg { width: 100%; height: auto; display: block; }
-.chart__legend { display: flex; justify-content: center; gap: 24px; font-size: 13px; color: var(--q-ink); padding: 4px 0 6px; }
-.chart__key { display: inline-flex; align-items: center; gap: 8px; }
-.chart__key::before { content: ''; width: 40px; height: 14px; border: 3px solid; box-sizing: border-box; }
-.chart__key--a::before { border-color: var(--q-chart-4); background: #fff; }
-.chart__key--b::before { border-color: var(--q-chart-2); background: #fff; }
 
-.ovlist { list-style: none; margin: 0; padding: 4px; }
-.ovlist__item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; color: var(--q-ink); font-size: 14px; }
+.ovlist { list-style: none; margin: 0; padding: 0; }
+.ovlist__item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 15px; border-top: 1px solid rgba(122, 122, 122, .3); color: var(--q-ink); font-size: 12px; line-height: 19px; }
+.ovlist li:first-child .ovlist__item { border-top: 0; }
+/* Five rows show, the rest scroll, so the two cards line up. */
+.ovlist--five .ovlist__item { height: 56px; }
+.ovlist--five { max-height: 280px; overflow-y: auto; }
+.ovlist__item strong { font-size: 13px; font-weight: 600; color: var(--q-ink); }
+.ovlist__item .meta { font-size: 12px; color: var(--q-muted); }
 .ovlist__item:hover { background: #F1FBFE; color: var(--q-ink); }
 .bar-row__fill--ai { background: var(--q-ai); }
 .qrec__badge { display: inline-flex; align-items: center; gap: 5px; background: var(--q-dock-active); color: #fff; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+
+.ovlist--flush { padding: 0; margin: -4px -8px; }
+.qrec__new { flex: 0 0 auto; color: #39BD86; font-size: 12px; font-weight: 700; }
+/* A text link in the design sheet's success green: never a filled button. */
+.qreports-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: #39BD86; cursor: pointer; }
+.qreports-link:hover { text-decoration: underline; }

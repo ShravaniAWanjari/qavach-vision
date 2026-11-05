@@ -16,6 +16,19 @@ export const AREAS: Area[] = [
   { id: 'perimeter', name: 'Perimeter and berth access', scene: 'perimeter', highOps: false },
 ];
 
+/** Departments that own cameras, and the one each work area belongs to unless a camera says otherwise. */
+export const DEPARTMENTS = ['Marine Operations', 'Yard Operations', 'Gate Operations', 'Engineering and Maintenance', 'HSE', 'Security'];
+export const AREA_DEPARTMENT: Record<string, string> = {
+  quay: 'Marine Operations',
+  deck: 'Marine Operations',
+  yard: 'Yard Operations',
+  reefer: 'Yard Operations',
+  gate: 'Gate Operations',
+  workshop: 'Engineering and Maintenance',
+  hazmat: 'HSE',
+  perimeter: 'Security',
+};
+
 const NAMES: Record<string, string[]> = {
   quay: ['STS 1 · landside', 'STS 1 · waterside', 'STS 2 · landside', 'STS 2 · waterside', 'STS 3 · landside', 'STS 3 · waterside', 'Berth 1 apron', 'Berth 2 apron', 'Berth 3 apron', 'Lashing cage B1', 'Lashing cage B2', 'Hatch cover store', 'Quay road east', 'Quay road west'],
   deck: ['Berth 1 · deck port side', 'Berth 1 · deck starboard', 'Berth 2 · gangway', 'Berth 2 · deck port side', 'Berth 2 · deck starboard', 'Berth 3 · gangway', 'Berth 3 · deck port side', 'Berth 3 · lashing bridge'],

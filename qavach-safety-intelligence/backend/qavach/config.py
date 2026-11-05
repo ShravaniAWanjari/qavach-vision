@@ -27,6 +27,10 @@ TRACKER_WORKER = Path(__file__).with_name('tracker_worker.py')
 
 # Tallest stream the back-end asks YouTube for. Pedestrians in the ferry camera are about half as tall at 720p.
 MAX_STREAM_HEIGHT = int(os.environ.get('QAVACH_MAX_HEIGHT', 1080))
+# DEMO ONLY. Any rtsp:// address typed for a camera is served from this YouTube live link instead, so a demo can show
+# the steps of connecting a camera without a real RTSP camera on the network. The console still shows what was typed.
+# Set QAVACH_DEMO_RTSP_URL to an empty value to turn it off and open real RTSP addresses.
+DEMO_RTSP_URL = os.environ.get('QAVACH_DEMO_RTSP_URL', 'https://www.youtube.com/live/QO-hO_kwwmY').strip()
 # Detection runs on the area around the drawn zones, resized so its long side is at most this many pixels.
 DETECT_SIZE = int(os.environ.get('QAVACH_DETECT_SIZE', 1280))
 # The live preview is downscaled to this width before it is JPEG-encoded.

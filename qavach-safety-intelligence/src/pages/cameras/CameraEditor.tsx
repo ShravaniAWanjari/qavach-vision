@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, Seg, useConfirm } from '../../components/ui';
-import { AREAS, camId } from '../../data/seed';
+import { CameraView, Choice, Seg, useConfirm } from '../../components/ui';
+import { AREA_DEPARTMENT, AREAS, camId, DEPARTMENTS } from '../../data/seed';
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
 import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 import { useService } from '../../state/bridge';
-import { isAdmin, removeCamera, saveCamera, saveWall, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
+import { departmentOf, isAdmin, removeCamera, saveCamera, saveWall, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
 import { LAYOUT_SLOTS } from '../wall/WallBody';
 import { ZoneEditor } from './ZoneEditor';
 
@@ -167,10 +167,7 @@ export function CameraEditor() {
     <div className="page">
       <div className="page__head">
         <div className="page__title">
-          <span className="page__eyebrow">
-            <Link to="/cameras">Cameras and zones</Link> / {isNew ? 'Add camera' : cam.id}
-          </span>
-          <h1>{isNew ? 'Add a camera' : `${cam.id} · ${cam.name}`}</h1>
+          <span className="page__sub">{isNew ? 'Add a camera' : `${cam.id} · ${cam.name}`}</span>
         </div>
         <div className="page__actions">
           {!isNew && canEdit && (
@@ -208,24 +205,24 @@ export function CameraEditor() {
           <div className="camedit">
             <div className="card card--pad stack">
               <div className="grid-2" style={{ gap: 12 }}>
-                <div className="field">
-                  <label htmlFor="c-area">Area</label>
-                  <select id="c-area" className="select" value={cam.areaId} onChange={(e) => setArea(e.target.value)} disabled={!isNew}>
-                    {AREAS.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Choice id="c-area" label="Work Area" value={cam.areaId} onChange={setArea} disabled={!isNew} options={AREAS.map((a) => ({ value: a.id, label: a.name }))} />
+                <Choice
+                  id="c-dept"
+                  label="Department"
+                  value={departmentOf(cam)}
+                  onChange={(d) => set({ department: d === AREA_DEPARTMENT[cam.areaId] ? undefined : d })}
+                  options={[...new Set([...DEPARTMENTS, ...cams.map(departmentOf)])].map((d) => ({ value: d, label: d }))}
+                />
+              </div>
+              <div className="grid-2" style={{ gap: 12 }}>
                 <div className="field">
                   <label htmlFor="c-id">Camera ID</label>
                   <input id="c-id" className="input mono" value={cam.id} readOnly />
                 </div>
-              </div>
-              <div className="field">
-                <label htmlFor="c-name">Name people will see</label>
-                <input id="c-name" className="input" value={cam.name} onChange={(e) => set({ name: e.target.value })} placeholder="For example: Berth 2 · deck port side" />
+                <div className="field">
+                  <label htmlFor="c-name">Camera Location</label>
+                  <input id="c-name" className="input" value={cam.name} onChange={(e) => set({ name: e.target.value })} placeholder="For example: Berth 2 · deck port side" />
+                </div>
               </div>
               {service.online ? (
                 <div className="field">
@@ -292,14 +289,7 @@ export function CameraEditor() {
                 </div>
               )}
               {!service.online && !cam.source && (
-                <div className="field">
-                  <label htmlFor="c-make">Make and model</label>
-                  <select id="c-make" className="select" value={cam.make} onChange={(e) => set({ make: e.target.value })}>
-                    {MAKES.map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
+                <Choice id="c-make" label="Make and Model" value={cam.make} onChange={(make) => set({ make })} options={MAKES.map((m) => ({ value: m, label: m }))} />
               )}
               <div className="row">
                 {(kind === 'link' || !service.online) && (
@@ -346,32 +336,20 @@ export function CameraEditor() {
                     <span className="zonerow__swatch" style={{ background: ZONE_COLORS[z.purpose] }} />
                     <div className="stack" style={{ gap: 6, flex: 1, minWidth: 0 }}>
                       <input className="input input--sm" aria-label="Zone name" value={z.name} onChange={(e) => set({ zones: cam.zones.map((x) => (x.id === z.id ? { ...x, name: e.target.value } : x)) })} />
-                      <select className="select select--sm" aria-label="What the zone is" value={z.purpose} onChange={(e) => set({ zones: cam.zones.map((x) => (x.id === z.id ? { ...x, purpose: e.target.value as ZonePurpose } : x)) })}>
-                        {z.kind === 'line' ? (
-                          (['line', 'deck-edge'] as ZonePurpose[]).map((p) => (
-                            <option key={p} value={p}>
-                              {PURPOSE_LABEL[p]}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <optgroup label="People and vehicles">
-                              {(['restricted', 'exclusion', 'walkway', 'work-area', 'vehicle-lane'] as ZonePurpose[]).map((p) => (
-                                <option key={p} value={p}>
-                                  {PURPOSE_LABEL[p]}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Fire and smoke">
-                              {FIRE_PURPOSES.map((p) => (
-                                <option key={p} value={p}>
-                                  {PURPOSE_LABEL[p]}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </>
-                        )}
-                      </select>
+                      <Choice
+                        small
+                        label="What the zone is"
+                        value={z.purpose}
+                        onChange={(purpose) => set({ zones: cam.zones.map((x) => (x.id === z.id ? { ...x, purpose } : x)) })}
+                        options={
+                          z.kind === 'line'
+                            ? (['line', 'deck-edge'] as ZonePurpose[]).map((p) => ({ value: p, label: PURPOSE_LABEL[p] }))
+                            : [
+                                ...(['restricted', 'exclusion', 'walkway', 'work-area', 'vehicle-lane'] as ZonePurpose[]).map((p) => ({ value: p, label: PURPOSE_LABEL[p], group: 'People and vehicles' })),
+                                ...FIRE_PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABEL[p], group: 'Fire and smoke' })),
+                              ]
+                        }
+                      />
                       <span className="meta">
                         {z.kind === 'line' ? 'Line' : `Area · ${z.points.length} corners`}
                         {usedBy(z.id).length > 0 && ` · used by ${usedBy(z.id).join(', ')}`}

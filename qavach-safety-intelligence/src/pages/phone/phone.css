@@ -25,17 +25,22 @@
 .pitem { display: flex; gap: 10px; align-items: center; background: var(--q-surface); border: 0; box-shadow: var(--q-shadow-card); border-radius: 0; padding: 12px 12px 12px 0; color: var(--q-ink); overflow: hidden; }
 .pitem:hover { color: var(--q-ink); background: #F1FBFE; }
 .pitem__bar { width: 4px; align-self: stretch; background: var(--q-faint); }
-.pitem--P1 .pitem__bar { background: var(--q-danger); }
-.pitem--P2 .pitem__bar { background: var(--q-chart-4); }
-.pitem--P3 .pitem__bar { background: var(--q-ai); }
+.pitem__thumb { flex: 0 0 76px; width: 76px; align-self: center; margin-left: -2px; }
+.pitem__thumb .camview { border-radius: 4px; }
+.pitem--P1 .pitem__bar { background: var(--q-p1); }
+.pitem--P2 .pitem__bar { background: var(--q-p2); }
+.pitem--P3 .pitem__bar { background: var(--q-p3); }
+.pitem--P4 .pitem__bar { background: var(--q-p4); }
 .pitem__top { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--q-muted); }
 .pitem__title { font-weight: 600; font-size: 14px; color: var(--q-ink); }
 
 .pbanner { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border-radius: 0; background: var(--q-ai-tint); box-shadow: var(--q-shadow-card); font-size: 13px; color: var(--q-ink); }
 .pbanner strong { font-size: 17px; line-height: 1.25; }
 .pbanner__p { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.pbanner--P1 { background: var(--q-danger); color: #fff; }
-.pbanner--P2 { background: var(--q-rising-bg); }
+.pbanner--P1 { background: var(--q-p1); color: #fff; }
+.pbanner--P2 { background: var(--q-p2); color: #fff; }
+.pbanner--P3 { background: var(--q-p3); color: #fff; }
+.pbanner--P4 { background: var(--q-p4); color: var(--q-p4-ink); }
 .pbanner__due { margin-top: 4px; font-weight: 600; }
 .pfacts { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; font-size: 13.5px; background: var(--q-surface); box-shadow: var(--q-shadow-card); border-radius: 0; padding: 14px 16px; }
 .pfacts dt { color: var(--q-muted); }
