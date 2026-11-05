@@ -194,7 +194,7 @@ export function WallBody({
       );
     return (
       <div key={key} className={cls} {...drop}>
-        <CameraView cam={cam} still={!animate} alert={alert} now={now} className="wtile__view" />
+        <CameraView cam={cam} still={!animate} alert={alert} photoOnAlert now={now} className="wtile__view" />
         <div className="wtile__top">
           {opts.reason === 'alert' && (
             <span className="wtile__tag wtile__tag--alert">

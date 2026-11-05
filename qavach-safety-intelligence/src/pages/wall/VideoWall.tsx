@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { AckDialog } from '../../components/AlertDialogs';
 import { Icon, Logo } from '../../components/Icon';
-import { CameraView, Empty, Modal, PriorityBadge, Seg, StateChip, Switch } from '../../components/ui';
+import { CameraView, Empty, Modal, PriorityBadge, Seg, StateChip, Switch, useConfirm } from '../../components/ui';
 import { AREAS, TEAMS } from '../../data/seed';
 import type { Alert, Camera, PinnedLayout, Wall } from '../../data/types';
 import { uid } from '../../lib/persist';
@@ -306,6 +306,7 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
   const walls = useWalls();
   const me = useMe();
   const nav = useNavigate();
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const team = TEAMS_BY_ID[draft.teamId];
   const slots = draft.pinnedShare === 0 ? 0 : LAYOUT_SLOTS[draft.pinnedLayout];
@@ -403,17 +404,19 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
           );
         })}
       </div>
+      {confirm.dialog}
       <div className="wedit__foot">
         {walls.length > 1 && (
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            onClick={() => {
-              if (!window.confirm(`Delete the wall “${saved.name}”?`)) return;
-              deleteWall(saved.id);
-              onDone();
-              nav('/wall');
-            }}
+            onClick={() =>
+              confirm.ask({ title: 'Delete this wall?', message: `“${saved.name}” is removed for everyone on its team.`, action: 'Delete wall' }, () => {
+                deleteWall(saved.id);
+                onDone();
+                nav('/wall');
+              })
+            }
           >
             <Icon name="trash" size={15} />
             Delete wall

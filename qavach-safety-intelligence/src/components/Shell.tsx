@@ -6,7 +6,7 @@ import { resetAll, useStore } from '../lib/persist';
 import { ago, hms, useNow } from '../lib/time';
 import { isAdmin, isOpen, sessionStore, toast, toastStore, useAlerts, useCameras, useMe, useRules, useSession, userName } from '../state/store';
 import { Icon, Logo, type IconName } from './Icon';
-import { CHANNEL, PriorityBadge } from './ui';
+import { CHANNEL, PriorityBadge, useConfirm } from './ui';
 import './Shell.css';
 
 /** The module's own screens. In Qavach they sit under Autonomous Safety, QAI, CCTV Analyzer. */
@@ -367,6 +367,7 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
   const me = useMe();
   const { live } = useSession();
   const nav = useNavigate();
+  const confirm = useConfirm();
   return (
     <>
       <div className="click-away" onClick={onClose} />
@@ -405,18 +406,23 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
           type="button"
           className="profile__item"
           role="menuitem"
-          onClick={() => {
-            if (!window.confirm('Reset the prototype? Cameras, zones, rules, walls and alerts go back to the sample data.')) return;
-            const keepUser = me.id;
-            resetAll();
-            sessionStore.set((s) => ({ ...s, userId: keepUser }));
-            onClose();
-            nav('/');
-          }}
+          onClick={() =>
+            confirm.ask(
+              { title: 'Reset the prototype?', message: 'Cameras, zones, rules, walls and alerts go back to the sample data.', action: 'Reset sample data' },
+              () => {
+                const keepUser = me.id;
+                resetAll();
+                sessionStore.set((s) => ({ ...s, userId: keepUser }));
+                onClose();
+                nav('/');
+              },
+            )
+          }
         >
           <Icon name="refresh" size={18} />
           Reset sample data
         </button>
+        {confirm.dialog}
       </div>
     </>
   );
