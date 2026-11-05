@@ -7,13 +7,13 @@ import type { Camera, SceneKind } from '../data/types';
 export const DEMO_PHOTOS = true;
 
 const POOL: Record<SceneKind, string[]> = {
-  quay: ['quay-pier', 'quay-sunset', 'quay-fog', 'deck-barge1'],
-  deck: ['deck-barge1', 'deck-barge2'],
-  yard: ['yard-day1', 'yard-day2', 'lot-day', 'yard-night1', 'yard-night2'],
-  reefer: ['lot-day', 'yard-day2', 'yard-night2'],
+  quay: ['quay-pier', 'quay-cranes', 'quay-sunset', 'quay-aerial', 'quay-fog', 'quay-colon', 'quay-bluecrane', 'deck-barge1'],
+  deck: ['deck-barge1', 'deck-support', 'deck-barge2'],
+  yard: ['yard-day1', 'yard-stacker', 'yard-day2', 'lot-day', 'yard-night1', 'yard-night2'],
+  reefer: ['lot-day', 'yard-stacker', 'yard-day2', 'yard-night2'],
   gate: ['gate-road', 'gate-road-night', 'gate-road'],
-  workshop: ['shed-left', 'shed-left-night'],
-  hazmat: ['shed-left-night', 'yard-night1', 'gate-road-night'],
+  workshop: ['warehouse-cctv', 'shed-left', 'shed-left-night'],
+  hazmat: ['warehouse-cctv', 'shed-left-night', 'yard-stacker', 'gate-road-night'],
   perimeter: ['yard-rain', 'yard-day1', 'gate-road', 'yard-night2'],
 };
 
