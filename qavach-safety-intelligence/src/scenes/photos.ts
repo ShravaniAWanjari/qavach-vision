@@ -7,14 +7,14 @@ import type { Camera, SceneKind } from '../data/types';
 export const DEMO_PHOTOS = true;
 
 const POOL: Record<SceneKind, string[]> = {
-  quay: ['quay-pier', 'quay-cranes', 'quay-sunset', 'quay-aerial', 'quay-fog', 'quay-colon', 'quay-bluecrane', 'deck-barge1'],
-  deck: ['deck-barge1', 'deck-support', 'deck-barge2'],
-  yard: ['yard-day1', 'yard-stacker', 'yard-day2', 'lot-day', 'yard-night1', 'yard-night2'],
-  reefer: ['lot-day', 'yard-stacker', 'yard-day2', 'yard-night2'],
-  gate: ['gate-road', 'gate-road-night', 'gate-road'],
+  quay: ['quay-pier', 'quay-cranes', 'quay-sunset', 'quay-aerial', 'quay-terminal', 'quay-fog', 'quay-colon', 'quay-night', 'quay-bluecrane', 'quay-cruise', 'quay-night2', 'deck-barge1'],
+  deck: ['deck-barge1', 'deck-support', 'deck-hull', 'deck-barge2', 'deck-collision'],
+  yard: ['yard-day1', 'yard-stacker', 'yard-aerial', 'yard-day2', 'lot-day', 'yard-night1', 'yard-night2'],
+  reefer: ['lot-day', 'yard-stacker', 'reefer-aerial', 'yard-day2', 'yard-night2'],
+  gate: ['gate-road', 'gate-road-night', 'yard-aerial'],
   workshop: ['warehouse-cctv', 'shed-left', 'shed-left-night'],
-  hazmat: ['warehouse-cctv', 'shed-left-night', 'yard-stacker', 'gate-road-night'],
-  perimeter: ['yard-rain', 'yard-day1', 'gate-road', 'yard-night2'],
+  hazmat: ['warehouse-cctv', 'deck-bow', 'shed-left-night', 'yard-stacker', 'gate-road-night'],
+  perimeter: ['perimeter-blast', 'yard-rain', 'yard-day1', 'gate-road', 'yard-night2'],
 };
 
 // Cameras of one area share a few pictures, so each camera shows its own part of the picture:
