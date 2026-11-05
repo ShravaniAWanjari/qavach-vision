@@ -6,6 +6,7 @@ import { AREAS } from '../../data/seed';
 import { isAdmin, useCameras, useMe, useRules } from '../../state/store';
 import { Onboarding } from '../Onboarding';
 import './cameras.css';
+import { demoPhoto } from '../../scenes/photos';
 
 export function Cameras() {
   const cams = useCameras();
@@ -85,7 +86,7 @@ export function Cameras() {
             <div className="camgrid">
               {items.map((c) => (
                 <Link key={c.id} to={`/cameras/${c.id}`} className="camcard">
-                  <CameraView cam={c} still zones={c.zones} caption={false} />
+                  <CameraView cam={c} still zones={demoPhoto(c) ? undefined : c.zones} caption={false} />
                   <div className="camcard__body">
                     <div className="row">
                       <span className={`dot dot--${c.status}`} title={c.status} />

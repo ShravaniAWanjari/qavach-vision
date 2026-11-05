@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Scene, SCENE_H, SCENE_W } from '../scenes/Scene';
+import { demoPhoto } from '../scenes/photos';
 import { ZONE_COLORS } from '../scenes/zones';
 import type { Alert, AlertState, Camera, Channel, Priority, Zone } from '../data/types';
 import { apiUrl, streamUrl, stillUrl } from '../lib/backend';
@@ -89,6 +90,44 @@ export function Modal({ title, onClose, children, footer, wide, icon }: { title:
       </div>
     </div>
   );
+}
+
+/**
+ * A yes/no question inside the page. The browser's own confirm() is blocked in embedded browsers and some
+ * kiosk setups, which made every delete button do nothing. `ask(...)` opens it, `dialog` goes in the JSX.
+ */
+export function useConfirm() {
+  const [q, setQ] = useState<{ title: string; message: string; action: string; danger: boolean; onYes: () => void } | null>(null);
+  const ask = (o: { title: string; message: string; action?: string; danger?: boolean }, onYes: () => void) =>
+    setQ({ action: 'Delete', danger: true, ...o, onYes });
+  const close = () => setQ(null);
+  const dialog = q && (
+    <Modal
+      title={q.title}
+      onClose={close}
+      footer={
+        <>
+          <button type="button" className="btn btn--secondary" onClick={close}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`btn ${q.danger ? 'btn--danger' : 'btn--primary'}`}
+            autoFocus
+            onClick={() => {
+              close();
+              q.onYes();
+            }}
+          >
+            {q.action}
+          </button>
+        </>
+      }
+    >
+      <p style={{ margin: 0 }}>{q.message}</p>
+    </Modal>
+  );
+  return { ask, dialog };
 }
 
 export function Drawer({ title, onClose, children, footer, wide, sub }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
@@ -245,6 +284,7 @@ export function CameraView({
   still,
   frozen,
   alert,
+  photoOnAlert,
   zones,
   highlightZones,
   showZoneLabels,
@@ -258,6 +298,8 @@ export function CameraView({
   /** Real cameras: keep the frame taken at connection (zone drawing) instead of following the camera. */
   frozen?: boolean;
   alert?: Alert;
+  /** Demo photos: keep the photo under an alert (video wall tiles) instead of the drawn scene that shows the subject. */
+  photoOnAlert?: boolean;
   zones?: Zone[];
   highlightZones?: string[];
   showZoneLabels?: boolean;
@@ -273,11 +315,14 @@ export function CameraView({
   const liveReal = !!cam.source && !still && !frozen && service.online;
   const snapshot = cam.source && !liveReal ? alert?.snapshot : undefined;
   const aspect = cam.source?.width && cam.source?.height ? cam.source.width / cam.source.height : undefined;
+  const photo = alert && !photoOnAlert ? undefined : demoPhoto(cam);
   const subjType = alert ? (alert.title.toLowerCase().includes('smoke') ? 'smoke' : alert.title.toLowerCase().includes('truck') || alert.title.toLowerCase().includes('vehicle') ? 'vehicle' : 'person') : undefined;
   return (
     <div className={`camview${className ? ` ${className}` : ''}`} style={aspect ? ({ '--ar': aspect } as CSSProperties) : undefined}>
       {cam.source ? (
         <RealPicture cam={cam} still={still} frozen={frozen} snapshot={snapshot} serviceUp={service.online} onMissing={setNoPicture} />
+      ) : photo ? (
+        <img className="camview__img" src={photo.src} style={photo.style} alt="" draggable={false} />
       ) : (
         <Scene
           kind={cam.scene}
@@ -288,7 +333,7 @@ export function CameraView({
           subject={alert && subjType ? { box: alert.box, type: subjType, noPpe: /helmet|vest|life jacket|ppe/i.test(alert.title + alert.detail) } : undefined}
         />
       )}
-      {((zones && zones.length > 0) || alert) && <ZoneOverlay zones={zones ?? []} highlight={highlightZones} box={liveReal || (cam.source && noPicture) ? undefined : alert} aspect={aspect} />}
+      {((zones && zones.length > 0) || alert) && <ZoneOverlay zones={zones ?? []} highlight={highlightZones} box={liveReal || (cam.source && noPicture) || (photo && photoOnAlert) ? undefined : alert} aspect={aspect} />}
       {zones && showZoneLabels && <ZoneLabels zones={zones} highlight={highlightZones} />}
       {caption && (
         <div className="camview__caption">

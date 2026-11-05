@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, CHANNEL, Modal, PRIORITY_NAME, PriorityBadge, QaiLabel, Seg } from '../../components/ui';
+import { CameraView, CHANNEL, Modal, PRIORITY_NAME, PriorityBadge, QaiLabel, Seg, useConfirm } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
@@ -29,6 +29,7 @@ export function RuleEditor() {
   const policies = usePolicies();
   const me = useMe();
   const nav = useNavigate();
+  const confirm = useConfirm();
   const admin = isAdmin(me);
   const existing = rules.find((r) => r.id === ruleId);
   const [rule, setRule] = useState<Rule>(
@@ -124,6 +125,7 @@ export function RuleEditor() {
           <h1>{existing ? rule.name : 'New rule'}</h1>
         </div>
       </div>
+      {confirm.dialog}
       <ReadOnlyNote>Only the safety admin creates and changes rules.</ReadOnlyNote>
 
       <fieldset className="plain" disabled={!admin}>
@@ -451,12 +453,13 @@ export function RuleEditor() {
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => {
-              if (!window.confirm(`Delete ${rule.id} “${rule.name}”?`)) return;
-              deleteRule(rule.id);
-              toast(`${rule.id} deleted`);
-              nav('/rules');
-            }}
+            onClick={() =>
+              confirm.ask({ title: `Delete ${rule.id}?`, message: `“${rule.name}” stops watching and its alerts are no longer raised.`, action: 'Delete rule' }, () => {
+                deleteRule(rule.id);
+                toast(`${rule.id} deleted`);
+                nav('/rules');
+              })
+            }
           >
             <Icon name="trash" size={16} />
             Delete

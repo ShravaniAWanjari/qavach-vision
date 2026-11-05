@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, Seg } from '../../components/ui';
+import { CameraView, Seg, useConfirm } from '../../components/ui';
 import { AREAS, camId } from '../../data/seed';
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
@@ -24,6 +24,7 @@ export function CameraEditor() {
   const walls = useWalls();
   const me = useMe();
   const nav = useNavigate();
+  const confirm = useConfirm();
   const existing = cams.find((c) => c.id === cameraId);
   const canEdit = isAdmin(me);
 
@@ -176,12 +177,13 @@ export function CameraEditor() {
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={() => {
-                if (!window.confirm(`Remove ${cam.id}? Its zones go too, and it comes off every rule and wall.`)) return;
-                removeCamera(cam.id);
-                toast(`${cam.id} removed`);
-                nav('/cameras');
-              }}
+              onClick={() =>
+                confirm.ask({ title: `Remove ${cam.id}?`, message: 'Its zones go too, and it comes off every rule and wall.', action: 'Remove camera' }, () => {
+                  removeCamera(cam.id);
+                  toast(`${cam.id} removed`);
+                  nav('/cameras');
+                })
+              }
             >
               <Icon name="trash" size={16} />
               Remove camera
@@ -190,6 +192,7 @@ export function CameraEditor() {
         </div>
       </div>
 
+      {confirm.dialog}
       <ReadOnlyNote>Only the safety admin adds cameras and draws zones.</ReadOnlyNote>
 
       <div className="tabs" role="tablist">
