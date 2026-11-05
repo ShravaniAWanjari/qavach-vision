@@ -59,7 +59,8 @@ const FLY: { label: string; icon: IconName }[] = [
 
 const INTEL_MENU = ['Geo-Location Tracker', 'Heat Map', 'Hotspot Evolution', 'Live Operations Map', 'CCTV Analyzer'];
 
-const notInDemo = (what: string) => toast(`${what} is part of Qavach but not of this demo.`);
+// Every menu entry that leads nowhere in this demo says the same thing, whichever one was clicked.
+const notInDemo = (_what: string) => toast('Other modules of Qavach');
 
 export function Shell() {
   const me = useMe();

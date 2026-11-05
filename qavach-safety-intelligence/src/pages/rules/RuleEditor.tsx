@@ -260,8 +260,10 @@ export function RuleEditor() {
                 <select id="r-cond" className="select" value={rule.condition} onChange={(e) => {
                     const condition = e.target.value as Condition;
                     // Fire and smoke is about neither a person nor a vehicle, and its areas are of a different kind.
-                    if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: [], minFrames: 4, fireClasses: 'both' }, 'condition');
-                    else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: [], minFrames: 3 }, 'condition');
+                    // On real cameras the rule starts with the areas drawn for its kind, as when the camera is chosen.
+                    const drawnFor = (fire: boolean) => realCams.flatMap((c) => c.zones.filter((z) => (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
+                    if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: drawnFor(true), minFrames: 4, fireClasses: 'both' }, 'condition');
+                    else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: drawnFor(false), minFrames: 3 }, 'condition');
                     else set({ condition }, 'condition');
                   }}>
                   {(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => (
@@ -452,7 +454,7 @@ export function RuleEditor() {
                   {rule.mode === 'test' && matches.length === 0 && <span className="meta">None yet. Matches from the real camera appear here as they happen.</span>}
                   {matches.slice(0, 6).map((m) => (
                     <a key={m.id} className="meta" href={apiUrl(m.snapshot)} target="_blank" rel="noreferrer">
-                      {hm(m.at)} · {m.cameraId} · {m.zoneName || 'whole view'} · {Math.round(m.confidence * 100)}% · {m.dwell.toFixed(1)} s
+                      {hm(m.at)} · {m.cameraId} · {m.hazard ? `${m.hazard === 'fire' ? 'Fire' : 'Smoke'} · ` : ''}{m.zoneName || 'whole view'} · {Math.round(m.confidence * 100)}%{m.hazard ? '' : ` · ${m.dwell.toFixed(1)} s`}
                     </a>
                   ))}
                 </div>

@@ -123,6 +123,11 @@ class CameraRunner:
         returns the shared Detector. emit: called with each alert event dict."""
         self.camera, self.rules, self.get_detector, self.emit = camera, rules, get_detector, emit
         self.get_fire_detector = get_fire_detector
+        # A video file restarts when it ends and a live stream restarts when it drops, with its clock back at zero. The
+        # fire and smoke rule keeps its state across those restarts (so "don't repeat for" means what it says), and
+        # `loop_offset` keeps the time it sees running forwards.
+        self.fire_cache = None           # (frame size, engines)
+        self.loop_offset = 0.0
         self.state = 'starting'          # starting | running | reconnecting | error | stopped
         self.error = None
         self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
@@ -193,9 +198,12 @@ class CameraRunner:
         fps = fps if 1 <= fps <= 120 else 25.0
         width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         engines = self._build_engines(width, height)
-        fire_engines = self._build_fire_engines(width, height)
+        if self.fire_cache is None or self.fire_cache[0] != (width, height):
+            self.fire_cache = ((width, height), self._build_fire_engines(width, height))
+        fire_engines = self.fire_cache[1]
         tracker = detector = region = fire_detector = None
         reader = None
+        last_seconds = 0.0
         try:
             if engines:
                 detector = self.get_detector()
@@ -212,6 +220,7 @@ class CameraRunner:
             done, busy, opened = 0, 0.0, time.time()
             for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines))):
                 tick = time.time()
+                last_seconds = seconds
                 rows, fires = self._process(frame, seconds, engines, tracker, detector, region, width, height, fire_engines, fire_detector)
                 done += 1
                 busy += time.time() - tick
@@ -220,6 +229,7 @@ class CameraRunner:
                 if reader:      # how fast the stream itself delivers, to tell a slow stream from a slow detector
                     self.stats['stream_fps'] = round(reader.count / max(time.time() - opened, 1e-6), 1)
         finally:
+            self.loop_offset += last_seconds + 1.0 / fps
             if reader:
                 reader.stop_flag.set()          # the reader releases the capture when its current read returns
             else:
@@ -291,7 +301,7 @@ class CameraRunner:
                 for event in events:
                     if event['type'] == 'alert':
                         self._alert(frame, rows, rule, event, width, height)
-        fires = self._process_fire(frame, seconds, fire_engines, fire_detector, width, height)
+        fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
         self._draw(frame, rows, flagged, inside, waiting - flagged, fires)
         return rows, fires
 

@@ -108,3 +108,15 @@ def test_active_now_follows_the_alert():
 def test_out_of_range_settings_are_refused(values):
     with pytest.raises(ValueError):
         FireRule.from_dict(values)
+
+
+def test_a_restarted_clock_does_not_defeat_repeat_suppression():
+    """An uploaded clip restarts at second 0 each loop. The runner adds the time already played, so the rule sees time
+    running forwards and 'don't repeat for' holds across loops."""
+    engine = FireEngine(FireRule(repeat_seconds=120, clear_seconds=1.0), [], [])
+    events, offset = [], 0.0
+    for loop in range(4):
+        for i in range(20):                              # a 2 s clip at 10 fps, fire in its first half
+            events += engine.update(offset + i / 10.0, [FIRE] if i < 10 else [])[1]
+        offset += 2.0
+    assert len(alerts(events)) == 1

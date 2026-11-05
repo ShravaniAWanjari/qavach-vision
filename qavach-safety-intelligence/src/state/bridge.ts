@@ -24,6 +24,8 @@ export interface TestMatch {
   confidence: number;
   dwell: number;
   snapshot: string;
+  /** Fire and smoke matches say which one was seen. */
+  hazard?: 'fire' | 'smoke';
 }
 export const matchStore = createStore<TestMatch[]>('testMatches', []);
 export const useMatches = () => useStore(matchStore);
@@ -34,7 +36,7 @@ function ingest(ev: BackendEvent) {
   if (!rule || !cam) return;
   if (alertStore.get().some((a) => a.eventId === ev.id) || matchStore.get().some((m) => m.id === ev.id)) return;
   if (rule.mode === 'test') {
-    matchStore.set((list) => [{ id: ev.id, ruleId: rule.id, cameraId: cam.id, zoneName: ev.zoneName, at: ev.at, confidence: ev.confidence, dwell: ev.dwell, snapshot: ev.snapshot }, ...list].slice(0, 100));
+    matchStore.set((list) => [{ id: ev.id, ruleId: rule.id, cameraId: cam.id, zoneName: ev.zoneName, at: ev.at, confidence: ev.confidence, dwell: ev.dwell, snapshot: ev.snapshot, hazard: ev.hazard }, ...list].slice(0, 100));
     return;
   }
   raiseFromEvent(ev, rule, cam);
