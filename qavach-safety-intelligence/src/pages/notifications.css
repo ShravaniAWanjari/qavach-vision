@@ -10,6 +10,6 @@
 .acfg__level--P4 { border-left-color: var(--q-p4); }
 .acfg__head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 15px; border-bottom: 1px solid #F3F3F3; }
 .acfg__head h2 { flex: 0 0 auto; }
-.acfg__fields { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; padding: 15px; }
+.acfg__fields { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; padding: 15px; }
 @media (max-width: 1800px) { .acfg__fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .acfg__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -347,10 +347,10 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
 }
 
 export const POLICIES: Policy[] = [
-  { priority: 'P1', label: 'Critical', channels: ['wall', 'push', 'sms', 'call'], notify: ['Shift supervisor', 'HSE manager'], ackWithinMin: 2, escalateTo: 'Terminal manager', remindEveryMin: 1, qavach: 'on-acknowledge', wallTakeover: true, sound: true },
-  { priority: 'P2', label: 'High', channels: ['wall', 'push', 'whatsapp'], notify: ['Shift supervisor'], ackWithinMin: 5, escalateTo: 'HSE manager', remindEveryMin: 2, qavach: 'on-acknowledge', wallTakeover: true, sound: false },
-  { priority: 'P3', label: 'Medium', channels: ['wall', 'push'], notify: ['Shift supervisor'], ackWithinMin: 15, escalateTo: 'HSE manager', remindEveryMin: 5, qavach: 'reviewer-decides', wallTakeover: false, sound: false },
-  { priority: 'P4', label: 'Low', channels: ['wall', 'email'], notify: ['Control room operator'], ackWithinMin: 60, escalateTo: 'none', remindEveryMin: 0, qavach: 'never', wallTakeover: false, sound: false },
+  { priority: 'P1', label: 'Critical', channels: ['wall', 'push', 'sms', 'call'], notify: ['Shift supervisor', 'HSE manager'], ackWithinMin: 2, escalateTo: 'Terminal manager', remindEveryMin: 1, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: true },
+  { priority: 'P2', label: 'High', channels: ['wall', 'push', 'whatsapp'], notify: ['Shift supervisor'], ackWithinMin: 5, escalateTo: 'HSE manager', remindEveryMin: 2, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: false },
+  { priority: 'P3', label: 'Medium', channels: ['wall', 'push'], notify: ['Shift supervisor'], ackWithinMin: 15, escalateTo: 'HSE manager', remindEveryMin: 5, remindMax: 3, qavach: 'reviewer-decides', wallTakeover: false, sound: false },
+  { priority: 'P4', label: 'Low', channels: ['wall', 'email'], notify: ['Control room operator'], ackWithinMin: 60, escalateTo: 'none', remindEveryMin: 0, remindMax: 3, qavach: 'never', wallTakeover: false, sound: false },
 ];
 
 const MIN = 60000;

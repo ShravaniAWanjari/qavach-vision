@@ -217,6 +217,8 @@ export interface Policy {
   ackWithinMin: number;
   escalateTo: Role | 'none';
   remindEveryMin: number;
+  /** How many reminders at most: up to 3 for P1, up to 5 for the other levels. Older saved settings have none: 3. */
+  remindMax?: number;
   /** When the Qavach record is raised. */
   qavach: 'on-acknowledge' | 'reviewer-decides' | 'never';
   wallTakeover: boolean;

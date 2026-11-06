@@ -208,17 +208,18 @@ function followUp(now: number) {
       continue;
     }
 
-    // Reminders to the people told first, three at most.
+    // Reminders to the people told first, as many as the level allows.
+    const most = p.remindMax ?? 3;
     if (p.remindEveryMin > 0) {
       const reminders = a.deliveries.filter((d) => d.reason === 'reminder');
       const sent = new Set(reminders.map((d) => d.at)).size;
       const last = Math.max(a.at, ...reminders.map((d) => d.at));
-      if (sent < 3 && now - last >= p.remindEveryMin * 60 * SEC) {
+      if (sent < most && now - last >= p.remindEveryMin * 60 * SEC) {
         const to = p.notify.flatMap((role) => peopleFor(role, cam));
         addDeliveries(
           a.id,
           to.map((u) => ({ at: now, to: u.id, channel: 'push' as const, status: 'delivered' as const, reason: 'reminder' as const })),
-          { at: now, actor: 'system', text: `Reminder ${sent + 1} of 3 sent to ${to.map((u) => u.name).join(', ')}` },
+          { at: now, actor: 'system', text: `Reminder ${sent + 1} of ${most} sent to ${to.map((u) => u.name).join(', ')}` },
         );
       }
     }

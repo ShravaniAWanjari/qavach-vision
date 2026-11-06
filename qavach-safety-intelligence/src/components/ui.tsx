@@ -363,6 +363,59 @@ export function MultiSelect<T extends string>({ id, label, options, value, onCha
   );
 }
 
+/** A whole number typed in, or stepped with − and +, inside the same 56px labelled box as the dropdowns. */
+export function NumberField({ id, label, value, onChange, min, max, unit, disabled }: { id: string; label: string; value: number; onChange: (v: number) => void; min: number; max: number; unit?: (v: number) => string; disabled?: boolean }) {
+  const [text, setText] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
+  const commit = (t: string) => {
+    const n = Number(t);
+    if (t.trim() !== '' && Number.isFinite(n)) onChange(clamp(n));
+    setEditing(false);
+  };
+  return (
+    <div className={`nfield${disabled ? ' is-disabled' : ''}`}>
+      <label htmlFor={id} className="nfield__label">
+        {label}
+      </label>
+      <div className="nfield__row">
+        <input
+          id={id}
+          className="nfield__input"
+          inputMode="numeric"
+          disabled={disabled}
+          value={editing ? text : String(value)}
+          size={Math.max(1, (editing ? text : String(value)).length)}
+          onFocus={() => {
+            setText(String(value));
+            setEditing(true);
+          }}
+          onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ''))}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              const n = clamp((Number(e.currentTarget.value) || value) + (e.key === 'ArrowUp' ? 1 : -1));
+              setText(String(n));
+              onChange(n);
+            }
+          }}
+        />
+        {unit && <span className="nfield__unit">{unit(editing ? Number(text) || 0 : value)}</span>}
+      </div>
+      <div className="nfield__step">
+        <button type="button" aria-label={`Decrease ${label}`} disabled={disabled || value <= min} onClick={() => onChange(clamp(value - 1))}>
+          −
+        </button>
+        <button type="button" aria-label={`Increase ${label}`} disabled={disabled || value >= max} onClick={() => onChange(clamp(value + 1))}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Seg<T extends string | number>({ options, value, onChange, small, label }: { options: { value: T; label: ReactNode; title?: string }[]; value: T; onChange: (v: T) => void; small?: boolean; label: string }) {
   return (
     <div className={`seg${small ? ' seg--sm' : ''}`} role="group" aria-label={label}>

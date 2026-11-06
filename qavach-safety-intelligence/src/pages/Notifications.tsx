@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ReadOnlyNote } from '../components/Shell';
-import { CHANNEL, Choice, MultiSelect, PRIORITY_NAME, PriorityBadge } from '../components/ui';
+import { CHANNEL, Choice, MultiSelect, NumberField, PRIORITY_NAME, PriorityBadge } from '../components/ui';
 import type { Channel, Policy, Role } from '../data/types';
 import { isAdmin, savePolicies, toast, useMe, usePolicies } from '../state/store';
 import './notifications.css';
@@ -84,12 +84,16 @@ export function Notifications() {
                   onChange={(escalateTo) => set(p, { escalateTo })}
                   options={[{ value: 'none' as Role | 'none', label: 'No one' }, ...ROLES.map((r) => ({ value: r as Role | 'none', label: r }))]}
                 />
-                <Choice
-                  id={id('rem')}
-                  label="Remind Every"
-                  value={p.remindEveryMin}
-                  onChange={(remindEveryMin) => set(p, { remindEveryMin })}
-                  options={[{ value: 0, label: 'No reminders' }, ...[1, 2, 5, 10].map((m) => ({ value: m, label: `${m} min, 3 at most` }))]}
+                <NumberField id={id('rem')} label="Remind Every" min={0} max={60} value={p.remindEveryMin} onChange={(remindEveryMin) => set(p, { remindEveryMin })} unit={(n) => (n === 0 ? 'off' : 'min')} />
+                <NumberField
+                  id={id('remmax')}
+                  label="At Most"
+                  min={1}
+                  max={p.priority === 'P1' ? 3 : 5}
+                  value={Math.min(p.remindMax ?? 3, p.priority === 'P1' ? 3 : 5)}
+                  onChange={(remindMax) => set(p, { remindMax })}
+                  unit={(n) => (n === 1 ? 'reminder' : 'reminders')}
+                  disabled={p.remindEveryMin === 0}
                 />
                 <MultiSelect
                   id={id('wall')}
