@@ -8,8 +8,8 @@ import { isOpen, toastStore, useAlerts, useCameras } from '../state/store';
 import { Icon, type IconName } from './Icon';
 import { PRIORITY_NAME } from './ui';
 
-/** How long a new alert's pop-up stays: P1 until someone deals with it, the others for a set time. */
-const STAY_MS: Record<Priority, number | null> = { P1: null, P2: 60_000, P3: 30_000, P4: 10_000 };
+/** How long a new alert's pop-up stays: P1 until it is closed, P2 for 10 seconds, P3 and P4 for 5. */
+const STAY_MS: Record<Priority, number | null> = { P1: null, P2: 10_000, P3: 5_000, P4: 5_000 };
 /** Other messages (an escalation, a phone acknowledgement, "saved") use the same stack for a shorter time. */
 const NOTE_MS = 8_000;
 const NOTE_ALERT_MS = 12_000;

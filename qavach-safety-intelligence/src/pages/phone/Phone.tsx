@@ -357,7 +357,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
           </div>
         ) : (
           alert.state === 'acknowledged' &&
-          (reporting ? (
+          (reporting && cam ? (
             <PhoneReport alert={alert} userId={userId} onDone={() => setReporting(false)} />
           ) : (
             <button type="button" className="pbtn" onClick={() => setReporting(true)}>

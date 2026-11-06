@@ -196,7 +196,13 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
   const cam = cams.find((c) => c.id === alert.cameraId);
   const rule = rules.find((r) => r.id === alert.ruleId);
   const policy = policies.find((p) => p.priority === alert.priority);
-  if (!cam) return null;
+  if (!cam)
+    return (
+      <div className="card" style={{ padding: 16 }}>
+        <strong>{alert.id} · {alert.title}</strong>
+        <p className="meta">Camera {alert.cameraId} has been removed, so there is no picture to show. The alert is kept as history.</p>
+      </div>
+    );
   const zoneNames = cam.zones.filter((z) => rule?.zoneIds.includes(z.id)).map((z) => z.name);
   const zoneName = cam.zones.find((z) => z.id === alert.zoneId)?.name ?? (zoneNames.length === 1 ? zoneNames[0] : undefined);
   const open = isOpen(alert);

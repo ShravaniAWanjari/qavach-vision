@@ -202,7 +202,16 @@ export function saveCamera(cam: Camera) {
   const isNew = !cameraStore.get().some((c) => c.id === cam.id);
   cameraStore.set((list) => (list.some((c) => c.id === cam.id) ? list.map((c) => (c.id === cam.id ? cam : c)) : [...list, cam]));
   if (cam.source) pushToService(`camera ${cam.id}`, () => backend.putCamera(cam));
-  if (!isNew) return;
+  if (!isNew) {
+    // A zone taken off the camera also leaves the rules that were using it.
+    const kept = new Set(cam.zones.map((z) => z.id));
+    const stale = (r: Rule) => r.zoneIds.some((z) => z.startsWith(`${cam.id}-`) && !kept.has(z));
+    if (ruleStore.get().some(stale)) {
+      ruleStore.set((list) => list.map((r) => (stale(r) ? { ...r, zoneIds: r.zoneIds.filter((z) => !z.startsWith(`${cam.id}-`) || kept.has(z)) } : r)));
+      if (cam.source) for (const r of ruleStore.get()) if (r.cameraIds.includes(cam.id)) pushToService(`rule ${r.id}`, () => backend.putRule(r));
+    }
+    return;
+  }
   // A new camera joins the walls and rules that already cover its work area, so it shows up everywhere at once.
   // A connected camera (one with a real stream) is left off rules until someone chooses, since a rule starts real detection on it.
   const place = placementFor(cam, cameraStore.get(), ruleStore.get(), wallStore.get());
@@ -217,6 +226,8 @@ export function removeCamera(id: string) {
   const real = cameraStore.get().find((c) => c.id === id)?.source;
   cameraStore.set((list) => list.filter((c) => c.id !== id));
   ruleStore.set((list) => list.map((r) => ({ ...r, cameraIds: r.cameraIds.filter((c) => c !== id), zoneIds: r.zoneIds.filter((z) => !z.startsWith(`${id}-`)) })));
+  // Nobody can act on an alert from a camera that is gone, so the ones still open are closed (kept as history).
+  for (const a of alertStore.get()) if (a.cameraId === id && a.state !== 'resolved' && a.state !== 'false-alarm') resolve(a.id, 'system', 'Camera was removed');
   wallStore.set((list) => list.map((w) => ({ ...w, pinned: w.pinned.map((p) => (p === id ? null : p)), rotation: w.rotation.filter((c) => c !== id) })));
   if (real) {
     removeFromService('cameras', id);
