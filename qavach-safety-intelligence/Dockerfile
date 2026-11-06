@@ -22,6 +22,7 @@ RUN apt-get update \
 
 # Two environments, as in the port-safety project: the service (detector) and the tracker worker (BoxMOT).
 # --extra-index-url gives the CPU build of torch (about 200 MB) instead of the CUDA one (about 2.5 GB).
+ENV PIP_DEFAULT_TIMEOUT=300 PIP_RETRIES=10
 COPY backend/requirements.txt backend/requirements-tracker.txt /tmp/
 RUN python -m venv /opt/service \
     && /opt/service/bin/pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements.txt \
