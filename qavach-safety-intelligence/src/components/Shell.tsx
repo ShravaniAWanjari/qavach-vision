@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useService } from '../state/bridge';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { SITE, USERS } from '../data/seed';
-import { resetAll, useStore } from '../lib/persist';
-import { isAdmin, isOpen, sessionStore, toast, toastStore, useAlerts, useMe, useSession } from '../state/store';
+import { resetAll } from '../lib/persist';
+import { AlertPopups } from './AlertPopups';
+import { isAdmin, isOpen, sessionStore, toast, useAlerts, useMe, useSession } from '../state/store';
 import { Icon, type IconName } from './Icon';
 import { useConfirm } from './ui';
 import './Shell.css';
@@ -95,7 +96,7 @@ export function Shell() {
 
       {profile && <ProfileMenu onClose={() => setProfile(false)} />}
       {bell && <NotificationsDrawer onClose={() => setBell(false)} />}
-      <Toasts />
+      <AlertPopups />
       <span className="sr-only">Signed in as {me.name}, {me.role}</span>
     </div>
   );
@@ -500,29 +501,6 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
         </div>
       </aside>
     </>
-  );
-}
-
-function Toasts() {
-  const toasts = useStore(toastStore);
-  const nav = useNavigate();
-  return (
-    <div className="toasts" aria-live="polite">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast${t.tone ? ` toast--${t.tone}` : ''}`}>
-          {t.tone === 'alert' && <Icon name="warning" size={18} />}
-          <span>{t.text}</span>
-          {t.link && (
-            <button type="button" className="toast__link" onClick={() => nav(t.link!)}>
-              Open
-            </button>
-          )}
-          <button type="button" className="toast__x" aria-label="Dismiss" onClick={() => toastStore.set((s) => s.filter((x) => x.id !== t.id))}>
-            <Icon name="close" size={15} />
-          </button>
-        </div>
-      ))}
-    </div>
   );
 }
 

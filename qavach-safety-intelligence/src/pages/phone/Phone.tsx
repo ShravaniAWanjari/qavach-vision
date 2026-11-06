@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Icon, Logo } from '../../components/Icon';
-import { CameraView, Choice, PRIORITY_NAME, StateChip } from '../../components/ui';
+import { Icon, Logo, type IconName } from '../../components/Icon';
+import { CameraView, Choice, PRIORITY_NAME, PriorityBadge, StateChip } from '../../components/ui';
 import { USERS } from '../../data/seed';
 import type { Alert, Classification, QavachRecordType } from '../../data/types';
 import { draftRecord } from '../../lib/qai';
@@ -13,15 +13,29 @@ import './phone.css';
 // they open it, acknowledge it, and report it into Qavach from the same page.
 
 const SUPERVISORS = USERS.filter((u) => u.role === 'Shift supervisor');
+type Page = 'home' | 'alerts' | 'reports' | 'menu';
+const PAGES: Page[] = ['home', 'alerts', 'reports', 'menu'];
+const TITLE: Record<Page, string> = { home: 'Dashboard', alerts: 'Alerts', reports: 'Raised in Qavach', menu: 'Features' };
+const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').slice(0, 2);
 
 export function Phone() {
   const { alertId } = useParams();
+  const nav = useNavigate();
   const { userId } = useSession();
   const [asId, setAsId] = useState(() => (SUPERVISORS.some((u) => u.id === userId) ? userId : SUPERVISORS[0].id));
+  const [who, setWho] = useState(false);
   const as = USERS.find((u) => u.id === asId)!;
+  const list = useMyAlerts(asId);
+  const page: Page | null = PAGES.includes(alertId as Page) ? (alertId as Page) : alertId ? null : 'home';
   useEffect(() => {
     document.title = 'Safety alerts · Qavach';
   }, []);
+  const open = list.filter(isOpen).length;
+  const go = (p: Page) => nav(p === 'home' ? '/m' : `/m/${p}`);
+  const switchTo = (id: string) => {
+    setAsId(id);
+    setWho(false);
+  };
   return (
     <div className="phonepage">
       <div className="phonepage__side">
@@ -37,7 +51,57 @@ export function Phone() {
           <Icon name="wifi" size={14} />
           <span>5G</span>
         </div>
-        {alertId ? <PhoneAlert id={alertId} userId={as.id} /> : <PhoneList userId={as.id} />}
+        <header className="phone__head">
+          {page ? (
+            <img src="/brand/logo-mark.png" alt="" className="phone__logo" />
+          ) : (
+            <button type="button" className="phone__icon" onClick={() => nav('/m/alerts')} aria-label="Back to alerts">
+              <Icon name="chevron-left" size={26} stroke={2} />
+            </button>
+          )}
+          <h1>{page ? TITLE[page] : alertId}</h1>
+          <button type="button" className="phone__icon phone__bell" onClick={() => go('alerts')} aria-label={`${open} open alerts`}>
+            <Icon name="bell" size={28} stroke={1.6} />
+            {open > 0 && <span className="phone__badge">{open}</span>}
+          </button>
+          <button type="button" className="phone__icon" onClick={() => setWho(!who)} aria-label="Switch person" aria-expanded={who}>
+            <Icon name="user" size={28} stroke={1.6} />
+          </button>
+        </header>
+        {who && (
+          <div className="phone__who" role="menu">
+            <span className="phone__whohead">Viewing as</span>
+            {SUPERVISORS.map((u) => (
+              <button key={u.id} type="button" role="menuitemradio" aria-checked={u.id === asId} onClick={() => switchTo(u.id)}>
+                <span className="phone__avatar">{initials(u.name)}</span>
+                <span className="stack" style={{ gap: 0 }}>
+                  <strong>{u.name}</strong>
+                  <span>{TEAMS_BY_ID[u.teamId]?.name}</span>
+                </span>
+                {u.id === asId && <Icon name="check" size={20} stroke={2.4} />}
+              </button>
+            ))}
+          </div>
+        )}
+        {page === 'home' && <PhoneHome as={as} list={list} go={go} />}
+        {page === 'alerts' && <PhoneList list={list} />}
+        {page === 'reports' && <PhoneReports list={list} />}
+        {page === 'menu' && <PhoneMenu go={go} />}
+        {!page && <PhoneAlert id={alertId!} userId={as.id} />}
+        <nav className="phone__nav" aria-label="Phone">
+          {(
+            [
+              ['home', 'home', 'Home'],
+              ['alerts', 'warning', 'Alerts'],
+              ['reports', 'shield', 'Raised in Qavach'],
+              ['menu', 'menu', 'Menu'],
+            ] as const
+          ).map(([p, icon, label]) => (
+            <button key={p} type="button" aria-label={label} aria-current={page === p ? 'page' : undefined} className={page === p || (!page && p === 'alerts') ? 'is-on' : ''} onClick={() => go(p)}>
+              <Icon name={icon} size={30} stroke={1.6} />
+            </button>
+          ))}
+        </nav>
       </div>
     </div>
   );
@@ -65,19 +129,81 @@ function useMyAlerts(userId: string) {
   }, [alerts, cams, userId, areas]);
 }
 
-function PhoneList({ userId }: { userId: string }) {
-  const list = useMyAlerts(userId);
+/** One alert as a dark rounded card: level, title, where, when and its state. */
+function AlertCard({ a }: { a: Alert }) {
   const cams = useCameras();
   const now = useNow(5000);
+  const cam = cams.find((c) => c.id === a.cameraId);
+  return (
+    <Link to={`/m/${a.id}`} className="pcard pitem">
+      {cam && (
+        <span className="pitem__thumb">
+          <CameraView cam={cam} still alert={a} caption={false} />
+        </span>
+      )}
+      <span className="stack" style={{ gap: 3, minWidth: 0, flex: 1 }}>
+        <span className="pitem__top">
+          <PriorityBadge p={a.priority} short />
+          <span className="pitem__time">{ago(a.at, now)}</span>
+        </span>
+        <span className="pitem__title">{a.title}</span>
+        <span className="pitem__where">
+          {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+        </span>
+        <span className="pitem__state">
+          <StateChip state={a.state} />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+function PhoneHome({ as, list, go }: { as: (typeof USERS)[number]; list: Alert[]; go: (p: Page) => void }) {
+  const open = list.filter(isOpen);
+  const needs = list.filter((a) => isOpen(a) || (a.state === 'acknowledged' && !a.qavach));
+  return (
+    <div className="phone__scroll">
+      <div className="phone__tiles">
+        <div className="pcard ptile">
+          <span className="phone__avatar phone__avatar--lg">{initials(as.name)}</span>
+          <strong>{as.name}</strong>
+          <span className="ptile__sub">{as.role}</span>
+          <span className="ptile__faint">{TEAMS_BY_ID[as.teamId]?.name}</span>
+        </div>
+        <button type="button" className="pcard ptile ptile--btn" onClick={() => go('alerts')}>
+          <span className="ptile__label">Open alerts</span>
+          <span className="ptile__big">{open.length}</span>
+          <span className="ptile__sub">{needs.length} need you</span>
+        </button>
+      </div>
+      <div className="pcard plevels">
+        {(['P1', 'P2', 'P3', 'P4'] as const).map((p) => (
+          <div key={p} className="plevels__row">
+            <span className={`plevels__swatch plevels__swatch--${p}`}>{p}</span>
+            <span>{PRIORITY_NAME[p]}</span>
+            <strong>{open.filter((a) => a.priority === p).length}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="phone__section">
+        <h2>Latest alerts</h2>
+        <button type="button" onClick={() => go('alerts')}>
+          See All
+        </button>
+      </div>
+      {list.slice(0, 3).map((a) => (
+        <AlertCard key={a.id} a={a} />
+      ))}
+      {list.length === 0 && <p className="phone__empty">Nothing needs you right now.</p>}
+    </div>
+  );
+}
+
+function PhoneList({ list }: { list: Alert[] }) {
   const [tab, setTab] = useState<'open' | 'all'>('open');
   const shown = list.filter((a) => (tab === 'open' ? isOpen(a) || (a.state === 'acknowledged' && !a.qavach) : true));
   return (
     <>
-      <div className="phone__bar">
-        <strong>Safety alerts</strong>
-        <span className="spacer" />
-        <span className="phone__count">{list.filter(isOpen).length} open</span>
-      </div>
       <div className="phone__tabs">
         <button type="button" aria-pressed={tab === 'open'} onClick={() => setTab('open')}>
           Needs you
@@ -88,34 +214,54 @@ function PhoneList({ userId }: { userId: string }) {
       </div>
       <div className="phone__scroll">
         {shown.length === 0 && <p className="phone__empty">Nothing needs you right now.</p>}
-        {shown.map((a) => {
-          const cam = cams.find((c) => c.id === a.cameraId);
-          return (
-            <Link key={a.id} to={`/m/${a.id}`} className={`pitem pitem--${a.priority}`}>
-              <span className="pitem__bar" />
-              {cam && (
-                <span className="pitem__thumb">
-                  <CameraView cam={cam} still alert={a} caption={false} />
-                </span>
-              )}
-              <span className="stack" style={{ gap: 2, minWidth: 0, flex: 1 }}>
-                <span className="pitem__top">
-                  <strong>
-                    {a.priority} · {PRIORITY_NAME[a.priority]}
-                  </strong>
-                  <span className="meta">{ago(a.at, now)}</span>
-                </span>
-                <span className="pitem__title">{a.title}</span>
-                <span className="meta ellipsis">
-                  {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
-                </span>
-              </span>
-              <StateChip state={a.state} />
-            </Link>
-          );
-        })}
+        {shown.map((a) => (
+          <AlertCard key={a.id} a={a} />
+        ))}
       </div>
     </>
+  );
+}
+
+function PhoneReports({ list }: { list: Alert[] }) {
+  const now = useNow(5000);
+  const done = list.filter((a) => a.qavach);
+  return (
+    <div className="phone__scroll">
+      {done.length === 0 && <p className="phone__empty">Nothing raised in Qavach yet.</p>}
+      {done.map((a) => (
+        <Link key={a.id} to={`/m/${a.id}`} className="pcard preportrow">
+          <span className="preportrow__type">
+            <Icon name="shield" size={16} />
+            {a.qavach!.type}
+          </span>
+          <strong>
+            {a.qavach!.ref} · {a.qavach!.title}
+          </strong>
+          <span className="pitem__where">
+            {a.qavach!.severity} · {a.qavach!.classification} · {ago(a.qavach!.at, now)}
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function PhoneMenu({ go }: { go: (p: Page) => void }) {
+  const rows: [Page, IconName, string][] = [
+    ['home', 'home', 'Home'],
+    ['alerts', 'warning', 'Alerts'],
+    ['reports', 'shield', 'Raised in Qavach'],
+  ];
+  return (
+    <div className="phone__scroll phone__scroll--menu">
+      {rows.map(([p, icon, label]) => (
+        <button key={p} type="button" className="pmenu" onClick={() => go(p)}>
+          <Icon name={icon} size={30} stroke={1.5} />
+          <span>{label}</span>
+          <Icon name="chevron-right" size={22} stroke={2} />
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -124,7 +270,6 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
   const cams = useCameras();
   const rules = useRules();
   const policies = usePolicies();
-  const nav = useNavigate();
   const now = useNow(1000);
   const alert = alerts.find((a) => a.id === id);
   const cam = cams.find((c) => c.id === alert?.cameraId);
@@ -136,7 +281,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
     return (
       <div className="phone__scroll">
         <p className="phone__empty">
-          Alert not found. <Link to="/m">Back</Link>
+          Alert not found. <Link to="/m/alerts">Back to alerts</Link>
         </p>
       </div>
     );
@@ -146,14 +291,6 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
 
   return (
     <>
-      <div className="phone__bar">
-        <button type="button" className="phone__back" onClick={() => nav('/m')} aria-label="Back to alerts">
-          <Icon name="chevron-left" size={22} />
-        </button>
-        <strong>{alert.id}</strong>
-        <span className="spacer" />
-        <StateChip state={alert.state} />
-      </div>
       <div className="phone__scroll">
         <div className={`pbanner pbanner--${alert.priority}`}>
           <span className="pbanner__p">

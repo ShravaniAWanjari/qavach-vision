@@ -84,3 +84,10 @@
 .wtile__prio--P2 { background: var(--q-p2); box-shadow: 0 0 0 1px rgba(255, 255, 255, .7), 0 2px 8px rgba(0, 0, 0, .35); }
 .wtile__prio--P3 { background: var(--q-p3); }
 .wtile__prio--P4 { background: var(--q-p4); color: var(--q-p4-ink); }
+
+/* Cast to display: the fourth header button, with a small menu under it. */
+.castmenu { position: relative; }
+.castmenu__menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 600; min-width: 220px; padding: 8px 0; background: var(--q-surface); border-radius: var(--q-r); box-shadow: var(--q-shadow-pop); }
+.castmenu__menu button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--q-ink); text-align: left; cursor: pointer; }
+.castmenu__menu button:hover { background: var(--q-canvas); }
+.castmenu__menu svg { color: var(--q-p3); }

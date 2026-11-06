@@ -1,15 +1,8 @@
-/* Alert configuration: one compact card per alert level, every setting a 56px Qavach field in one row */
-.acfg__bar { display: flex; align-items: center; gap: 16px; min-height: 56px; margin: 2px 0 12px; }
-.acfg__bar .listing-tag { margin: 0; flex: 1; min-width: 0; }
+/* Alert Configuration side panel: one block per alert level, its settings two to a row. */
 .acfg__dirty { font-size: 14px; font-weight: 600; color: var(--q-rising); }
-.acfg { display: flex; flex-direction: column; gap: 12px; }
-.acfg__level { border-left: 4px solid var(--q-border-strong); }
-.acfg__level--P1 { border-left-color: var(--q-p1); }
-.acfg__level--P2 { border-left-color: var(--q-p2); }
-.acfg__level--P3 { border-left-color: var(--q-p3); }
-.acfg__level--P4 { border-left-color: var(--q-p4); }
-.acfg__head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 15px; border-bottom: 1px solid #F3F3F3; }
-.acfg__head h2 { flex: 0 0 auto; }
-.acfg__fields { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; padding: 15px; }
-@media (max-width: 1800px) { .acfg__fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 900px) { .acfg__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.acpanel { padding-top: 8px; }
+.acpanel__level + .acpanel__level { margin-top: 20px; }
+.acpanel__head { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid #F3F3F3; }
+.acpanel__head h2 { font-size: 16px; font-weight: 700; color: #212529; }
+.acpanel__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px 0 0; }
+@media (max-width: 600px) { .acpanel__fields { grid-template-columns: 1fr; } }

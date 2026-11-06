@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { AckDialog } from '../../components/AlertDialogs';
 import { Icon, Logo } from '../../components/Icon';
@@ -119,6 +119,7 @@ export function VideoWall() {
           </button>
         </div>
         <div className="page__actions">
+          <CastMenu />
           {!draft && (
             <button type="button" className="btn btn--secondary btn--icon" onClick={() => setDraft(saved)} title="Choose cameras" aria-label="Choose cameras">
               <Icon name="camera-plus" size={22} />
@@ -279,11 +280,11 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
           <input id="wall-name" className="input input--sm" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         </div>
         <div className="field">
-          <label htmlFor="wall-team">Team that watches it</label>
+          <label htmlFor="wall-team">Assigned Team</label>
           <Choice
             id="wall-team"
             small
-            label="Team that watches it"
+            label="Assigned Team"
             value={draft.teamId}
             disabled={!isAdmin(me)}
             onChange={(teamId) => {
@@ -488,6 +489,38 @@ export function WallScreen() {
         }}
         height="calc(100vh - 44px)"
       />
+    </div>
+  );
+}
+
+/** The Cast to display button: its menu lists what can be done with it; for now one option, Cast to display. */
+function CastMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div className="castmenu" ref={ref}>
+      <button type="button" className={`btn btn--secondary btn--icon${open ? ' is-on' : ''}`} onClick={() => setOpen(!open)} title="Cast to display" aria-label="Cast to display" aria-haspopup="menu" aria-expanded={open}>
+        <Icon name="cast" size={22} />
+      </button>
+      {open && (
+        <div className="castmenu__menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => setOpen(false)}>
+            <Icon name="cast" size={20} />
+            Cast to display
+          </button>
+        </div>
+      )}
     </div>
   );
 }

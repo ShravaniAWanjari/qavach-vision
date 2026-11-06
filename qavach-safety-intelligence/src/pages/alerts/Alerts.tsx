@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { AckDialog, EscalateDialog, NoteDialog, RaiseDialog } from '../../components/AlertDialogs';
 import { Icon } from '../../components/Icon';
 import { QavachReportsLink } from '../../components/QavachReports';
+import { AlertConfigPanel } from '../Notifications';
 import { CameraView, CHANNEL, Choice, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Alert, Priority } from '../../data/types';
@@ -16,7 +17,7 @@ type Tab = 'open' | 'acknowledged' | 'closed' | 'all';
 const inTab = (a: Alert, t: Tab) =>
   t === 'all' ? true : t === 'open' ? isOpen(a) : t === 'acknowledged' ? a.state === 'acknowledged' : a.state === 'resolved' || a.state === 'false-alarm';
 
-export function Alerts() {
+export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
   const { alertId } = useParams();
   const nav = useNavigate();
   const alerts = useAlerts();
@@ -27,6 +28,7 @@ export function Alerts() {
   const [area, setArea] = useState('all');
   const [q, setQ] = useState('');
   const [settings, setSettings] = useState(false);
+  const [config, setConfig] = useState(startConfig);
   // Opened from a camera (its badge on the video wall): only that camera's alerts, kept while you click through them.
   const [params] = useSearchParams();
   const onlyCam = params.get('camera') ?? '';
@@ -102,6 +104,15 @@ export function Alerts() {
         </button>
       </div>
 
+      {config && (
+        <AlertConfigPanel
+          onClose={() => {
+            setConfig(false);
+            if (startConfig) nav('/alerts', { replace: true });
+          }}
+        />
+      )}
+
       {settings && (
         <>
           <div className="qset-scrim" onClick={() => setSettings(false)} />
@@ -109,7 +120,10 @@ export function Alerts() {
             <strong className="qset__title">Settings</strong>
             <div className="qset__body">
               <div className="qset__sub">Alerts</div>
-              <button type="button" className="qset__item" onClick={() => nav('/notifications')}>
+              <button type="button" className="qset__item" onClick={() => {
+                setSettings(false);
+                setConfig(true);
+              }}>
                 Configure alerts
                 <Icon name="chevron-right" size={16} stroke={2} />
               </button>

@@ -7,7 +7,6 @@ import { Cameras } from './pages/cameras/Cameras';
 import { CameraEditor } from './pages/cameras/CameraEditor';
 import { Rules } from './pages/rules/Rules';
 import { RuleEditor } from './pages/rules/RuleEditor';
-import { Notifications } from './pages/Notifications';
 import { Phone } from './pages/phone/Phone';
 import { useBackendBridge } from './state/bridge';
 import { useEngine } from './state/engine';
@@ -37,7 +36,7 @@ const router = createHashRouter([
           { path: '/rules', element: <Rules /> },
           { path: '/rules/new', element: <Rules key="new" startNew /> },
           { path: '/rules/:ruleId', element: <RuleEditor /> },
-          { path: '/notifications', element: <Notifications /> },
+          { path: '/notifications', element: <Alerts key="config" startConfig /> },
         ],
       },
       { path: '/screen/:wallId', element: <WallScreen /> },

@@ -106,7 +106,8 @@ function Arrow() {
  * Pick one option. `clearTo` adds Qavach's × for filters: it puts the field back to that value (usually "all").
  * `small` is the 40px box for toolbars and tight panels; it has no label inside, so pass the label for screen readers.
  */
-export function Choice<T extends string | number>({ id, label, options, value, onChange, disabled, small, className, prefix, clearTo }: { id?: string; label: string; options: ChoiceOption<T>[]; value: T; onChange: (v: T) => void; disabled?: boolean; small?: boolean; className?: string; prefix?: string; clearTo?: T }) {
+/** `icon` is shown only when a stylesheet collapses the box to the icon (a cramped toolbar); see .msel--collapsible. */
+export function Choice<T extends string | number>({ id, label, options, value, onChange, disabled, small, className, prefix, clearTo, icon }: { id?: string; label: string; options: ChoiceOption<T>[]; value: T; onChange: (v: T) => void; disabled?: boolean; small?: boolean; className?: string; prefix?: string; clearTo?: T; icon?: IconName }) {
   const { open, setOpen, ref, place } = useDropdown();
   const input = useRef<HTMLInputElement>(null);
   const current = options.find((o) => o.value === value);
@@ -137,6 +138,11 @@ export function Choice<T extends string | number>({ id, label, options, value, o
           input.current?.focus();
         }}
       >
+        {icon && (
+          <span className="msel__icon" aria-hidden="true">
+            <Icon name={icon} size={26} stroke={1.6} />
+          </span>
+        )}
         {!small && (
           <label className="msel__label" htmlFor={id}>
             {label}
@@ -359,6 +365,47 @@ export function MultiSelect<T extends string>({ id, label, options, value, onCha
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A rounded white track with a coloured pill that slides to the chosen option, for picking a time period. */
+export function PillTabs<T extends string>({ options, value, onChange, label }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; label: string }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<{ left: number; width: number }>();
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const place = () => {
+      const on = track.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (on) setPill({ left: on.offsetLeft, width: on.offsetWidth });
+    };
+    place();
+    // Re-place the pill when the track or its buttons change size, not only when the window does.
+    const watch = new ResizeObserver(place);
+    if (track.current) watch.observe(track.current);
+    track.current?.querySelectorAll('button').forEach((b) => watch.observe(b));
+    // The first placement must not slide in from the left.
+    const t = window.setTimeout(() => setReady(true), 50);
+    return () => {
+      watch.disconnect();
+      window.clearTimeout(t);
+    };
+  }, [value, options.length]);
+  const move = (e: ReactKeyboardEvent, i: number) => {
+    const to = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : -1;
+    if (to < 0 || to >= options.length) return;
+    e.preventDefault();
+    onChange(options[to].value);
+    (track.current?.querySelectorAll('button')[to] as HTMLElement | undefined)?.focus();
+  };
+  return (
+    <div className="pilltabs" role="group" aria-label={label} ref={track}>
+      {pill && <span className={`pilltabs__pill${ready ? ' is-ready' : ''}`} style={{ transform: `translateX(${pill.left}px)`, width: pill.width }} aria-hidden="true" />}
+      {options.map((o, i) => (
+        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)} onKeyDown={(e) => move(e, i)}>
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -101,8 +101,6 @@ button.bar__result:hover { background: var(--q-canvas); }
 .notif__item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 0; background: none; border-radius: var(--q-r-sm); text-align: left; font-size: 14px; }
 .notif__item:hover { background: var(--q-canvas); }
 
-.toast__link { border: 0; background: rgba(255, 255, 255, .16); color: #fff; font-weight: 700; border-radius: 4px; padding: 3px 9px; font-size: 12.5px; }
-.toast__x { border: 0; background: none; color: #fff; opacity: .7; padding: 2px; display: inline-flex; }
 
 .readonly { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; background: var(--q-warn-bg); color: var(--q-ink-2); border-radius: var(--q-r); margin-bottom: 16px; font-size: 14px; }
 .readonly svg { color: var(--q-warn); margin-top: 1px; }

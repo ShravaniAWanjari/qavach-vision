@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
 import { QavachReportsDrawer } from '../components/QavachReports';
-import { Choice, PriorityBadge, Seg, StateChip } from '../components/ui';
+import { DateRangePicker, fmtShort, startOfDay } from '../components/DateRange';
+import { Choice, PillTabs, PriorityBadge, StateChip } from '../components/ui';
 import { AREAS, SITE } from '../data/seed';
 import type { Alert, Priority, QavachRecordType } from '../data/types';
 import { healthReason } from '../lib/health';
@@ -12,7 +13,7 @@ import { ago, hm, useNow } from '../lib/time';
 import { AREAS_BY_ID, isOpen, toast, useAlerts, useCameras, useRules } from '../state/store';
 import './overview.css';
 
-type Range = 'shift' | '24h' | '7d' | '30d';
+type Range = 'shift' | '24h' | '7d' | '30d' | 'custom';
 type ExportKind = 'pdf' | 'image' | 'excel';
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -21,6 +22,7 @@ const RANGES: { value: Range; label: string; title: string }[] = [
   { value: '24h', label: 'Last 24 h', title: 'last 24 h' },
   { value: '7d', label: '7 days', title: 'last 7 days' },
   { value: '30d', label: '30 days', title: 'last 30 days' },
+  { value: 'custom', label: 'Custom', title: 'chosen dates' },
 ];
 const LEVELS: Priority[] = ['P1', 'P2', 'P3', 'P4'];
 const LEVEL_COLOR: Record<Priority, string> = { P1: 'var(--q-p1)', P2: 'var(--q-p2)', P3: 'var(--q-p3)', P4: 'var(--q-p4)' };
@@ -31,7 +33,8 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const since = (ts: number, now: number) => ago(ts, now).replace(' ago', '');
 
 /** When the period starts. Shifts change at 06:00 and 18:00. */
-function rangeStart(r: Range, now: number): number {
+function rangeStart(r: Range, now: number, custom?: { from: number; to: number }): number {
+  if (r === 'custom' && custom) return custom.from;
   if (r === 'shift') {
     const d = new Date(now);
     d.setMinutes(0, 0, 0);
@@ -42,8 +45,8 @@ function rangeStart(r: Range, now: number): number {
 }
 
 /** Alert counts per hour (shift, 24 h) or per day (7 and 30 days), oldest first. */
-function buckets(list: Alert[], r: Range, start: number, now: number) {
-  const step = r === '7d' || r === '30d' ? DAY : HOUR;
+function buckets(list: Alert[], start: number, now: number) {
+  const step = now - start > 2 * DAY ? DAY : HOUR;
   const n = Math.max(1, Math.ceil((now - start) / step));
   const counts = Array.from({ length: n }, (_, i) => ({ at: start + i * step, n: 0 }));
   for (const a of list) counts[Math.min(n - 1, Math.floor((a.at - start) / step))].n++;
@@ -59,20 +62,26 @@ export function Overview() {
   const now = useNow(5000);
   const nav = useNavigate();
   const [range, setRange] = useState<Range>('24h');
+  const [custom, setCustom] = useState<{ from: number; to: number }>();
+  const [picking, setPicking] = useState(false); // whether the calendar is open
   const [reports, setReports] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
 
-  const period = RANGES.find((r) => r.value === range)!;
-  const inPeriod = range === 'shift' ? 'this shift' : `in the ${period.title}`;
-  const start = rangeStart(range, now);
-  const span = now - start;
-  const inRange = alerts.filter((a) => a.at >= start && a.at <= now);
+  const dates = custom ? (custom.from === custom.to ? fmtShort(custom.from) : `${fmtShort(custom.from)} to ${fmtShort(custom.to)}`) : '';
+  const base = RANGES.find((r) => r.value === range)!;
+  const period = range === 'custom' && custom ? { ...base, label: dates, title: dates } : base;
+  const inPeriod = range === 'shift' ? 'this shift' : range === 'custom' ? `from ${dates}` : `in the ${period.title}`;
+  const start = rangeStart(range, now, custom);
+  // Chosen dates run to the end of the last day, or to now when that day is today.
+  const end = range === 'custom' && custom ? Math.min(now, custom.to + DAY - 1) : now;
+  const span = end - start;
+  const inRange = alerts.filter((a) => a.at >= start && a.at <= end);
   const before = alerts.filter((a) => a.at >= start - span && a.at < start).length;
   const camById = new Map(cams.map((c) => [c.id, c]));
   const open = alerts.filter(isOpen).sort((a, b) => (a.priority === b.priority ? b.at - a.at : a.priority.localeCompare(b.priority)));
   const escalated = open.filter((a) => a.state === 'escalated').length;
   const oldest = open.reduce((m, a) => Math.min(m, a.at), now);
-  const { counts, hourly } = buckets(inRange, range, start, now);
+  const { counts, hourly } = buckets(inRange, start, end);
   const busiest = counts.reduce((m, b) => (b.n > m.n ? b : m), counts[0]);
 
   const live = cams.filter((c) => c.status === 'online').length;
@@ -80,7 +89,7 @@ export function Overview() {
   const offline = cams.filter((c) => c.status === 'offline').length;
   const faulty = cams.filter((c) => c.status !== 'online').sort((a, b) => (a.status === b.status ? a.id.localeCompare(b.id) : a.status === 'offline' ? -1 : 1));
 
-  const raised = alerts.filter((a) => a.qavach && a.qavach.at >= start);
+  const raised = alerts.filter((a) => a.qavach && a.qavach.at >= start && a.qavach.at <= end);
   const raisedBefore = alerts.filter((a) => a.qavach && a.qavach.at >= start - span && a.qavach.at < start).length;
   const byType = (['Incident', 'Near miss', 'Observation'] as QavachRecordType[]).map((t) => ({ t, n: raised.filter((a) => a.qavach!.type === t).length }));
 
@@ -170,9 +179,61 @@ export function Overview() {
 
   return (
     <div className="page page--wide">
-      <div className="ovbar">
-        <Choice id="ov-site" label="Terminal" className="ovbar__site" value={SITE.name} onChange={() => {}} options={[{ value: SITE.name, label: `${SITE.name} · ${cams.length} cameras` }]} />
-        <Seg label="Period" value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r.value, label: r.label }))} />
+      <div className={`ovbar${range === 'custom' ? ' ovbar--custom' : ''}`}>
+        <Choice id="ov-site" label="Terminal" icon="location" className="ovbar__site" value={SITE.name} onChange={() => {}} options={[{ value: SITE.name, label: `${SITE.name} · ${cams.length} cameras` }]} />
+        <div className="ovperiod">
+          <PillTabs
+            label="Period"
+            value={range}
+            onChange={(r) => {
+              if (r === 'custom') {
+                // Custom starts on today, like the field in the reference; the calendar opens to change it.
+                if (!custom) setCustom({ from: startOfDay(now), to: startOfDay(now) });
+                setRange('custom');
+                setPicking(true);
+              } else {
+                setPicking(false);
+                setRange(r);
+              }
+            }}
+            options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
+          />
+          {range === 'custom' && custom && (
+            <button type="button" className="dfield" aria-haspopup="dialog" aria-expanded={picking} onClick={() => setPicking(!picking)}>
+              <span className="dfield__label">Date Range</span>
+              <span className="dfield__value">
+                {fmtShort(custom.from)} | {fmtShort(custom.to)}
+              </span>
+              <span className="dfield__icons">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="dfield__clear"
+                  aria-label="Clear the dates"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCustom(undefined);
+                    setPicking(false);
+                    setRange('24h');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setCustom(undefined);
+                      setPicking(false);
+                      setRange('24h');
+                    }
+                  }}
+                >
+                  <Icon name="close" size={18} stroke={2} />
+                </span>
+                <Icon name="calendar" size={26} stroke={1.5} />
+              </span>
+            </button>
+          )}
+          {picking && custom && <DateRangePicker from={custom.from} to={custom.to} today={now} onChange={(from, to) => setCustom({ from, to })} onClose={() => setPicking(false)} />}
+        </div>
         <span className="spacer" />
         <ExportMenu onPick={exportAs} />
         <Link to="/wall" className="btn">

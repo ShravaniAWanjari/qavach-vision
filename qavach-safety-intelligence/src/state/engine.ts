@@ -114,6 +114,9 @@ export function deliveriesFor(policy: Policy, cam: Camera, at: number): Delivery
 }
 
 /** Raises one alert for a rule on a camera (used by the engine and by "Test on the wall"). */
+/** Alerts raised without announcing them (a test alert from the rule editor): no pop-up. */
+export const quietAlerts = new Set<string>();
+
 export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}): Alert {
   const now = Date.now();
   const zones = cam.zones.filter((z) => rule.zoneIds.includes(z.id));
@@ -135,8 +138,8 @@ export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}
     deliveries: deliveriesFor(policy, cam, now),
     activity: [{ at: now, text: detectedText(rule, zone?.name), actor: 'system' }],
   };
+  if (opts.quiet) quietAlerts.add(alert.id);
   addAlert(alert);
-  if (!opts.quiet) toast(`${alert.priority} · ${title} · ${cam.id} ${cam.name}`, { tone: alert.priority === 'P1' || alert.priority === 'P2' ? 'alert' : undefined, link: `/alerts/${alert.id}` });
   return alert;
 }
 
@@ -164,7 +167,6 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     activity: [{ at: ev.at, text: detectedText(rule, ev.zoneName || undefined, ev.hazard || undefined), actor: 'system' }],
   };
   addAlert(alert);
-  toast(`${alert.priority} · ${alert.title} · ${cam.id} ${cam.name}`, { tone: alert.priority === 'P1' || alert.priority === 'P2' ? 'alert' : undefined, link: `/alerts/${alert.id}` });
   return alert;
 }
 

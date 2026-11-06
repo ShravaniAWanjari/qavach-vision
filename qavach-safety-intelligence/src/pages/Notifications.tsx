@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ReadOnlyNote } from '../components/Shell';
-import { CHANNEL, Choice, MultiSelect, NumberField, PRIORITY_NAME, PriorityBadge } from '../components/ui';
+import { CHANNEL, Choice, Drawer, MultiSelect, NumberField, PRIORITY_NAME, PriorityBadge } from '../components/ui';
 import type { Channel, Policy, Role } from '../data/types';
 import { isAdmin, savePolicies, toast, useMe, usePolicies } from '../state/store';
 import './notifications.css';
@@ -13,7 +13,8 @@ const WALL_OPTIONS = [
   { value: 'sound' as const, label: 'Alarm sound' },
 ];
 
-export function Notifications() {
+/** Alert Configuration as a side panel: one block per alert level, saved together. */
+export function AlertConfigPanel({ onClose }: { onClose: () => void }) {
   const saved = usePolicies();
   const me = useMe();
   const admin = isAdmin(me);
@@ -22,16 +23,16 @@ export function Notifications() {
   const set = (p: Policy, patch: Partial<Policy>) => setDraft(draft.map((x) => (x.priority === p.priority ? { ...x, ...patch } : x)));
 
   return (
-    <div className="page">
-      <div className="acfg__bar">
-        <span className="listing-tag">
-          Notification and escalation policy by alert severity: delivery channels, first responders, response targets, reminders and Qavach record handling.
-        </span>
-        {admin && (
-          <div className="page__actions">
-            {dirty && <span className="acfg__dirty">Unsaved changes</span>}
-            <button type="button" className="btn btn--secondary" disabled={!dirty} onClick={() => setDraft(saved)}>
-              Discard
+    <Drawer
+      title="Alert Configuration"
+      sub="Who is notified, how, and what happens if nobody responds, for each alert level"
+      onClose={onClose}
+      footer={
+        admin ? (
+          <>
+            {dirty && <span className="acfg__dirty" style={{ marginRight: 'auto' }}>Unsaved changes</span>}
+            <button type="button" className="btn btn--secondary" onClick={onClose}>
+              Cancel
             </button>
             <button
               type="button"
@@ -40,26 +41,31 @@ export function Notifications() {
               onClick={() => {
                 savePolicies(draft);
                 toast('Alert configuration saved. New and open alerts follow it from now on.');
+                onClose();
               }}
             >
               Save
             </button>
-          </div>
-        )}
-      </div>
+          </>
+        ) : (
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
+            Close
+          </button>
+        )
+      }
+    >
       <ReadOnlyNote>Only the safety admin changes the alert configuration.</ReadOnlyNote>
-
-      <fieldset className="plain acfg" disabled={!admin}>
+      <fieldset className="plain acpanel" disabled={!admin}>
         {draft.map((p) => {
           const id = (k: string) => `${k}-${p.priority}`;
           return (
-            <section key={p.priority} className={`card acfg__level acfg__level--${p.priority}`}>
-              <div className="acfg__head">
+            <section key={p.priority} className="acpanel__level">
+              <div className="acpanel__head">
                 <PriorityBadge p={p.priority} />
                 <h2>{PRIORITY_NAME[p.priority]} alerts</h2>
               </div>
 
-              <div className="acfg__fields">
+              <div className="acpanel__fields">
                 <MultiSelect
                   id={id('via')}
                   label="Notify Via"
@@ -119,7 +125,6 @@ export function Notifications() {
           );
         })}
       </fieldset>
-
-    </div>
+    </Drawer>
   );
 }

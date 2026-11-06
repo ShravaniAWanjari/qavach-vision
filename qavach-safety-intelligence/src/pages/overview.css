@@ -1,8 +1,9 @@
 
 /* Overview: one terminal at a time. Toolbar, four KPI cards, then a 12-column grid of cards, in Qavach's card style. */
-.ovbar { display: flex; align-items: center; gap: 12px; margin: 2px 0 16px; }
+.ovbar { display: flex; align-items: center; gap: 12px; margin: 2px 0 16px; container-type: inline-size; container-name: ovbar; }
 .ovbar__site { flex: 0 1 340px; min-width: 220px; }
 .ovbar .btn { min-height: 50px; }
+.ovperiod { position: relative; display: flex; align-items: center; gap: 16px; }
 .ovsheet { display: flex; flex-direction: column; gap: 16px; }
 .ovsheet__title { display: none; align-items: baseline; justify-content: space-between; gap: 16px; font-size: 14px; color: var(--q-p3); }
 .ovsheet__title strong { font-size: 21.6px; font-weight: 700; color: var(--q-ink); }
@@ -98,3 +99,23 @@ button.kpi:hover { box-shadow: 0 0 0 1px #00B9F2, var(--q-shadow-card); }
 /* A text link in the design sheet's success green: never a filled button. */
 .qreports-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: #39BD86; cursor: pointer; }
 .qreports-link:hover { text-decoration: underline; }
+
+/* A cramped toolbar (with Custom open, the Date Range field takes room) shrinks the terminal picker to a location icon;
+   its menu keeps a readable width and still lists the terminal in full. */
+.ovbar__site .msel__icon { display: none; }
+.ovbar__site .msel__menu { min-width: 300px; }
+@container ovbar (max-width: 1400px) {
+  .ovbar--custom .ovbar__site { flex: 0 0 56px; min-width: 56px; width: 56px; }
+}
+@container ovbar (max-width: 1150px) {
+  .ovbar__site { flex: 0 0 56px; min-width: 56px; width: 56px; }
+}
+@container ovbar (max-width: 1400px) {
+  .ovbar--custom .ovbar__site .msel__icon { display: grid; }
+  .ovbar--custom .ovbar__site .msel__label, .ovbar--custom .ovbar__site .msel__row, .ovbar--custom .ovbar__site .msel__arrow { opacity: 0; pointer-events: none; }
+}
+@container ovbar (max-width: 1150px) {
+  .ovbar__site .msel__icon { display: grid; }
+  .ovbar__site .msel__label, .ovbar__site .msel__row, .ovbar__site .msel__arrow { opacity: 0; pointer-events: none; }
+}
+.msel__icon { position: absolute; inset: 0; place-items: center; color: var(--q-p3); pointer-events: none; }
