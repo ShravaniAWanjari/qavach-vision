@@ -2,6 +2,9 @@
 .wallpage__head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .wallpage__head h1 { font-size: 22px; }
 .wallpage__head .page__actions { margin-left: auto; }
+.wallpage__pick { flex: 0 1 320px; min-width: 220px; }
+.wedit__title { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: var(--q-ink); }
+.wedit__hint { padding: 12px 16px; }
 .walltabs { display: flex; gap: 4px; padding: 3px; background: var(--q-divider); border-radius: var(--q-r); flex-wrap: wrap; }
 .walltabs button { border: 0; background: transparent; height: 32px; padding: 0 12px; border-radius: var(--q-r-sm); font-size: 13px; font-weight: 500; color: var(--q-ink-2); display: inline-flex; align-items: center; gap: 6px; }
 .walltabs button[aria-selected='true'] { background: var(--q-surface); color: var(--q-ink); font-weight: 600; box-shadow: var(--q-shadow-seg); }

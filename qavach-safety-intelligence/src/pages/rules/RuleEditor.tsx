@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, CHANNEL, Choice, Modal, PRIORITY_NAME, PriorityBadge, Seg, useConfirm } from '../../components/ui';
+import { CameraView, CHANNEL, Choice, looseMatch, Modal, PRIORITY_NAME, PriorityBadge, Seg, useConfirm } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
@@ -543,7 +543,6 @@ function CameraPicker({ selected, onClose, onDone }: { selected: string[]; onClo
   const cams = useCameras();
   const [sel, setSel] = useState(new Set(selected));
   const [q, setQ] = useState('');
-  const t = q.trim().toLowerCase();
   const toggle = (id: string, on: boolean) => {
     const s = new Set(sel);
     if (on) s.add(id);
@@ -571,7 +570,7 @@ function CameraPicker({ selected, onClose, onDone }: { selected: string[]; onClo
     >
       <input className="input" placeholder="Filter cameras" aria-label="Filter cameras" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
       {AREAS.map((a) => {
-        const items = cams.filter((c) => c.areaId === a.id && (!t || `${c.id} ${c.name}`.toLowerCase().includes(t)));
+        const items = cams.filter((c) => c.areaId === a.id && looseMatch(`${c.id} ${c.name}`, q));
         if (!items.length) return null;
         const all = items.every((c) => sel.has(c.id));
         return (

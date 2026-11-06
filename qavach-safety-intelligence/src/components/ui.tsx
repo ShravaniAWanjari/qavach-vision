@@ -83,11 +83,18 @@ function useDropdown() {
   return { open, setOpen, ref, place };
 }
 
+/** Typing is forgiving: spaces, dashes and dots are ignored and leading zeros do not matter, so "dck 9" finds "DCK-09". */
+export function looseMatch(text: string, query: string): boolean {
+  const loose = (t: string) => t.toLowerCase().replace(/[\s\-._·]+/g, '').replace(/(^|[^0-9])0+(\d)/g, '$1$2');
+  const q = loose(query);
+  return !q || loose(text).includes(q);
+}
+
 /** The typing, keyboard and list state both dropdowns share. */
 function useSearchList<O extends { label: string }>(options: O[], open: boolean, startAt: number) {
   const [query, setQuery] = useState('');
   const [mark, setMark] = useState(0);
-  const shown = query.trim() ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase())) : options;
+  const shown = query.trim() ? options.filter((o) => looseMatch(o.label, query)) : options;
   useEffect(() => {
     if (!open) setQuery('');
     else setMark(Math.max(0, startAt));
@@ -96,7 +103,7 @@ function useSearchList<O extends { label: string }>(options: O[], open: boolean,
   return { query, setQuery, mark, setMark, shown };
 }
 
-type ChoiceOption<T> = { value: T; label: string; group?: string };
+type ChoiceOption<T> = { value: T; label: string; group?: string; icon?: IconName };
 
 function Arrow() {
   return <span className="msel__arrow" aria-hidden="true" />;
@@ -204,6 +211,7 @@ export function Choice<T extends string | number>({ id, label, options, value, o
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(o)}
                 >
+                  {o.icon && <Icon name={o.icon} size={16} stroke={2} />}
                   {o.label}
                 </div>
               </div>
@@ -294,7 +302,7 @@ export function CascadeSelect<K extends string, D extends string>({ label, prefi
  * Pick any number of options from a checklist, as Qavach's multiple dropdown: the box shows the first pick and how
  * many more ("Accident, 1 More..."). `clearable` adds the × that empties it.
  */
-export function MultiSelect<T extends string>({ id, label, options, value, onChange, placeholder = 'Select', disabled, clearable }: { id: string; label: string; options: { value: T; label: string; icon?: IconName }[]; value: T[]; onChange: (v: T[]) => void; placeholder?: string; disabled?: boolean; clearable?: boolean }) {
+export function MultiSelect<T extends string>({ id, label, options, value, onChange, placeholder = 'Select', disabled, clearable }: { id: string; label: string; options: { value: T; label: string; icon?: IconName; group?: string }[]; value: T[]; onChange: (v: T[]) => void; placeholder?: string; disabled?: boolean; clearable?: boolean }) {
   const { open, setOpen, ref, place } = useDropdown();
   const input = useRef<HTMLInputElement>(null);
   const { query, setQuery, mark, setMark, shown } = useSearchList(options, open, 0);
@@ -357,10 +365,13 @@ export function MultiSelect<T extends string>({ id, label, options, value, onCha
           <div className="msel__items">
             {shown.length === 0 && <div className="msel__none">No items found</div>}
             {shown.map((o, i) => (
-              <label key={o.value} className={`msel__opt msel__opt--check${value.includes(o.value) ? ' is-on' : ''}${i === mark ? ' is-mark' : ''}`} onMouseEnter={() => setMark(i)} onMouseDown={(e) => e.preventDefault()}>
-                <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
-                <span>{o.label}</span>
-              </label>
+              <div key={o.value} style={{ display: 'contents' }}>
+                {o.group && o.group !== shown[i - 1]?.group && <div className="msel__group">{o.group}</div>}
+                <label className={`msel__opt msel__opt--check${value.includes(o.value) ? ' is-on' : ''}${i === mark ? ' is-mark' : ''}`} onMouseEnter={() => setMark(i)} onMouseDown={(e) => e.preventDefault()}>
+                  <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
+                  <span>{o.label}</span>
+                </label>
+              </div>
             ))}
           </div>
         </div>

@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { AckDialog } from '../../components/AlertDialogs';
 import { Icon, Logo } from '../../components/Icon';
-import { CameraView, Choice, Empty, Modal, PriorityBadge, Seg, StateChip, Switch, useConfirm } from '../../components/ui';
+import { CameraView, Choice, Empty, looseMatch, Modal, PriorityBadge, Seg, StateChip, Switch, useConfirm } from '../../components/ui';
 import { AREAS, TEAMS } from '../../data/seed';
 import type { Alert, Camera, PinnedLayout, Wall } from '../../data/types';
 import { uid } from '../../lib/persist';
 import { ago, hms, useNow } from '../../lib/time';
 import { AREAS_BY_ID, deleteWall, isAdmin, isOpen, saveWall, TEAMS_BY_ID, toast, useActivity, useAlerts, useCameras, useMe, useWalls } from '../../state/store';
 import { LAYOUT_SLOTS, useWallModel, WallBody } from './WallBody';
+
+const NEW_WALL = '__new_wall__';
 
 const LAYOUTS: { value: PinnedLayout; label: string }[] = [
   { value: '1', label: '1' },
@@ -28,7 +30,6 @@ export function VideoWall() {
   const { wallId } = useParams();
   const nav = useNavigate();
   const me = useMe();
-  const cams = useCameras();
   const visible = useVisibleWalls();
   const saved = visible.find((w) => w.id === wallId) ?? visible.find((w) => w.teamId === me.teamId) ?? visible[0];
   const [draft, setDraft] = useState<Wall | null>(null);
@@ -40,6 +41,7 @@ export function VideoWall() {
   useEffect(() => setDraft(null), [saved?.id]);
 
   const wall = draft ?? saved;
+  const isNewWall = !!draft && !visible.some((w) => w.id === draft.id);
   const modelWall = useMemo(() => (wall && draft ? { ...wall, alertTakeover: false, autoPinBusy: false } : wall), [wall, draft]);
   const model = useWallModel(modelWall ?? EMPTY_WALL, !!draft);
 
@@ -82,42 +84,38 @@ export function VideoWall() {
     toast(replaced ? `${cam.id} pinned in place of ${replaced}` : `${cam.id} ${cam.name} pinned to ${wall.name}`);
   };
 
-  const newWall = () => {
-    const team = TEAMS_BY_ID[me.teamId];
-    const w: Wall = {
+  // A new wall starts empty: no name, no cameras, empty tiles, and the set-up panel open. Nothing is saved until Save wall.
+  const startWall = () => {
+    setSettings(false);
+    setDraft({
       id: uid('w'),
-      name: `${team.name} · new`,
-      teamId: team.id,
+      name: '',
+      teamId: isAdmin(me) ? '' : me.teamId,
       pinnedShare: 70,
       pinnedLayout: '2x2',
       pinned: [],
       rollingTiles: 3,
-      rotation: cams.filter((c) => team.areaIds.includes(c.areaId)).map((c) => c.id),
+      rotation: [],
       rotateSec: 10,
       autoPinBusy: false,
       alertTakeover: true,
-    };
-    saveWall(w);
-    nav(`/wall/${w.id}`);
-    window.setTimeout(() => setDraft(w), 0);
+    });
   };
-
 
   return (
     <div className="wallpage">
       <div className="wallpage__head">
-        <div className="walltabs" role="tablist" aria-label="Walls">
-          {visible.map((w) => (
-            <button key={w.id} type="button" role="tab" aria-selected={w.id === saved.id} onClick={() => nav(`/wall/${w.id}`)}>
-              {w.name}
-              {w.teamId === me.teamId && <span className="walltabs__mine">Your team</span>}
-            </button>
-          ))}
-          <button type="button" className="walltabs__new" onClick={newWall} title="New wall for your team">
-            <Icon name="plus" size={16} />
-            New wall
-          </button>
-        </div>
+        <Choice
+          id="wall-pick"
+          label="Video Wall"
+          className="wallpage__pick"
+          value={draft && isNewWall ? NEW_WALL : saved.id}
+          onChange={(v) => (v === NEW_WALL ? startWall() : nav(`/wall/${v}`))}
+          options={[
+            ...visible.map((w) => ({ value: w.id, label: w.teamId === me.teamId ? `${w.name} · Your team` : w.name })),
+            { value: NEW_WALL, label: 'New wall', icon: 'plus' as const },
+          ]}
+        />
         <div className="page__actions">
           <CastMenu />
           {!draft && (
@@ -252,10 +250,10 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
   const confirm = useConfirm();
   const [q, setQ] = useState('');
   const team = TEAMS_BY_ID[draft.teamId];
+  const isNew = !walls.some((w) => w.id === draft.id);
   const slots = draft.pinnedShare === 0 ? 0 : LAYOUT_SLOTS[draft.pinnedLayout];
   const inScope = cams.filter((c) => (team?.areaIds ?? []).includes(c.areaId));
-  const t = q.trim().toLowerCase();
-  const list = inScope.filter((c) => !t || `${c.id} ${c.name}`.toLowerCase().includes(t));
+  const list = inScope.filter((c) => looseMatch(`${c.id} ${c.name}`, q));
   const pinnedSet = new Set(draft.pinned.slice(0, slots).filter(Boolean));
   const rot = new Set(draft.rotation);
 
@@ -275,9 +273,10 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
   return (
     <aside className="wedit" aria-label="Choose cameras">
       <div className="wedit__head">
+        {isNew && <h2 className="wedit__title">New wall</h2>}
         <div className="field">
           <label htmlFor="wall-name">Wall name</label>
-          <input id="wall-name" className="input input--sm" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <input id="wall-name" className="input input--sm" value={draft.name} placeholder={isNew ? 'Name this wall' : undefined} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         </div>
         <div className="field">
           <label htmlFor="wall-team">Assigned Team</label>
@@ -289,7 +288,8 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
             disabled={!isAdmin(me)}
             onChange={(teamId) => {
               const tm = TEAMS_BY_ID[teamId];
-              setDraft({ ...draft, teamId: tm.id, pinned: [], rotation: cams.filter((c) => tm.areaIds.includes(c.areaId)).map((c) => c.id) });
+              // A wall being set up keeps empty tiles until cameras are picked; a saved wall starts with the team's cameras rolling.
+              setDraft({ ...draft, teamId: tm.id, pinned: [], rotation: isNew ? [] : cams.filter((c) => tm.areaIds.includes(c.areaId)).map((c) => c.id) });
             }}
             options={TEAMS.map((tm) => ({ value: tm.id, label: tm.name }))}
           />
@@ -307,6 +307,7 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
         </div>
       </div>
       <div className="wedit__list">
+        {!team && <p className="meta wedit__hint">Choose a team to list its cameras.</p>}
         {AREAS.filter((a) => team?.areaIds.includes(a.id)).map((a) => {
           const items = list.filter((c) => c.areaId === a.id);
           if (!items.length) return null;
@@ -345,7 +346,7 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
       </div>
       {confirm.dialog}
       <div className="wedit__foot">
-        {walls.length > 1 && (
+        {!isNew && walls.length > 1 && (
           <button
             type="button"
             className="btn btn--ghost btn--sm"
@@ -368,10 +369,12 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
         <button
           type="button"
           className="btn btn--sm"
+          disabled={!draft.name.trim() || !team}
           onClick={() => {
-            saveWall(draft);
-            toast(`${draft.name} saved. Everyone on ${team?.name} sees the new layout.`);
+            saveWall({ ...draft, name: draft.name.trim() });
+            toast(`${draft.name.trim()} saved. Everyone on ${team?.name} sees the new layout.`);
             onDone();
+            if (isNew) nav(`/wall/${draft.id}`);
           }}
         >
           Save wall

@@ -176,9 +176,42 @@ function pushToService(what: string, call: () => Promise<unknown>) {
   call().catch((e: Error) => toast(`Detection service did not accept ${what}: ${e.message}`, { tone: 'alert' }));
 }
 
+/** Where a camera belongs without anyone ticking boxes: the walls of the teams that cover its work area, and the rules
+ *  that already watch other cameras of that work area (taking its zones of the same names as the rule's zones). */
+export function placementFor(cam: Camera, cams: Camera[], rules: Rule[], walls: Wall[]) {
+  const peers = cams.filter((c) => c.id !== cam.id && c.areaId === cam.areaId);
+  const ruleZones = (r: Rule) => {
+    const names = new Set(cams.filter((c) => c.id !== cam.id).flatMap((c) => c.zones.filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name)));
+    return cam.zones.filter((z) => names.has(z.name)).map((z) => z.id);
+  };
+  return {
+    walls: walls.filter((w) => TEAMS_BY_ID[w.teamId]?.areaIds.includes(cam.areaId)).map((w) => w.id),
+    // A rule drawn on zones only takes a camera that has a zone of the same name; a whole-view rule takes any camera of the area.
+    rules: rules.filter((r) => peers.some((p) => r.cameraIds.includes(p.id)) && (r.zoneIds.length === 0 || ruleZones(r).length > 0)).map((r) => ({ id: r.id, zoneIds: ruleZones(r) })),
+  };
+}
+
+/** Puts a camera on or off a rule, with the zones that go with it. */
+export function setCameraOnRule(rule: Rule, cam: Camera, on: boolean, zoneIds: string[]): Rule {
+  const rest = rule.cameraIds.filter((id) => id !== cam.id);
+  const zones = rule.zoneIds.filter((z) => !cam.zones.some((cz) => cz.id === z));
+  return on ? { ...rule, cameraIds: [...rest, cam.id], zoneIds: [...zones, ...zoneIds] } : { ...rule, cameraIds: rest, zoneIds: zones };
+}
+
 export function saveCamera(cam: Camera) {
+  const isNew = !cameraStore.get().some((c) => c.id === cam.id);
   cameraStore.set((list) => (list.some((c) => c.id === cam.id) ? list.map((c) => (c.id === cam.id ? cam : c)) : [...list, cam]));
   if (cam.source) pushToService(`camera ${cam.id}`, () => backend.putCamera(cam));
+  if (!isNew) return;
+  // A new camera joins the walls and rules that already cover its work area, so it shows up everywhere at once.
+  // A connected camera (one with a real stream) is left off rules until someone chooses, since a rule starts real detection on it.
+  const place = placementFor(cam, cameraStore.get(), ruleStore.get(), wallStore.get());
+  const onWalls = new Set(place.walls);
+  wallStore.set((list) => list.map((w) => (onWalls.has(w.id) && !w.rotation.includes(cam.id) ? { ...w, rotation: [...w.rotation, cam.id] } : w)));
+  if (!cam.source) {
+    const byRule = new Map(place.rules.map((r) => [r.id, r.zoneIds]));
+    ruleStore.set((list) => list.map((r) => (byRule.has(r.id) ? setCameraOnRule(r, cam, true, byRule.get(r.id)!) : r)));
+  }
 }
 export function removeCamera(id: string) {
   const real = cameraStore.get().find((c) => c.id === id)?.source;

@@ -43,6 +43,13 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('');
   const [draft, setDraft] = useState<RuleDraft>();
 
+  // Cameras grouped by work area, in the order of the areas and then by ID, so a new camera sits with its neighbours.
+  const cameraOptions = AREAS.flatMap((a) =>
+    cams
+      .filter((c) => c.areaId === a.id)
+      .sort((x, y) => x.id.localeCompare(y.id, undefined, { numeric: true }))
+      .map((c) => ({ value: c.id, label: `${c.id} · ${c.name}`, group: a.name })),
+  ).concat(cams.filter((c) => !AREAS.some((a) => a.id === c.areaId)).map((c) => ({ value: c.id, label: `${c.id} · ${c.name}`, group: 'Other' })));
   const chosen = cams.filter((c) => rule.cameraIds.includes(c.id));
   const isFire = rule.condition === 'smoke';
   const zoneOptions = useZoneOptions(chosen, isFire);
@@ -137,7 +144,7 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
           id="nr-cams"
           label="Cameras"
           placeholder="Choose cameras"
-          options={cams.map((c) => ({ value: c.id, label: `${c.id} · ${c.name}` }))}
+          options={cameraOptions}
           value={rule.cameraIds}
           onChange={(ids) => {
             const keep = rule.zoneIds.filter((z) => ids.some((id) => z.startsWith(`${id}-`)));

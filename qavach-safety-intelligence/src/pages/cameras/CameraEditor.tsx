@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, Choice, Seg, useConfirm } from '../../components/ui';
+import { CameraView, Choice, Seg, Switch, useConfirm } from '../../components/ui';
 import { AREA_DEPARTMENT, AREAS, camId, DEPARTMENTS } from '../../data/seed';
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
 import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 import { useService } from '../../state/bridge';
-import { departmentOf, isAdmin, removeCamera, saveCamera, saveWall, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
+import { departmentOf, isAdmin, placementFor, removeCamera, saveCamera, saveRule, saveWall, setCameraOnRule, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
 import { LAYOUT_SLOTS } from '../wall/WallBody';
 import { ZoneEditor } from './ZoneEditor';
 
@@ -40,6 +40,9 @@ export function CameraEditor() {
   const [progress, setProgress] = useState<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [wallPlan, setWallPlan] = useState<Record<string, 'off' | 'rolls' | 'pinned'>>({});
+  const [rulePlan, setRulePlan] = useState<Record<string, boolean>>({});
+  // A camera being added starts on the walls and rules that already cover its work area, until someone changes a choice.
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     if (existing && existing.id !== cam?.id) setCam(existing);
@@ -51,7 +54,22 @@ export function CameraEditor() {
     const plan: Record<string, 'off' | 'rolls' | 'pinned'> = {};
     for (const w of walls) plan[w.id] = w.pinned.includes(cam.id) ? 'pinned' : w.rotation.includes(cam.id) ? 'rolls' : 'off';
     setWallPlan(plan);
+    setRulePlan(Object.fromEntries(rules.map((r) => [r.id, r.cameraIds.includes(cam.id)])));
   }, [cam?.id]);
+
+  const suggested = cam && isNew && !touched ? placementFor(cam, cams, rules, walls) : undefined;
+  const wallMode = (id: string): 'off' | 'rolls' | 'pinned' => (suggested ? (suggested.walls.includes(id) ? 'rolls' : 'off') : (wallPlan[id] ?? 'off'));
+  const ruleOn = (id: string) => (suggested ? suggested.rules.some((r) => r.id === id) : (rulePlan[id] ?? false));
+  // The first change turns what was suggested into explicit choices.
+  const choose = (patch: { wall?: [string, 'off' | 'rolls' | 'pinned']; rule?: [string, boolean] }) => {
+    const wp = Object.fromEntries(walls.map((w) => [w.id, wallMode(w.id)])) as Record<string, 'off' | 'rolls' | 'pinned'>;
+    const rp = Object.fromEntries(rules.map((r) => [r.id, ruleOn(r.id)]));
+    if (patch.wall) wp[patch.wall[0]] = patch.wall[1];
+    if (patch.rule) rp[patch.rule[0]] = patch.rule[1];
+    setWallPlan(wp);
+    setRulePlan(rp);
+    setTouched(true);
+  };
 
   if (!cam) {
     return (
@@ -136,7 +154,7 @@ export function CameraEditor() {
     if (isRtsp) rememberPassword(cam.id, pass);
     saveCamera({ ...cam, addedAt: existing?.addedAt ?? Date.now(), addedBy: existing?.addedBy ?? me.id, status: existing?.status ?? 'online' });
     for (const w of walls) {
-      const want = wallPlan[w.id] ?? 'off';
+      const want = wallMode(w.id);
       let pinned = w.pinned.map((p) => (p === cam.id ? null : p));
       let rotation = w.rotation.filter((id) => id !== cam.id);
       if (want === 'rolls') rotation = [...rotation, cam.id];
@@ -151,6 +169,13 @@ export function CameraEditor() {
       }
       if (want !== (w.pinned.includes(cam.id) ? 'pinned' : w.rotation.includes(cam.id) ? 'rolls' : 'off')) saveWall({ ...w, pinned, rotation });
     }
+    // Rules: the camera joins the ones ticked and leaves the ones that are not, with the zones that go with it.
+    const place = placementFor(cam, cams, rules, walls);
+    for (const r of rules) {
+      const want = ruleOn(r.id);
+      if (want === r.cameraIds.includes(cam.id) && !(want && isNew)) continue;
+      saveRule(setCameraOnRule(r, cam, want, place.rules.find((x) => x.id === r.id)?.zoneIds ?? []));
+    }
     toast(isNew ? `${cam.id} ${cam.name} added with ${cam.zones.length} zones` : `${cam.id} saved`);
     nav(isNew ? `/cameras/${cam.id}` : '/cameras');
   };
@@ -158,7 +183,7 @@ export function CameraEditor() {
   const steps: { id: Step; label: string }[] = [
     { id: 'connect', label: '1 · Connect' },
     { id: 'zones', label: `2 · Draw zones (${cam.zones.length})` },
-    { id: 'walls', label: '3 · Walls' },
+    { id: 'walls', label: '3 · Rules and walls' },
   ];
   const selZone = cam.zones.find((z) => z.id === sel);
   const canNext = step !== 'connect' || test === 'ok';
@@ -364,6 +389,39 @@ export function CameraEditor() {
         )}
 
         {step === 'walls' && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card__head">
+              <h2>Rules that watch this camera</h2>
+              <span className="meta">Rules already watching other cameras of this work area are ticked.</span>
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Rule</th>
+                  <th>Level</th>
+                  <th>Watches this camera</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.name}</strong>
+                      <div className="meta">
+                        <span className="mono">{r.id}</span> · {r.cameraIds.filter((id) => id !== cam.id).length} other cameras
+                      </div>
+                    </td>
+                    <td>{r.priority}</td>
+                    <td>
+                      <Switch checked={ruleOn(r.id)} onChange={(v) => choose({ rule: [r.id, v] })} label={ruleOn(r.id) ? 'Yes' : 'No'} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {step === 'walls' && (
           <div className="card">
             <div className="card__head">
               <h2>Where this camera shows</h2>
@@ -387,7 +445,7 @@ export function CameraEditor() {
                     <td>
                       <div className="seg seg--sm" role="group" aria-label={`On ${w.name}`}>
                         {(['off', 'rolls', 'pinned'] as const).map((v) => (
-                          <button key={v} type="button" aria-pressed={(wallPlan[w.id] ?? 'off') === v} onClick={() => setWallPlan({ ...wallPlan, [w.id]: v })} disabled={v === 'pinned' && w.pinnedShare === 0}>
+                          <button key={v} type="button" aria-pressed={wallMode(w.id) === v} onClick={() => choose({ wall: [w.id, v] })} disabled={v === 'pinned' && w.pinnedShare === 0}>
                             {v === 'off' ? 'Not shown' : v === 'rolls' ? 'Rolls' : 'Pinned'}
                           </button>
                         ))}
