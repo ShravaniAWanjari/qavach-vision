@@ -1,9 +1,9 @@
 import type { CSSProperties } from 'react';
 import type { Camera, SceneKind } from '../data/types';
 
-// Demo only: real port CCTV pictures in place of the drawn sample scenes, so the camera list and the video
-// wall look like a real site. Switch DEMO_PHOTOS off to get the drawn scenes back. Cameras connected to the
-// detection service (cam.source) and alerts (which draw their subject on the scene) are never touched.
+// Demo only: real port CCTV pictures in place of the drawn sample scenes everywhere, alert snapshots included, so
+// the console looks like a real site. Offline cameras keep the drawn scene with its no-signal look. Switch
+// DEMO_PHOTOS off to get the drawn scenes back. Cameras connected to the detection service (cam.source) are never touched.
 export const DEMO_PHOTOS = true;
 
 const POOL: Record<SceneKind, string[]> = {

@@ -600,7 +600,6 @@ export function CameraView({
   still,
   frozen,
   alert,
-  photoOnAlert,
   zones,
   highlightZones,
   showZoneLabels,
@@ -614,8 +613,6 @@ export function CameraView({
   /** Real cameras: keep the frame taken at connection (zone drawing) instead of following the camera. */
   frozen?: boolean;
   alert?: Alert;
-  /** Demo photos: keep the photo under an alert (video wall tiles) instead of the drawn scene that shows the subject. */
-  photoOnAlert?: boolean;
   zones?: Zone[];
   highlightZones?: string[];
   showZoneLabels?: boolean;
@@ -631,7 +628,8 @@ export function CameraView({
   const liveReal = !!cam.source && !still && !frozen && service.online;
   const snapshot = cam.source && !liveReal ? alert?.snapshot : undefined;
   const aspect = cam.source?.width && cam.source?.height ? cam.source.width / cam.source.height : undefined;
-  const photo = alert && !photoOnAlert ? undefined : demoPhoto(cam);
+  // A demo photo is a real picture, so the zones and detection boxes drawn for the sample scenes would not fit it.
+  const photo = demoPhoto(cam);
   const subjType = alert ? (alert.title.toLowerCase().includes('smoke') ? 'smoke' : alert.title.toLowerCase().includes('truck') || alert.title.toLowerCase().includes('vehicle') ? 'vehicle' : 'person') : undefined;
   return (
     <div className={`camview${className ? ` ${className}` : ''}`} style={aspect ? ({ '--ar': aspect } as CSSProperties) : undefined}>
@@ -649,8 +647,8 @@ export function CameraView({
           subject={alert && subjType ? { box: alert.box, type: subjType, noPpe: /helmet|vest|life jacket|ppe/i.test(alert.title + alert.detail) } : undefined}
         />
       )}
-      {((zones && zones.length > 0) || alert) && <ZoneOverlay zones={zones ?? []} highlight={highlightZones} box={liveReal || (cam.source && noPicture) || (photo && photoOnAlert) ? undefined : alert} aspect={aspect} />}
-      {zones && showZoneLabels && <ZoneLabels zones={zones} highlight={highlightZones} />}
+      {!photo && ((zones && zones.length > 0) || alert) && <ZoneOverlay zones={zones ?? []} highlight={highlightZones} box={liveReal || (cam.source && noPicture) ? undefined : alert} aspect={aspect} />}
+      {!photo && zones && showZoneLabels && <ZoneLabels zones={zones} highlight={highlightZones} />}
       {caption && (
         <div className="camview__caption">
           <span className="camview__id">{cam.id}</span>

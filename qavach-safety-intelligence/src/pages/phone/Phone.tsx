@@ -95,7 +95,7 @@ function PhoneList({ userId }: { userId: string }) {
               <span className="pitem__bar" />
               {cam && (
                 <span className="pitem__thumb">
-                  <CameraView cam={cam} still alert={a} photoOnAlert caption={false} />
+                  <CameraView cam={cam} still alert={a} caption={false} />
                 </span>
               )}
               <span className="stack" style={{ gap: 2, minWidth: 0, flex: 1 }}>
@@ -166,7 +166,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
           {open && policy && policy.escalateTo !== 'none' && alert.state === 'new' && <span className="pbanner__due">Escalates to the {roleText(policy.escalateTo)} in {duration(Math.max(0, due))}</span>}
           {alert.state === 'escalated' && <span className="pbanner__due">Escalated: not acknowledged in time</span>}
         </div>
-        <CameraView cam={cam} still alert={alert} photoOnAlert zones={cam.zones.filter((z) => z.id === alert.zoneId)} />
+        <CameraView cam={cam} still alert={alert} zones={cam.zones.filter((z) => z.id === alert.zoneId)} />
         <dl className="pfacts">
           <dt>What</dt>
           <dd>{alert.detail}</dd>

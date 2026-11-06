@@ -6,7 +6,6 @@ import { AREAS, DEPARTMENTS } from '../../data/seed';
 import type { Camera } from '../../data/types';
 import { download, writeXlsx } from '../../lib/sheet';
 import { AREAS_BY_ID, departmentOf, isAdmin, useCameras, useMe, useRules } from '../../state/store';
-import { demoPhoto } from '../../scenes/photos';
 import { ASSET_COLUMNS, assetRow, CameraImport } from './CameraImport';
 import './cameras.css';
 
@@ -210,7 +209,7 @@ function ThumbView({ list, ruleCount }: ViewProps) {
             <div className="camgrid">
               {items.map((c) => (
                 <Link key={c.id} to={`/cameras/${c.id}`} className="camcard">
-                  <CameraView cam={c} still zones={demoPhoto(c) ? undefined : c.zones} caption={false} />
+                  <CameraView cam={c} still zones={c.zones} caption={false} />
                   <div className="camcard__body">
                     <div className="row">
                       <span className={`dot dot--${c.status}`} title={c.status} />
@@ -350,7 +349,7 @@ function ColumnView({ list, ruleCount }: ViewProps) {
       <div className="colview__preview">
         {cam && (
           <>
-            <CameraView cam={cam} still zones={demoPhoto(cam) ? undefined : cam.zones} caption={false} />
+            <CameraView cam={cam} still zones={cam.zones} caption={false} />
             <div className="colview__title">
               <span className="mono">{cam.id}</span>
               <strong>{cam.name}</strong>
