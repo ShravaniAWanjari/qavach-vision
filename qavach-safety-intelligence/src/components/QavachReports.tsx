@@ -22,7 +22,7 @@ export function QavachReportsDrawer({ onClose }: { onClose: () => void }) {
   const [seenBefore] = useState(() => reportsSeenStore.get());
   useEffect(() => reportsSeenStore.set(() => Date.now()), []);
   return (
-    <Drawer title="Qavach reports" sub="Incidents, near misses and observations raised from alerts" onClose={onClose}>
+    <Drawer title="Raised in Qavach" sub="Incidents, near misses and observations raised from alerts" onClose={onClose}>
       {records.length === 0 && <p className="meta">None yet.</p>}
       <ul className="ovlist ovlist--flush">
         {records.map((a) => (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Icon } from '../components/Icon';
-import { QavachReportsDrawer, useQavachReports } from '../components/QavachReports';
+import { QavachReportsDrawer } from '../components/QavachReports';
 import { PriorityBadge, StateChip } from '../components/ui';
 import { AREAS } from '../data/seed';
 import { healthReason } from '../lib/health';
@@ -18,7 +18,6 @@ export function Overview() {
   const open = alerts.filter(isOpen);
   const camById = new Map(cams.map((c) => [c.id, c]));
   const day = alerts.filter((a) => now - a.at < 86400000);
-  const { records } = useQavachReports();
   const faulty = cams.filter((c) => c.status !== 'online').sort((a, b) => (a.status === b.status ? a.id.localeCompare(b.id) : a.status === 'offline' ? -1 : 1));
 
   const byArea = AREAS.map((a) => ({ a, n: day.filter((x) => camById.get(x.cameraId)?.areaId === a.id).length })).sort((x, y) => y.n - x.n);
@@ -26,13 +25,10 @@ export function Overview() {
   return (
     <div className="page">
       <div className="page__head">
-        <div className="page__title">
-          <h1>Overview</h1>
-        </div>
         <div className="page__actions">
           <button type="button" className="btn btn--secondary" onClick={() => setReports(true)}>
             <Icon name="shield" size={16} />
-            Qavach reports{records.length ? ` (${records.length})` : ''}
+            Raised in Qavach
           </button>
         </div>
       </div>
