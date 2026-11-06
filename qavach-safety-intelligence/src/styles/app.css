@@ -269,12 +269,6 @@ button.chip[aria-pressed='true'] { background: var(--q-ai); color: #fff; border-
 .qact__btn:hover { color: var(--q-ink); }
 .qact__btn svg { width: 24px; height: 24px; }
 
-/* ── KPI tiles ──────────────────────────────────────────────── */
-.kpi { padding: 16px 16px 14px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
-.kpi__label { font-size: 16px; color: var(--q-ink); font-weight: 700; }
-.kpi__value { font-size: 32px; font-weight: 700; color: #567C87; line-height: 1.2; }
-.kpi__value small { font-size: 13px; font-weight: 500; color: var(--q-muted); margin-left: 6px; }
-.kpi__foot { font-size: 12.5px; color: var(--q-muted); }
 
 /* ── Overlays ───────────────────────────────────────────────── */
 .scrim { position: fixed; inset: 0; background: rgba(12, 50, 61, .52); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 24px; }
