@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Camera, SceneKind } from '../data/types';
+import { assetUrl } from '../lib/assets';
 
 // Demo only: real port CCTV pictures in place of the drawn sample scenes everywhere, alert snapshots included, so
 // the console looks like a real site. Offline cameras keep the drawn scene with its no-signal look. Switch
@@ -33,5 +34,5 @@ export function demoPhoto(cam: Camera): { src: string; style: CSSProperties } | 
     filter: cam.status === 'degraded' ? 'brightness(.62) saturate(.6) contrast(1.1)' : undefined,
   };
   if (left !== undefined) Object.assign(style, { inset: 'auto', width: `${ZOOM * 100}%`, height: `${ZOOM * 100}%`, left, top: `${-(ZOOM - 1) * 100}%` });
-  return { src: `/cams/${pool[n % pool.length]}.jpg`, style };
+  return { src: assetUrl(`cams/${pool[n % pool.length]}.jpg`), style };
 }

@@ -20,19 +20,19 @@ export const dayTime = (ts: number) => {
 
 export const ago = (ts: number, now: number) => {
   const s = Math.max(0, Math.round((now - ts) / 1000));
-  if (s < 45) return `${s} s ago`;
+  if (s < 45) return `${s}s ago`;
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
+  if (m < 60) return `${m}min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ${m % 60 ? `${m % 60} min ` : ''}ago`;
+  if (h < 24) return `${h}h ${m % 60 ? `${m % 60}min ` : ''}ago`;
   return dayTime(ts);
 };
 
 export const duration = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s} s`;
+  if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
-  return s % 60 && m < 10 ? `${m} min ${s % 60} s` : `${m} min`;
+  return s % 60 && m < 10 ? `${m}min ${s % 60}s` : `${m}min`;
 };
 
 /** Re-renders every `ms` with the current time. */

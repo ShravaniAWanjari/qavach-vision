@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:single": "npm run build && node scripts/single-file.mjs",
     "typecheck": "tsc -b",
+    "check:colors": "node scripts/check-colors.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

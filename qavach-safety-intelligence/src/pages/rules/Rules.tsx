@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CascadeSelect, type CascadeField, PRIORITY_NAME, PriorityBadge, Switch } from '../../components/ui';
+import { CascadeSelect, type CascadeField, Choice, PRIORITY_NAME, PriorityBadge, Switch } from '../../components/ui';
 import type { Classification, Condition, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, SCHEDULE_LABEL, SUBJECT_LABEL } from '../../lib/qai';
 import { AREAS_BY_ID, isAdmin, saveRule, toast, useAlerts, useCameras, useMe, useRules } from '../../state/store';
-import { NewRulePanel } from './NewRulePanel';
 import './rules.css';
 
 const LEVELS: Priority[] = ['P1', 'P2', 'P3', 'P4'];
@@ -19,7 +18,6 @@ const SORT_FIELDS: CascadeField<SortField, SortDir>[] = [
   { key: 'id', label: 'Rule ID', options: [{ value: 'a', label: 'Lowest first' }, { value: 'b', label: 'Highest first' }] },
   { key: 'name', label: 'Name', options: [{ value: 'a', label: 'A to Z' }, { value: 'b', label: 'Z to A' }] },
   { key: 'priority', label: 'Priority Level', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
-  { key: 'alerts', label: 'Alerts', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
   { key: 'status', label: 'Live / Test', options: [{ value: 'a', label: 'Live first' }, { value: 'b', label: 'Testing first' }] },
 ];
 
@@ -28,8 +26,7 @@ type FilterKey = 'level' | 'status' | 'record' | 'classification' | 'condition' 
 type Filters = Record<FilterKey, string[]>;
 const NO_FILTERS: Filters = { level: [], status: [], record: [], classification: [], condition: [], subject: [], schedule: [], area: [] };
 
-export function Rules({ startNew = false }: { startNew?: boolean }) {
-  const [creating, setCreating] = useState(startNew);
+export function Rules() {
   const rules = useRules();
   const cams = useCameras();
   const alerts = useAlerts();
@@ -42,6 +39,9 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
   const [sort, setSort] = useState<{ key: SortField; dir: SortDir }>({ key: 'id', dir: 'a' });
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
+  const [tab, setTab] = useState<'all' | 'live' | 'test'>('all');
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
   const active = Object.values(filters).reduce((n, v) => n + v.length, 0);
 
   const camsOf = (r: Rule) => cams.filter((c) => r.cameraIds.includes(c.id));
@@ -61,6 +61,7 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
   const t = q.trim().toLowerCase();
   const shown = rules
     .filter((r) => {
+      if (tab !== 'all' && r.mode !== tab) return false;
       const f = facets(r);
       if ((Object.keys(filters) as FilterKey[]).some((k) => filters[k].length && !filters[k].some((v) => f[k].includes(v)))) return false;
       if (!t) return true;
@@ -79,11 +80,14 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
       }
     });
 
+  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+  const cur = Math.min(page, pages);
+  const rows = shown.slice((cur - 1) * pageSize, cur * pageSize);
   const areaIds = [...new Set(rules.flatMap((r) => camsOf(r).map((c) => c.areaId)))];
   const groups: { key: FilterKey; title: string; options: { value: string; label: string }[] }[] = [
     { key: 'level', title: 'Level', options: LEVELS.map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` })) },
     { key: 'status', title: 'Status', options: [{ value: 'live', label: 'Live' }, { value: 'test', label: 'Testing' }] },
-    { key: 'record', title: 'Qavach record', options: RECORDS.map((v) => ({ value: v, label: v === 'none' ? 'None' : v })) },
+    { key: 'record', title: 'Reported to QHSE', options: RECORDS.map((v) => ({ value: v, label: v === 'none' ? 'None' : v })) },
     { key: 'classification', title: 'Classification', options: (['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v })) },
     { key: 'condition', title: 'Detects', options: (Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: CONDITION_LABEL[c][0].toUpperCase() + CONDITION_LABEL[c].slice(1) })) },
     { key: 'subject', title: 'Who or what', options: (Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => ({ value: s, label: SUBJECT_LABEL[s] })) },
@@ -95,9 +99,14 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
   return (
     <div className="page">
       <div className="listbar">
-        <span className="listing-tag">
-          Listing 1 - {shown.length} Of {rules.length} · {live} live · {rules.length - live} in test
-        </span>
+        <div className="tabs rtabs" role="tablist" aria-label="Rules by status">
+          {([['all', 'All', rules.length], ['live', 'Live', live], ['test', 'Test Only', rules.length - live]] as const).map(([k, label, n]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setPage(1); }}>
+              {label}
+              <span className="rtabs__n">{n}</span>
+            </button>
+          ))}
+        </div>
         <label className="listbar__search">
           <Icon name="search" size={18} />
           <input className="input input--sm" placeholder="Search rules" aria-label="Search rules" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -109,21 +118,13 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
         </button>
         <CascadeSelect className="listbar__sort" label="Sort rules by" prefix="Sort by:" fields={SORT_FIELDS} value={sort} onChange={setSort} />
         {admin && (
-          <button type="button" className="qact__btn" onClick={() => setCreating(true)}>
+          <button type="button" className="qact__btn" onClick={() => nav('/configuration/rules')}>
             <Icon name="add-circle" size={24} />
             New rule
           </button>
         )}
       </div>
 
-      {creating && (
-        <NewRulePanel
-          onClose={() => {
-            setCreating(false);
-            if (startNew) nav('/rules', { replace: true });
-          }}
-        />
-      )}
       {panel && (
         <>
           <div className="qset-scrim" onClick={() => setPanel(false)} />
@@ -155,16 +156,16 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
       )}
 
       <ReadOnlyNote>Only the safety admin creates and changes rules.</ReadOnlyNote>
-      <div className="card">
-        <table className="table">
+      <div className="card card--grid">
+        <table className="table table--grid">
           <thead>
             <tr>
+              <th className="col-id">ID</th>
               <th>Rule</th>
               <th>Cameras</th>
               <th>Level</th>
-              <th>Qavach record</th>
-              <th>Alerts, 24 h</th>
               <th>Live</th>
+              <th className="col-act"><span className="sr-only">Edit</span></th>
             </tr>
           </thead>
           <tbody>
@@ -179,18 +180,17 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
                 </td>
               </tr>
             )}
-            {shown.map((r) => {
+            {rows.map((r) => {
               const rc = cams.filter((c) => r.cameraIds.includes(c.id));
               const zoneNames = [...new Set(rc.flatMap((c) => c.zones.filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name)))];
               const areas = [...new Set(rc.map((c) => AREAS_BY_ID[c.areaId]?.name.split(' ·')[0]))];
-              const n = alertsOf(r);
               return (
-                <tr key={r.id} className="is-clickable" onClick={() => nav(`/rules/${r.id}`)}>
+                <tr key={r.id}>
+                  <td className="col-id">
+                    <strong>{r.id}</strong>
+                  </td>
                   <td style={{ maxWidth: 420 }}>
-                    <div className="row" style={{ gap: 6 }}>
-                      <span className="mono faint">{r.id}</span>
-                      <strong>{r.name}</strong>
-                    </div>
+                    <strong>{r.name}</strong>
                     <div className="meta">
                       {describeRule(r, zoneNames)}
                       {r.schedule !== 'always' && ` · ${SCHEDULE_LABEL[r.schedule]}`}
@@ -201,10 +201,10 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
                     <div className="meta">{areas.join(', ')}</div>
                   </td>
                   <td>
-                    <PriorityBadge p={r.priority} />
+                    <span title={`${r.priority} ${PRIORITY_NAME[r.priority]}`}>
+                      <PriorityBadge p={r.priority} short />
+                    </span>
                   </td>
-                  <td>{r.qavach === 'none' ? <span className="muted">None</span> : `${r.qavach} · ${r.classification.toLowerCase()}`}</td>
-                  <td>{r.mode === 'test' ? <span className="muted">{n} logged</span> : n}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <Switch
                       checked={r.mode === 'live'}
@@ -216,11 +216,48 @@ export function Rules({ startNew = false }: { startNew?: boolean }) {
                       label={<span className="meta">{r.mode === 'live' ? 'Live' : 'Test'}</span>}
                     />
                   </td>
+                  <td className="col-act">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--icon btn--sm rule-edit"
+                      onClick={() => nav(`/configuration/rules/${r.id}`)}
+                      title={admin ? `Edit ${r.id}` : `View ${r.id}`}
+                      aria-label={admin ? `Edit rule ${r.id}` : `View rule ${r.id}`}
+                    >
+                      <Icon name={admin ? 'edit' : 'eye'} size={18} />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        <div className="pager">
+          <span>
+            Showing {shown.length === 0 ? 0 : (cur - 1) * pageSize + 1}–{Math.min(cur * pageSize, shown.length)} Of {shown.length} Rules
+          </span>
+          <span className="spacer" />
+          <div className="pager__size">
+            <span className="pager__label">Rows Per Page</span>
+            <Choice
+              id="rules-rows-per-page"
+              small
+              className="pager__choice"
+              label="Rows per page"
+              value={pageSize}
+              onChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              options={[10, 25, 50].map((n) => ({ value: n, label: String(n) }))}
+            />
+          </div>
+          <button type="button" className="pager__btn" aria-label="Previous page" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+            <button key={n} type="button" className={`pager__btn${n === cur ? ' is-on' : ''}`} aria-current={n === cur ? 'page' : undefined} onClick={() => setPage(n)}>{n}</button>
+          ))}
+          <button type="button" className="pager__btn" aria-label="Next page" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>›</button>
+        </div>
       </div>
     </div>
   );

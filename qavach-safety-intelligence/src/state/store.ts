@@ -1,5 +1,6 @@
 import { backend, isOnline } from '../lib/backend';
 import { createStore, uid, useStore } from '../lib/persist';
+import { demoSetup } from '../lib/setup';
 import { AREA_DEPARTMENT, POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
 import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordType, Rule, User, Wall } from '../data/types';
 
@@ -8,12 +9,14 @@ import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordTy
 
 const startedAt = createStore<number>('startedAt', () => Date.now());
 const T0 = startedAt.get();
+/** A set-up saved from this console (src/data/demo-state.json), when there is one; a first visit starts from it. */
+const demo = demoSetup(T0);
 
-export const cameraStore = createStore<Camera[]>('cameras', () => seedCameras(T0));
-export const ruleStore = createStore<Rule[]>('rules', () => seedRules(cameraStore.get(), T0));
-export const alertStore = createStore<Alert[]>('alerts', () => seedAlerts(T0));
-export const wallStore = createStore<Wall[]>('walls', () => seedWalls(cameraStore.get()));
-export const policyStore = createStore<Policy[]>('policies', () => POLICIES);
+export const cameraStore = createStore<Camera[]>('cameras', () => demo?.cameras ?? seedCameras(T0));
+export const ruleStore = createStore<Rule[]>('rules', () => demo?.rules ?? seedRules(cameraStore.get(), T0));
+export const alertStore = createStore<Alert[]>('alerts', () => demo?.alerts ?? seedAlerts(T0));
+export const wallStore = createStore<Wall[]>('walls', () => demo?.walls ?? seedWalls(cameraStore.get()));
+export const policyStore = createStore<Policy[]>('policies', () => demo?.policies ?? POLICIES);
 export const sessionStore = createStore<{ userId: string; live: boolean }>('session', { userId: 'u-priya', live: true });
 const counters = createStore<{ alert: number; Incident: number; Observation: number; 'Near miss': number }>('counters', {
   alert: 1042,
@@ -22,7 +25,7 @@ const counters = createStore<{ alert: number; Incident: number; Observation: num
   'Near miss': 188,
 });
 
-/** When this browser last opened the Qavach reports panel; reports raised after it count as new. */
+/** When this browser last opened the QHSE reports panel; reports raised after it count as new. */
 export const reportsSeenStore = createStore<number>('reportsSeen', 0);
 
 /** Live people/vehicle counts per camera, from the engine. Memory only. */
@@ -118,7 +121,7 @@ export function acknowledge(id: string, by: string, via: Alert['ackVia'], text?:
 export function raiseInQavach(id: string, rec: Omit<QavachRecord, 'ref' | 'at'>) {
   const ref = nextQavachRef(rec.type);
   patch(id, (a) =>
-    note({ ...a, qavach: { ...rec, ref, at: Date.now() } }, { at: Date.now(), actor: rec.createdBy, text: `${rec.type} ${ref} raised in Qavach` }),
+    note({ ...a, qavach: { ...rec, ref, at: Date.now() } }, { at: Date.now(), actor: rec.createdBy, text: `${rec.type} ${ref} reported to QHSE` }),
   );
   return ref;
 }

@@ -36,17 +36,17 @@
 .wtile--over { outline: 3px solid var(--q-night-accent) !important; }
 .wtile--alert { outline: 3px solid var(--q-p1); }
 .wtile--P1 { animation: pulse-ring 1.4s infinite; }
-.wtile--P2 { outline-color: #D7DEE0; }
-.wtile--P3 { outline-color: var(--q-p4); }
-.wtile--P4 { outline-color: var(--q-p3); }
+.wtile--P2 { outline-color: var(--q-p2); }
+.wtile--P3 { outline-color: var(--q-p3); }
+.wtile--P4 { outline-color: var(--q-p4); }
 
 .wtile__top { position: absolute; top: 6px; left: 6px; right: 6px; display: flex; align-items: center; gap: 5px; pointer-events: none; }
-.wtile__tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #E8EDF3; background: rgba(11, 24, 40, .72); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
-.wtile__tag--alert { background: var(--q-danger); color: #fff; }
-.wtile__tag--busy { background: rgba(45, 91, 255, .85); color: #fff; }
+.wtile__tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--c-light); background: color-mix(in srgb, var(--c-black) 72%, transparent); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.wtile__tag--alert { background: var(--q-danger); color: var(--c-white); }
+.wtile__tag--busy { background: color-mix(in srgb, var(--c-blue) 85%, transparent); color: var(--c-white); }
 .wtile__actions { display: inline-flex; gap: 4px; opacity: 0; transition: opacity .15s; pointer-events: auto; }
 .wtile:hover .wtile__actions, .wtile:focus-within .wtile__actions, .wtile__actions--on { opacity: 1; }
-.wtile__actions button { width: 26px; height: 26px; border: 0; border-radius: 6px; background: rgba(11, 24, 40, .8); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.wtile__actions button { width: 26px; height: 26px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--c-black) 80%, transparent); color: var(--c-white); display: inline-flex; align-items: center; justify-content: center; }
 .wtile__actions button:hover { background: var(--q-ai); }
 
 
@@ -80,11 +80,11 @@
 .qgear { display: inline-block; width: 24px; height: 24px; background: currentColor; -webkit-mask: url(/qv/hdr/gear.png) center / 24px 24px no-repeat; mask: url(/qv/hdr/gear.png) center / 24px 24px no-repeat; }
 
 /* An alert on a tile is just its level, solid-coloured; clicking it opens this camera's alerts */
-.wtile__prio { position: absolute; left: 8px; bottom: 34px; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 12px 0 10px; border: 0; border-radius: var(--q-r); font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .5px; color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); cursor: pointer; }
+.wtile__prio { position: absolute; left: 8px; bottom: 34px; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 12px 0 10px; border: 0; border-radius: var(--q-r); font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .5px; color: var(--c-white); box-shadow: 0 2px 8px color-mix(in srgb, var(--c-black) 35%, transparent); cursor: pointer; }
 .wtile__prio:disabled { cursor: default; }
 .wtile__prio:not(:disabled):hover { filter: brightness(1.08); }
 .wtile__prio--P1 { background: var(--q-p1); }
-.wtile__prio--P2 { background: var(--q-p2); box-shadow: 0 0 0 1px rgba(255, 255, 255, .7), 0 2px 8px rgba(0, 0, 0, .35); }
+.wtile__prio--P2 { background: var(--q-p2); box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-white) 70%, transparent), 0 2px 8px color-mix(in srgb, var(--c-black) 35%, transparent); }
 .wtile__prio--P3 { background: var(--q-p3); }
 .wtile__prio--P4 { background: var(--q-p4); color: var(--q-p4-ink); }
 
@@ -93,4 +93,20 @@
 .castmenu__menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 600; min-width: 220px; padding: 8px 0; background: var(--q-surface); border-radius: var(--q-r); box-shadow: var(--q-shadow-pop); }
 .castmenu__menu button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--q-ink); text-align: left; cursor: pointer; }
 .castmenu__menu button:hover { background: var(--q-canvas); }
-.castmenu__menu svg { color: var(--q-p3); }
+.castmenu__menu svg { color: var(--q-muted); }
+
+.wset__delete { color: var(--c-red); }
+.wset__delete:hover { background: var(--c-red-wash); color: var(--c-red); }
+.wedit__pin.is-on { color: var(--c-blue); background: var(--c-blue-wash); }
+.wedit__pin.is-on:hover { background: var(--c-blue-wash); color: var(--c-blue); }
+.wallscreen__alerts { border: 0; cursor: pointer; font: inherit; }
+.wallscreen__alerts:hover { filter: brightness(.95); text-decoration: underline; }
+.wallscreen__exit { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--q-night-muted); border-radius: var(--q-r-sm); background: transparent; color: var(--q-night-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.wallscreen__exit:hover { background: var(--q-night-text); color: var(--q-night); }
+
+/* Narrow tiles: the tags keep their icon and drop the words, so the row (tag, people count, info button) stays inside the tile. */
+.wtile { container-type: inline-size; }
+.wtile__tag, .wtile__actions { flex: 0 0 auto; }
+@container (max-width: 250px) { .wtile__label { display: none; } }
+.wtile__top { flex-wrap: wrap; row-gap: 4px; }
+.wtile__actions { margin-left: auto; }

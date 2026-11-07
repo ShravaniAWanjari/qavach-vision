@@ -9,12 +9,14 @@ import { EXAMPLES, useZoneOptions } from './RuleEditor';
 
 const LOOK_FOR: Record<Subject, string> = { person: 'Person', vehicle: 'Vehicle', any: 'Person or vehicle' };
 const DURATIONS = [0, 1, 3, 5, 10, 15, 30, 60, 120, 300, 600];
-const secs = (n: number) => (n === 0 ? 'Straight away' : n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n} s`);
+const secs = (n: number) => (n === 0 ? 'Straight away' : n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Set up a rule without leaving the list: describe it in plain words or pick the fields, then create it. The tuning
  *  (frames, detector certainty, repeat time) starts at the defaults and is changed later in the full rule editor. */
-export function NewRulePanel({ onClose }: { onClose: () => void }) {
+/** `forCamera`: opened while a camera is being set up. The rule can be saved without other cameras, and `onCreated` lets the
+ *  camera tick it, so the camera is added to it when the camera itself is saved. */
+export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClose: () => void; inline?: boolean; forCamera?: string; onCreated?: (rule: Rule) => void }) {
   const cams = useCameras();
   const rules = useRules();
   const me = useMe();
@@ -66,9 +68,11 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
   };
 
   const sentence = `${describeRule(rule, zoneNames)}${rule.schedule !== 'always' ? `, ${SCHEDULE_LABEL[rule.schedule].toLowerCase()}` : ''}`;
-  const valid = rule.cameraIds.length > 0;
+  const valid = !!forCamera || rule.cameraIds.length > 0;
   const create = () => {
-    saveRule({ ...rule, name: rule.name.trim() || sentence, updatedAt: Date.now(), updatedBy: me.id });
+    const saved = { ...rule, name: rule.name.trim() || sentence, updatedAt: Date.now(), updatedBy: me.id };
+    saveRule(saved);
+    onCreated?.(saved);
     toast(`${rule.id} created · ${rule.mode === 'live' ? 'live now' : 'in test: matches are logged, no one is told'}`);
     onClose();
   };
@@ -77,6 +81,7 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
     <Drawer
       title="New Rule"
       onClose={onClose}
+      inline={inline}
       footer={
         <>
           {!valid && <span className="meta" style={{ marginRight: 'auto' }}>Choose at least one camera.</span>}
@@ -90,6 +95,7 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="newrule">
+        {forCamera && <p className="newrule__forcam">This rule is applied to {forCamera} when you save the camera. Add other cameras below if it should watch them too.</p>}
         <section className="newrule__ai">
           <label className="field__label" htmlFor="nr-text">
             Describe the rule in your own words
@@ -132,7 +138,7 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
 
         <p className="newrule__sentence">
           {sentence} on {chosen.length} camera{chosen.length === 1 ? '' : 's'}, raise a <strong>{rule.priority} {PRIORITY_NAME[rule.priority]}</strong> alert
-          {rule.qavach !== 'none' ? ` and a Qavach ${rule.qavach.toLowerCase()}` : ''}.
+          {rule.qavach !== 'none' ? ` and a QHSE ${rule.qavach.toLowerCase()}` : ''}.
         </p>
 
         <div className="field">
@@ -212,14 +218,14 @@ export function NewRulePanel({ onClose }: { onClose: () => void }) {
           <span className="field__label">Alert Level</span>
           <Seg label="Alert level" value={rule.priority} onChange={(priority) => set({ priority })} options={(['P1', 'P2', 'P3', 'P4'] as Priority[]).map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` }))} />
           <span className="field__hint">
-            The level decides who is alerted and how. <Link to="/notifications" onClick={onClose}>See alert configuration</Link>
+            The level decides who is alerted and how. <Link to="/configuration/alerts" onClick={onClose}>See alert configuration</Link>
           </span>
         </div>
 
         <div className="newrule__pair">
           <Choice
             id="nr-q"
-            label="Qavach Record"
+            label="Reported to QHSE"
             value={rule.qavach}
             onChange={(qavach) => set({ qavach })}
             options={[...(['Incident', 'Observation', 'Near miss'] as QavachRecordType[]).map((v) => ({ value: v as QavachRecordType | 'none', label: v })), { value: 'none' as QavachRecordType | 'none', label: "Don't create one" }]}

@@ -10,17 +10,18 @@ import threading
 import numpy as np
 
 from qavach import config
+from qavach.device import half_precision, pick_device
 
 
 class Detector:
     """One model shared by every camera; calls are serialised because the GPU is shared too."""
 
     def __init__(self):
-        import torch
         from ultralytics import YOLO
         if not config.YOLO_WEIGHTS.exists():
             raise FileNotFoundError(f'{config.YOLO_WEIGHTS} is missing; set QAVACH_YOLO_WEIGHTS or see README.md')
-        self.device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+        self.device = pick_device()
+        self.half = half_precision(self.device)
         self.model = YOLO(str(config.YOLO_WEIGHTS))
         self.lock = threading.Lock()
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
@@ -28,8 +29,8 @@ class Detector:
     def detect(self, frame, size):
         """Person boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class."""
         with self.lock:
-            result = self.model.predict(frame, conf=0.05, iou=0.45, imgsz=size, device=self.device, classes=[0],
-                                        verbose=False)[0]
+            result = self.model.predict(frame, conf=0.05, iou=0.45, imgsz=size, device=self.device, half=self.half,
+                                        classes=[0], verbose=False)[0]
         boxes = result.boxes
         if len(boxes) == 0:
             return np.zeros((0, 6), dtype=np.float32)
@@ -47,11 +48,11 @@ class FireDetector:
     SIZE = 960
 
     def __init__(self):
-        import torch
         from ultralytics import YOLO
         if not config.FIRE_WEIGHTS.exists():
             raise FileNotFoundError(f'{config.FIRE_WEIGHTS} is missing; set QAVACH_FIRE_WEIGHTS or see README.md')
-        self.device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+        self.device = pick_device()
+        self.half = half_precision(self.device)
         self.model = YOLO(str(config.FIRE_WEIGHTS))
         self.lock = threading.Lock()
         self.detect(np.zeros((540, 960, 3), dtype=np.uint8))          # warm up the GPU kernels
@@ -59,7 +60,7 @@ class FireDetector:
     def detect(self, frame):
         """[(class name, confidence, (x1, y1, x2, y2))] with plain floats, so the results can go straight into JSON."""
         with self.lock:
-            result = self.model.predict(frame, conf=self.FLOOR, imgsz=self.SIZE, device=self.device, verbose=False)[0]
+            result = self.model.predict(frame, conf=self.FLOOR, imgsz=self.SIZE, device=self.device, half=self.half, verbose=False)[0]
         boxes = result.boxes
         if len(boxes) == 0:
             return []

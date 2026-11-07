@@ -51,7 +51,7 @@ export function useWallModel(wall: Wall, paused: boolean): WallModel & { secsLef
     return [...new Set(scopeAlerts.filter((a) => allowed.has(a.priority)).map((a) => a.cameraId))];
   }, [wall.alertTakeover, scopeAlerts, policies]);
 
-  // Busiest camera, re-checked every 30 s so the auto slot doesn't flicker.
+  // Busiest camera, re-checked every 30s so the auto slot doesn't flicker.
   const busyBucket = Math.floor(now / 30000);
   const busiest = useMemo(() => {
     if (!wall.autoPinBusy) return undefined;
@@ -198,26 +198,26 @@ export function WallBody({
         <CameraView cam={cam} still={!animate} alert={alert} now={now} className="wtile__view" />
         <div className="wtile__top">
           {opts.reason === 'alert' && (
-            <span className="wtile__tag wtile__tag--alert">
+            <span className="wtile__tag wtile__tag--alert" title="Alert Takeover">
               <Icon name="warning" size={13} stroke={2.2} />
-              Alert takeover
+              <span className="wtile__label">Alert takeover</span>
             </span>
           )}
           {opts.reason === 'pinned' && (
-            <span className="wtile__tag" title="Pinned: high-operational area">
+            <span className="wtile__tag" title="Pinned: High-operational Area">
               <Icon name="pin" size={13} />
-              Pinned
+              <span className="wtile__label">Pinned</span>
             </span>
           )}
           {opts.reason === 'busy' && (
-            <span className="wtile__tag wtile__tag--busy" title="Auto-pinned: the busiest camera on this wall right now">
+            <span className="wtile__tag wtile__tag--busy" title="Auto-pinned: The Busiest Camera On This Wall Right Now">
               <Icon name="activity" size={13} />
-              Busiest now
+              <span className="wtile__label">Busiest now</span>
             </span>
           )}
           <span className="spacer" />
           {cam.status !== 'offline' && (
-            <span className="wtile__tag" title="People and vehicles in view">
+            <span className="wtile__tag" title="People And Vehicles In View">
               <Icon name="user" size={13} />
               {activity[cam.id] ?? 0}
             </span>
@@ -230,15 +230,15 @@ export function WallBody({
                 </button>
               )}
               {onOpen && (
-                <button type="button" title="Open camera" aria-label={`Open ${cam.id}`} onClick={() => onOpen(cam)}>
-                  <Icon name="expand" size={15} />
+                <button type="button" title="Camera Information" aria-label={`Information about ${cam.id}`} onClick={() => onOpen(cam)}>
+                  <Icon name="info" size={15} stroke={2} />
                 </button>
               )}
             </span>
           )}
           {editing && opts.slot !== undefined && opts.reason === 'pinned' && (
             <span className="wtile__actions wtile__actions--on">
-              <button type="button" aria-label={`Remove ${cam.id} from slot`} title="Remove from this slot" onClick={() => onClearSlot?.(opts.slot!)}>
+              <button type="button" aria-label={`Remove ${cam.id} from slot`} title="Remove From This Slot" onClick={() => onClearSlot?.(opts.slot!)}>
                 <Icon name="close" size={15} />
               </button>
             </span>

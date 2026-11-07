@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { Drawer } from './ui';
 import '../pages/overview.css';
 
-/** Alerts raised in Qavach, newest first, and how many were raised since the panel was last opened. */
+/** Alerts reported to QHSE, newest first, and how many were raised since the panel was last opened. */
 export function useQavachReports(): { records: Alert[]; fresh: number } {
   const alerts = useAlerts();
   const seen = useReportsSeen();
@@ -15,14 +15,14 @@ export function useQavachReports(): { records: Alert[]; fresh: number } {
   return { records, fresh: records.filter((a) => a.qavach!.at > seen).length };
 }
 
-/** The Qavach reports side panel. Opening it marks every report as seen; the ones that were new keep their tag until it closes. */
+/** The QHSE reports side panel. Opening it marks every report as seen; the ones that were new keep their tag until it closes. */
 export function QavachReportsDrawer({ onClose }: { onClose: () => void }) {
   const { records } = useQavachReports();
   const now = useNow(5000);
   const [seenBefore] = useState(() => reportsSeenStore.get());
   useEffect(() => reportsSeenStore.set(() => Date.now()), []);
   return (
-    <Drawer title="Raised in Qavach" sub="Incidents, near misses and observations raised from alerts" onClose={onClose}>
+    <Drawer title="Reported to QHSE" sub="Incidents, near misses and observations raised from alerts" onClose={onClose}>
       {records.length === 0 && <p className="meta">None yet.</p>}
       <ul className="ovlist ovlist--flush">
         {records.map((a) => (
@@ -49,7 +49,7 @@ export function QavachReportsDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** "2 new Qavach reports" in the success green, as a text link that opens the panel. */
+/** "2 new QHSE reports" in the success green, as a text link that opens the panel. */
 export function QavachReportsLink() {
   const { records, fresh } = useQavachReports();
   const [open, setOpen] = useState(false);

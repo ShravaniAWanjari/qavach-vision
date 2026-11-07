@@ -1,18 +1,20 @@
 import type { Camera, Rule } from '../data/types';
+import { assetUrl } from './assets';
 
 // Client for the detection service in ../backend. The console works without it, on sample data; with it, cameras can
 // be real (a YouTube live link, a stream address or an uploaded video) and rules run on them.
 
-/** Opened from disk (the single-file build) there is no dev server to proxy /api, so call the service directly. */
-const BASE = typeof window !== 'undefined' && window.location.protocol === 'file:' ? 'http://127.0.0.1:8830' : '';
-export const apiUrl = (path: string) => (path.startsWith('http') ? path : BASE + path);
+/** Opened from disk (the single-file build) there is no dev server to proxy /api, so call the service directly. Anywhere else
+ *  the service is at "api/..." beside the console, which also works when the console is served from a sub-path. */
+const FROM_DISK = typeof window !== 'undefined' && window.location.protocol === 'file:';
+export const apiUrl = (path: string) => (path.startsWith('http') ? path : FROM_DISK ? `http://127.0.0.1:8830${path}` : assetUrl(path));
 
 export class BackendError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(BASE + path, init);
+    res = await fetch(apiUrl(path), init);
   } catch {
     throw new BackendError('The detection service is not running. Start it with backend/run.sh.');
   }
@@ -115,7 +117,7 @@ export const backend = {
   upload(file: File, onProgress: (share: number) => void): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `${BASE}/api/uploads?name=${encodeURIComponent(file.name)}`);
+      xhr.open('PUT', apiUrl(`/api/uploads?name=${encodeURIComponent(file.name)}`));
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
       xhr.onload = () => {
         if (xhr.status === 200) return resolve(JSON.parse(xhr.responseText));

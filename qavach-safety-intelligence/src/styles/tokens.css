@@ -1,94 +1,129 @@
-/* Qavach product styling (the live Qavach UI): Exo 2, cyan brand #00B9F2, cyan sidebar #35B9F1, page #F5F6F7,
-   headings #0C323D, body #567C87. The variable names are the ones the pages already use. */
+/* THE ONE PLACE FOR COLOUR.
+   Nine colours, one shade each, taken from the live Polaris page (demor7.quantumbso.com/QHSEAIDEMOR7/polaris):
+   red, orange, green, violet, grey, light grey and black, Polaris blue, plus a dark blue kept for a few accents, and
+   white. No other shade of any of them is used.
+   Pale backgrounds are these same colours mixed with white or made see-through, never a new hue.
+   Nothing else in src/ may write a hex or rgb value: CSS uses var(--c-*) or the --q-* names below, TypeScript uses
+   cssVar('--c-*') from ./colors.ts. `npm run check:colors` fails the build if that slips. */
 :root {
-  --q-canvas: #F5F6F7;
-  --q-surface: #FFFFFF;
-  --q-surface-2: #F5F6F7;
-  --q-border: #DEDFE0;
-  --q-divider: #E4E7E9;
-  --q-border-strong: #D7DEE0;
-  --q-border-input: #DEDFE0;
+  --c-red: #DC2626;
+  --c-blue: #0EA5E9;            /* Polaris sky blue: buttons, active pills, focus, everything blue in the content */
+  --c-sidebar: #35B9F1;         /* Polaris sidebar blue: the sidebar only */
+  --c-blue-dark: #2563EB;       /* dark blue from the Polaris KPI cards and charts: accents only (chart lines, links) */
+  --c-orange: #EA580C;
+  --c-brown: #B45309;           /* P3 */
+  --c-yellow: #FFC72C;          /* P4: mango yellow */
+  --c-green: #16A34A;
+  --c-violet: #7C3AED;
+  --c-grey: #64748B;
+  --c-light: #E5E9F0;           /* light grey: borders, dividers, chips */
+  --c-black: #000000;
+  --c-white: #FFFFFF;
+  /* The Q-HSE side menu keeps its own colours exactly as the live site has them (read from demor7.quantumbso.com). */
+  --c-menu-bg: #0F242A;         /* flyout panel and the selected sidebar item */
+  --c-menu-ink: #0C323D;        /* sidebar hover and the dim layer behind the menu */
+  --c-menu-text: #899397;       /* tile labels at rest */
+  --c-menu-hover: #005972;      /* submenu hover */
+  --c-logo-halo: #009FE3;       /* halo behind the collapsed sidebar logo */
+  --c-logo-glow: color-mix(in srgb, #F4EC94 40%, transparent);
 
-  --q-ink: #0C323D;            /* headings, table text, labels, active tab */
-  --q-ink-2: #2D4046;          /* dark text */
-  --q-muted: #567C87;          /* body, input values, inactive tabs */
-  --q-faint: #A6B8BD;          /* placeholder chrome, checkbox border */
+  /* Derived from the eight, not new colours */
+  --c-wash: color-mix(in srgb, var(--c-light) 40%, var(--c-white));   /* page background */
+  --c-red-wash: color-mix(in srgb, var(--c-red) 10%, var(--c-white));
+  --c-blue-wash: color-mix(in srgb, var(--c-blue) 10%, var(--c-white));
+  --c-orange-wash: color-mix(in srgb, var(--c-orange) 12%, var(--c-white));
+  --c-green-wash: color-mix(in srgb, var(--c-green) 10%, var(--c-white));
+  --c-violet-wash: color-mix(in srgb, var(--c-violet) 10%, var(--c-white));
 
-  --q-dock: #35B9F1;           /* sidebar */
-  --q-dock-active: #10242A;
-  --q-dock-text: #7DDAF7;
-  --q-dock-sep: rgba(255, 255, 255, 0.25);
-  --q-dock-avatar: #0C323D;
-  --q-dock-ai: #7DDAF7;
-  --q-dock-badge: #45C8F5;
+  /* ── Names the pages use ───────────────────────────────────────────────────────────────────────────── */
+  --q-canvas: var(--c-wash);
+  --q-surface: var(--c-white);
+  --q-surface-2: var(--c-wash);
+  --q-border: var(--c-light);
+  --q-divider: var(--c-light);
+  --q-border-strong: var(--c-light);
+  --q-border-input: var(--c-light);
 
-  /* Brand cyan. Anything QAI drafted stays visibly distinct: a pale cyan wash and a cyan border. */
-  --q-ai: #00B9F2;
-  --q-ai-ink: #0089B3;
-  --q-ai-ink-hover: #006C8E;
-  --q-ai-deep: #0C323D;
-  --q-ai-tint: #E5F7FD;
-  --q-ai-wash: #F1FBFE;
-  --q-ai-border: #A9E4F8;
-  --q-ai-divider: #CDEFFB;
+  --q-ink: var(--c-black);              /* headings, table text, labels, active tab */
+  --q-ink-2: var(--c-grey);
+  --q-muted: var(--c-grey);             /* body, input values, inactive tabs */
+  --q-faint: var(--c-grey);             /* placeholder chrome */
 
-  --q-rising: #C26A0A;
-  --q-rising-bg: #FFF1E0;
-  --q-rising-border: #FFD3A6;
-  --q-danger: #E5456D;
-  --q-danger-bg: #FDECF0;
-  --q-danger-border: #F7C3D0;
-  --q-warn: #B8700E;
-  --q-warn-bg: rgba(230, 142, 28, 0.1);
-  --q-warn-border: rgba(230, 142, 28, 0.35);
-  --q-warn-dot: #E68E1C;
-  --q-good: #2C9E6C;
-  --q-good-bg: #E6F6EF;
-  --q-good-border: #B6E3CE;
-  --q-live: #39BD86;
+  --q-dock: var(--c-sidebar);              /* sidebar */
+  --q-dock-active: var(--c-menu-ink);   /* selected item = hover item, as in Q-HSE */
+  --q-dock-text: var(--c-white);
+  --q-dock-sep: color-mix(in srgb, var(--c-white) 25%, transparent);
+  --q-dock-avatar: var(--c-black);
+  --q-dock-ai: var(--c-white);
+  --q-dock-badge: var(--c-sidebar);
 
-  /* Alert levels, from the design system's swatches only: Brand/Red, then the label colours from darkest to
-     lightest. Text on P4 is Label/Primary; on the others it is white. */
-  --q-p1: #E5456D;
-  --q-p2: #0C323D;
-  --q-p3: #567C87;
-  --q-p4: #A6B8BD;
-  --q-p4-ink: #0C323D;
+  /* Brand blue. Anything QAI drafted stays visibly distinct: a pale wash and a blue border. */
+  --q-ai: var(--c-blue);
+  --q-ai-ink: var(--c-blue);
+  --q-ai-ink-hover: var(--c-blue);
+  --q-ai-deep: var(--c-black);
+  --q-ai-tint: color-mix(in srgb, var(--c-blue) 12%, var(--c-white));
+  --q-ai-wash: var(--c-blue-wash);
+  --q-ai-border: color-mix(in srgb, var(--c-blue) 40%, var(--c-white));
+  --q-ai-divider: color-mix(in srgb, var(--c-blue) 22%, var(--c-white));
 
-  --q-night: #0B1828;
-  --q-night-2: #0E1D31;
-  --q-night-3: #1B2D45;
-  --q-night-line: #33507A;
-  --q-night-text: #E8EDF3;
-  --q-night-muted: #9FB1C6;
-  --q-night-accent: #7DDAF7;
-  --q-heat-incident: #E5456D;
-  --q-heat-high: #FF9F40;
+  --q-rising: var(--c-orange);
+  --q-rising-bg: var(--c-orange-wash);
+  --q-rising-border: color-mix(in srgb, var(--c-orange) 35%, var(--c-white));
+  --q-danger: var(--c-red);
+  --q-danger-bg: var(--c-red-wash);
+  --q-danger-border: color-mix(in srgb, var(--c-red) 35%, var(--c-white));
+  --q-warn: var(--c-orange);
+  --q-warn-bg: color-mix(in srgb, var(--c-orange) 10%, transparent);
+  --q-warn-border: color-mix(in srgb, var(--c-orange) 35%, transparent);
+  --q-warn-dot: var(--c-orange);
+  --q-good: var(--c-green);
+  --q-good-bg: var(--c-green-wash);
+  --q-good-border: color-mix(in srgb, var(--c-green) 35%, var(--c-white));
+  --q-live: var(--c-green);
 
-  /* chart colours used in QAI */
-  --q-chart-1: #01B8AA;
-  --q-chart-2: #8ED8B7;
-  --q-chart-3: #F4BE37;
-  --q-chart-4: #FF9F40;
-  --q-chart-5: #5F6B6D;
+  /* Alert levels: P1 red, P2 orange, P3 brown, P4 mango yellow. Text is white on the first three and black on P4. */
+  --q-p1: var(--c-red);
+  --q-p2: var(--c-orange);
+  --q-p3: var(--c-brown);
+  --q-p4: var(--c-yellow);
+  --q-p4-ink: var(--c-black);
+
+  --q-night: var(--c-black);
+  --q-night-2: var(--c-black);
+  --q-night-3: var(--c-grey);
+  --q-night-line: var(--c-grey);
+  --q-night-text: var(--c-white);
+  --q-night-muted: var(--c-light);
+  --q-night-accent: var(--c-blue);
+  --q-heat-incident: var(--c-red);
+  --q-heat-high: var(--c-orange);
+
+  /* chart colours */
+  --q-chart-1: var(--c-blue-dark);
+  --q-chart-2: var(--c-green);
+  --q-chart-3: var(--c-orange);
+  --q-chart-4: var(--c-violet);
+  --q-chart-5: var(--c-grey);
 
   --q-font: 'Exo 2', sans-serif;
   /* IDs and clock times: Exo 2 like everything else, with even-width digits so columns of them still line up. */
   --q-mono: 'Exo 2', sans-serif;
 
-  /* radius 4px on controls only; cards are square */
+  /* Polaris shape: 4px controls, 6px KPI cards, 10px inner cards, 12px panels, pills fully round */
   --q-r-sm: 4px;
-  --q-r: 4px;
-  --q-r-md: 4px;
-  --q-r-lg: 0;
-  --q-r-xl: 4px;
-  --q-shadow-card: 0 1px 2px #0000001A;
-  --q-shadow-pop: 0 3px 16px #A6B8BD;
-  --q-shadow-seg: 0 1px 2px #0000001A;
+  --q-r: 6px;
+  --q-r-md: 10px;
+  --q-r-lg: 12px;
+  --q-r-xl: 12px;
+  --q-r-pill: 999px;
+  --q-shadow-card: 0 1px 2px color-mix(in srgb, var(--c-slate-900) 4%, transparent);
+  --q-shadow-pop: 0 6px 18px color-mix(in srgb, var(--c-slate-900) 16%, transparent);
+  --q-shadow-seg: 0 1px 2px color-mix(in srgb, var(--c-slate-900) 4%, transparent);
 
   --q-header-h: 80px;
   --q-side-w: 78px;
-  --q-side-open-w: 232px;
+  --q-side-open-w: 262px;
   --q-inset-l: 158px;
   --q-inset-r: 88px;
   --q-dock-w: 78px;

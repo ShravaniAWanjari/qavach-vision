@@ -1,10 +1,10 @@
 .camarea { margin-top: 12px; }
 .camarea h2 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .camgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.camcard { display: flex; flex-direction: column; background: var(--q-surface); border: 0; border-radius: 4px; box-shadow: 0 1px 2px rgba(0, 0, 0, .1); overflow: hidden; color: var(--q-ink); }
+.camcard { display: flex; flex-direction: column; background: var(--q-surface); border: 0; border-radius: 4px; box-shadow: 0 1px 2px color-mix(in srgb, var(--c-black) 10%, transparent); overflow: hidden; color: var(--q-ink); }
 .camcard:hover { box-shadow: 0 0 0 2px var(--q-ai-border); color: var(--q-ink); }
 .camcard .camview { border-radius: 0; }
-.camcard__body { padding: 10px 15px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #2D4046; }
+.camcard__body { padding: 10px 15px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--c-black); }
 
 .camedit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
 .camedit--zones { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
@@ -15,13 +15,13 @@
 .zedit { display: flex; flex-direction: column; gap: 8px; }
 .zedit__tools { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; background: var(--q-surface); border: 1px solid var(--q-border); border-radius: var(--q-r); }
 .zedit__tools > button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; background: none; border-radius: var(--q-r-sm); font-size: 13px; font-weight: 500; color: var(--q-ink-2); }
-.zedit__tools > button[aria-pressed='true'] { background: var(--q-ink); color: #fff; }
+.zedit__tools > button[aria-pressed='true'] { background: var(--q-ink); color: var(--c-white); }
 .zedit__tools > button:hover:not([aria-pressed='true']) { background: var(--q-canvas); }
 .zedit__canvas { position: relative; border-radius: var(--q-r); overflow: hidden; user-select: none; }
 .zedit__svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .zedit__canvas--polygon .zedit__svg, .zedit__canvas--line .zedit__svg { cursor: crosshair; }
 .zedit__canvas--select [data-zone] { cursor: pointer; }
-.zedit__handle { fill: #fff; stroke: var(--q-ai); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: grab; }
+.zedit__handle { fill: var(--c-white); stroke: var(--q-ai); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: grab; }
 .camview__zone-label.is-sel { background: var(--q-ai); }
 
 .zonerow { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--q-border); border-radius: var(--q-r); cursor: pointer; }
@@ -33,8 +33,8 @@
 .viewswitch { display: inline-flex; border: 1px solid var(--q-border-input); border-radius: var(--q-r-sm); overflow: hidden; background: var(--q-surface); flex: 0 0 auto; }
 .viewswitch button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 38px; padding: 0; border: 0; background: none; color: var(--q-muted); }
 .viewswitch button + button { border-left: 1px solid var(--q-border-input); }
-.viewswitch button:hover { background: #F1FBFE; color: var(--q-ink); }
-.viewswitch button[aria-pressed='true'] { background: var(--q-ai); color: #fff; }
+.viewswitch button:hover { background: var(--c-wash); color: var(--q-ink); }
+.viewswitch button[aria-pressed='true'] { background: var(--q-ai); color: var(--c-white); }
 
 /* List view: sortable column heads */
 .camlist .table th { padding: 0 15px; }
@@ -45,17 +45,17 @@
 
 /* Columns view: department → work area → camera, with a preview of the chosen camera */
 .colview { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.1fr) minmax(240px, 1.2fr) minmax(320px, 1.5fr); height: calc(100vh - 360px); min-height: 460px; border-radius: 4px; overflow: hidden; }
-.colview__col { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #F3F3F3; }
-.colview__head { flex: 0 0 auto; padding: 10px 15px; border-bottom: 1px solid #F3F3F3; font-size: 12px; line-height: 14px; font-weight: 800; text-transform: uppercase; color: var(--q-ink); }
+.colview__col { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--c-wash); }
+.colview__head { flex: 0 0 auto; padding: 10px 15px; border-bottom: 1px solid var(--c-wash); font-size: 12px; line-height: 14px; font-weight: 800; text-transform: uppercase; color: var(--q-ink); }
 .colview__items { flex: 1; overflow-y: auto; padding: 4px 0; }
 .colview__item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 12px 6px 15px; border: 0; background: none; text-align: left; font-size: 14px; line-height: 19px; color: var(--q-ink); }
-.colview__item:hover { background: #F1FBFE; }
-.colview__item.is-sel { background: var(--q-ai); color: #fff; }
-.colview__item.is-sel .mono, .colview__item.is-sel svg, .colview__item.is-sel .colview__n { color: #fff; }
+.colview__item:hover { background: var(--c-wash); }
+.colview__item.is-sel { background: var(--q-ai); color: var(--c-white); }
+.colview__item.is-sel .mono, .colview__item.is-sel svg, .colview__item.is-sel .colview__n { color: var(--c-white); }
 .colview__item .ellipsis { flex: 1; min-width: 0; }
 .colview__item svg { flex: 0 0 auto; color: var(--q-faint); }
 .colview__n { font-size: 12px; color: var(--q-muted); }
-.colview__preview { display: flex; flex-direction: column; gap: 12px; padding: 15px; overflow-y: auto; min-width: 0; background: #FBFCFC; }
+.colview__preview { display: flex; flex-direction: column; gap: 12px; padding: 15px; overflow-y: auto; min-width: 0; background: var(--c-wash); }
 .colview__preview .camview { border-radius: 4px; flex: 0 0 auto; }
 .colview__preview .btn { align-self: flex-start; }
 .colview__title { display: flex; align-items: baseline; gap: 8px; font-size: 16px; color: var(--q-ink); }
@@ -66,7 +66,7 @@
 /* Import dialog */
 .cimport__steps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .cimport__step { display: flex; gap: 12px; padding: 15px; border: 1px solid var(--q-border); border-radius: 4px; background: var(--q-surface); }
-.cimport__num { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--q-ink); color: #fff; font-size: 13px; font-weight: 700; }
+.cimport__num { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--q-ink); color: var(--c-white); font-size: 13px; font-weight: 700; }
 .cimport__link { margin-top: 6px; align-self: flex-start; font-size: 15px; }
 .cimport__error { padding: 10px 14px; border-radius: 4px; background: var(--q-danger-bg); border: 1px solid var(--q-danger-border); color: var(--q-danger); font-size: 14px; }
 .cimport__table { max-height: 340px; overflow-y: auto; padding: 13px 2px 2px; background: var(--q-canvas); border-radius: 4px; }
@@ -90,3 +90,17 @@
 .colview { height: auto; min-height: calc(100vh - 330px); grid-template-rows: 1fr; }
 .colview__col { height: 0; min-height: 100%; }
 .colview__preview { overflow: visible; }
+
+/* Camera set-up: sentences, hints and the example addresses read as written (sentence case), not with every word
+   capitalised. Labels, headings and buttons keep the site's capitals. */
+.camsetup .field__hint, .camsetup p, .camsetup .meta, .camsetup .camview__nopic small, .camsetup .camedit__placeholder { text-transform: none; }
+.camsetup input::placeholder, .camsetup textarea::placeholder { text-transform: none; }
+/* Camera set-up: a short title line, and tighter rule and wall tables (rows 8px apart, not 13). */
+.camsetup .page__head { min-height: 0; margin: 0 0 6px; }
+.camsetup .page__sub { font-size: 15px; font-weight: 700; }
+.camsetup .tabs { margin-bottom: 12px; }
+.table.camsetup__table { border-spacing: 0 6px; margin: -2px 0 0; }
+.table.camsetup__table th { padding: 6px 15px 0; font-size: 13px; }
+.table.camsetup__table td { padding: 9px 15px; }
+.table.camsetup__table td .meta { margin-top: 1px; }
+.camsetup .card .card__head { flex-wrap: wrap; row-gap: 4px; padding-top: 8px; padding-bottom: 8px; }

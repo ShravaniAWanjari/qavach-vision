@@ -14,12 +14,16 @@ const WALL_OPTIONS = [
 ];
 
 /** Alert Configuration as a side panel: one block per alert level, saved together. */
-export function AlertConfigPanel({ onClose }: { onClose: () => void }) {
+export function AlertConfigPanel({ onClose, inline }: { onClose: () => void; inline?: boolean }) {
   const saved = usePolicies();
   const me = useMe();
   const admin = isAdmin(me);
   const [draft, setDraft] = useState<Policy[]>(saved);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const cancel = () => {
+    setDraft(saved);
+    onClose();
+  };
   const set = (p: Policy, patch: Partial<Policy>) => setDraft(draft.map((x) => (x.priority === p.priority ? { ...x, ...patch } : x)));
 
   return (
@@ -27,11 +31,12 @@ export function AlertConfigPanel({ onClose }: { onClose: () => void }) {
       title="Alert Configuration"
       sub="Who is notified, how, and what happens if nobody responds, for each alert level"
       onClose={onClose}
+      inline={inline}
       footer={
         admin ? (
           <>
             {dirty && <span className="acfg__dirty" style={{ marginRight: 'auto' }}>Unsaved changes</span>}
-            <button type="button" className="btn btn--secondary" onClick={onClose}>
+            <button type="button" className="btn btn--secondary" onClick={cancel}>
               Cancel
             </button>
             <button
@@ -82,7 +87,7 @@ export function AlertConfigPanel({ onClose }: { onClose: () => void }) {
                   value={p.notify}
                   onChange={(notify) => set(p, { notify })}
                 />
-                <Choice id={id('ack')} label="Respond Within" value={p.ackWithinMin} onChange={(ackWithinMin) => set(p, { ackWithinMin })} options={[1, 2, 5, 10, 15, 30, 60].map((m) => ({ value: m, label: `${m} min` }))} />
+                <Choice id={id('ack')} label="Respond Within" value={p.ackWithinMin} onChange={(ackWithinMin) => set(p, { ackWithinMin })} options={[1, 2, 5, 10, 15, 30, 60].map((m) => ({ value: m, label: `${m}min` }))} />
                 <Choice
                   id={id('esc')}
                   label="Then Escalate To"
@@ -111,7 +116,7 @@ export function AlertConfigPanel({ onClose }: { onClose: () => void }) {
                 />
                 <Choice
                   id={id('qav')}
-                  label="Qavach Record"
+                  label="Reported to QHSE"
                   value={p.qavach}
                   onChange={(qavach) => set(p, { qavach })}
                   options={[

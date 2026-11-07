@@ -66,6 +66,12 @@ class Registry:
     def detector_loaded(self):
         return self._detector is not None or self._fire_detector is not None
 
+    @property
+    def device(self):
+        """The device the models run on ('cpu', 'cuda:0', 'mps'), or None until a rule has loaded one."""
+        loaded = self._detector or self._fire_detector
+        return loaded.device if loaded else None
+
     # ── events ───────────────────────────────────────────────────────────────────────────────────────────────────
     def emit(self, event):
         with self.events_lock:
@@ -194,7 +200,8 @@ class Registry:
         with self.lock:
             cameras = [dict(id=c['id'], name=c['name'], zones=c['zones'],
                             source=dict(kind='upload' if c['source'].kind == 'upload' else 'link', url=c['source'].url,
-                                        uploadId=c['source'].upload_id, user=c['source'].user))
+                                        uploadId=c['source'].upload_id, user=c['source'].user,
+                                        password=c['source'].password))        # DEMO: stored in plain text so a restart keeps the camera
                        for c in self.cameras.values()]
             config.DATA.mkdir(parents=True, exist_ok=True)
             tmp = config.STATE_FILE.with_suffix('.tmp')

@@ -2,7 +2,7 @@
 .acfg__dirty { font-size: 14px; font-weight: 600; color: var(--q-rising); }
 .acpanel { padding-top: 8px; }
 .acpanel__level + .acpanel__level { margin-top: 20px; }
-.acpanel__head { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid #F3F3F3; }
-.acpanel__head h2 { font-size: 16px; font-weight: 700; color: #212529; }
+.acpanel__head { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid var(--c-wash); }
+.acpanel__head h2 { font-size: 16px; font-weight: 700; color: var(--c-black); }
 .acpanel__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px 0 0; }
 @media (max-width: 600px) { .acpanel__fields { grid-template-columns: 1fr; } }

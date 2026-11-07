@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import os
 import re
+import shutil
 import uuid
 from pathlib import Path
 
@@ -34,6 +35,10 @@ app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], all
 def _startup():
     for folder in (config.FRAMES, config.UPLOADS, config.SNAPSHOTS):
         folder.mkdir(parents=True, exist_ok=True)
+    # Demo videos are named <12 hex id>.<ext>, so the console's sample cameras can point at them like any upload.
+    for video in config.SAMPLES.glob('*') if config.SAMPLES.exists() else []:
+        if video.suffix.lower() in config.VIDEO_SUFFIXES and HEX12.match(video.stem) and not (config.UPLOADS / video.name).exists():
+            shutil.copyfile(video, config.UPLOADS / video.name)
     registry.load()
 
 
@@ -48,8 +53,8 @@ def bad(error):
 
 @app.get('/api/health')
 def health():
-    return dict(ok=True, epoch=registry.epoch, detector=registry.detector_loaded, cameras=len(registry.cameras),
-                rules=len(registry.rules))
+    return dict(ok=True, epoch=registry.epoch, detector=registry.detector_loaded, device=registry.device,
+                cameras=len(registry.cameras), rules=len(registry.rules))
 
 
 # ── sources: upload, test connection, still frames ───────────────────────────────────────────────────────────────

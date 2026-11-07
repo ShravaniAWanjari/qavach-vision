@@ -163,9 +163,9 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
             selected.points.map((p, i) => <ellipse key={i} cx={p[0]} cy={p[1]} rx={1.1} ry={1.9} className="zedit__handle" data-handle={`${selected.id}|${i}`} />)}
           {draft.length > 0 && (
             <>
-              <polyline points={pts(hover ? [...draft, hover] : draft)} fill="none" stroke="#7D9BFF" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+              <polyline points={pts(hover ? [...draft, hover] : draft)} fill="none" stroke="var(--c-grey)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
               {draft.map((p, i) => (
-                <ellipse key={i} cx={p[0]} cy={p[1]} rx={0.9} ry={1.6} fill={i === 0 ? '#fff' : '#7D9BFF'} stroke="#2D5BFF" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                <ellipse key={i} cx={p[0]} cy={p[1]} rx={0.9} ry={1.6} fill={i === 0 ? 'var(--c-white)' : 'var(--c-grey)'} stroke="var(--c-blue)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
               ))}
             </>
           )}

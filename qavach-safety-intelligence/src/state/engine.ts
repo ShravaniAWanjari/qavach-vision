@@ -83,24 +83,24 @@ const round = (n: number) => Math.round(n * 10) / 10;
 function alertText(rule: Rule, zone: Zone | undefined): { title: string; detail: string } {
   const seen = rule.durationSec + 1 + Math.floor(Math.random() * 5);
   const zn = zone?.name ?? 'the camera view';
-  const need = rule.durationSec > 0 ? ` (rule: ${rule.durationSec} s or more)` : '';
+  const need = rule.durationSec > 0 ? ` (rule: ${rule.durationSec}s or more)` : '';
   switch (rule.condition) {
     case 'outside':
-      return { title: rule.name, detail: `Outside ${zn} for ${seen} s${need}` };
+      return { title: rule.name, detail: `Outside ${zn} for ${seen}s${need}` };
     case 'enters':
-      return { title: rule.name, detail: `Inside ${zn} for ${seen} s${need}` };
+      return { title: rule.name, detail: `Inside ${zn} for ${seen}s${need}` };
     case 'dwells':
-      return { title: rule.name, detail: `Stayed in ${zn} for ${seen} s${need}` };
+      return { title: rule.name, detail: `Stayed in ${zn} for ${seen}s${need}` };
     case 'crosses':
       return { title: rule.name, detail: `Crossed ${zn}` };
     case 'no-ppe':
-      return { title: rule.name, detail: `${rule.ppe.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' and ')} not seen for ${seen} s${need}` };
+      return { title: rule.name, detail: `${rule.ppe.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' and ')} not seen for ${seen}s${need}` };
     case 'crowd':
-      return { title: rule.name, detail: `${rule.crowdOver + 1 + Math.floor(Math.random() * 3)} people in ${zn} for ${seen} s` };
+      return { title: rule.name, detail: `${rule.crowdOver + 1 + Math.floor(Math.random() * 3)} people in ${zn} for ${seen}s` };
     case 'smoke':
-      return { title: rule.name, detail: `Smoke seen in ${zn} for ${seen} s${need}` };
+      return { title: rule.name, detail: `Smoke seen in ${zn} for ${seen}s${need}` };
     case 'stopped':
-      return { title: rule.name, detail: `Vehicle stopped ${seen} s in ${zn}${need}` };
+      return { title: rule.name, detail: `Vehicle stopped ${seen}s in ${zn}${need}` };
   }
 }
 
@@ -113,18 +113,31 @@ export function deliveriesFor(policy: Policy, cam: Camera, at: number): Delivery
   return out;
 }
 
-/** Raises one alert for a rule on a camera (used by the engine and by "Test on the wall"). */
-/** Alerts raised without announcing them (a test alert from the rule editor): no pop-up. */
+/** Alerts raised without announcing them: no pop-up. */
 export const quietAlerts = new Set<string>();
 
+/** What an alert for this rule on this camera would be, built but not stored: no ID is used up and no one is told. The
+ *  rule editor's preview shows it. */
+export function previewFor(rule: Rule, cam: Camera): Alert {
+  return buildAlert(rule, cam, 'PREVIEW');
+}
+
+/** Raises one alert for a rule on a camera (the sample engine). */
 export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}): Alert {
+  const alert = buildAlert(rule, cam, nextAlertId());
+  if (opts.quiet) quietAlerts.add(alert.id);
+  addAlert(alert);
+  return alert;
+}
+
+function buildAlert(rule: Rule, cam: Camera, id: string): Alert {
   const now = Date.now();
   const zones = cam.zones.filter((z) => rule.zoneIds.includes(z.id));
   const zone = zones[Math.floor(Math.random() * zones.length)];
   const policy = policyStore.get().find((p) => p.priority === rule.priority)!;
   const { title, detail } = alertText(rule, zone);
-  const alert: Alert = {
-    id: nextAlertId(),
+  return {
+    id,
     ruleId: rule.id,
     cameraId: cam.id,
     zoneId: zone?.id,
@@ -138,9 +151,6 @@ export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}
     deliveries: deliveriesFor(policy, cam, now),
     activity: [{ at: now, text: detectedText(rule, zone?.name), actor: 'system' }],
   };
-  if (opts.quiet) quietAlerts.add(alert.id);
-  addAlert(alert);
-  return alert;
 }
 
 /** Raises an alert for something the detection service saw on a real camera. */
@@ -157,7 +167,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     title: ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name,
     detail: ev.hazard
       ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${ev.reentry ? ' · came back' : ''}`
-      : `Inside ${where} for ${ev.dwell.toFixed(1)} s (rule: ${rule.durationSec} s or more) · moved ${Math.round(ev.moved)} px${ev.reentry ? ' · came back' : ''}`,
+      : `Inside ${where} for ${ev.dwell.toFixed(1)}s (rule: ${rule.durationSec}s or more) · moved ${Math.round(ev.moved)}px${ev.reentry ? ' · came back' : ''}`,
     at: ev.at,
     state: 'new',
     box: ev.box,
@@ -204,7 +214,7 @@ function followUp(now: number) {
     if (a.state === 'new' && p.escalateTo !== 'none' && age > p.ackWithinMin * 60 * SEC) {
       const to = peopleFor(p.escalateTo, cam)[0];
       if (to) {
-        escalate(a.id, to.id, 'system', `not acknowledged within ${p.ackWithinMin} min`);
+        escalate(a.id, to.id, 'system', `not acknowledged within ${p.ackWithinMin}min`);
         toast(`${a.id} escalated to ${to.name} (${to.role})`, { tone: 'alert', link: `/alerts/${a.id}` });
       }
       continue;
@@ -236,7 +246,7 @@ function followUp(now: number) {
       if (p.qavach === 'on-acknowledge' && rule && rule.qavach !== 'none') {
         const d = draftRecord(a, cam, rule, AREAS_BY_ID[cam.areaId], hm(a.at));
         const ref = raiseInQavach(a.id, { ...d, createdBy: sup.id, source: 'mobile' });
-        toast(`${userName(sup.id)} acknowledged ${a.id} on the phone · ${ref} raised in Qavach`, { link: `/alerts/${a.id}` });
+        toast(`${userName(sup.id)} acknowledged ${a.id} on the phone · ${ref} reported to QHSE`, { link: `/alerts/${a.id}` });
       } else toast(`${userName(sup.id)} acknowledged ${a.id} on the phone`, { link: `/alerts/${a.id}` });
     }
   }

@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { AckDialog, EscalateDialog, NoteDialog, RaiseDialog } from '../../components/AlertDialogs';
 import { Icon } from '../../components/Icon';
 import { QavachReportsLink } from '../../components/QavachReports';
-import { AlertConfigPanel } from '../Notifications';
 import { CameraView, CHANNEL, Choice, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Alert, Priority } from '../../data/types';
@@ -11,26 +10,29 @@ import { activityText, describeRule } from '../../lib/qai';
 import { ago, dayTime, duration, hms, useNow } from '../../lib/time';
 import { AREAS_BY_ID, isOpen, roleText, useAlerts, useCameras, usePolicies, useRules, userName, USERS_BY_ID } from '../../state/store';
 import './alerts.css';
+import { assetUrl } from '../../lib/assets';
 
 type Tab = 'open' | 'acknowledged' | 'closed' | 'all';
 
 const inTab = (a: Alert, t: Tab) =>
   t === 'all' ? true : t === 'open' ? isOpen(a) : t === 'acknowledged' ? a.state === 'acknowledged' : a.state === 'resolved' || a.state === 'false-alarm';
 
-export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
+export function Alerts() {
   const { alertId } = useParams();
   const nav = useNavigate();
   const alerts = useAlerts();
   const cams = useCameras();
   const now = useNow(1000);
-  const [tab, setTab] = useState<Tab>('all');
-  const [prio, setPrio] = useState<Priority | 'all'>('all');
+  // Links from the Overview can open the list already narrowed: ?level=P1&tab=open
+  const [params] = useSearchParams();
+  const startTab = params.get('tab');
+  const startLevel = params.get('level');
+  const [tab, setTab] = useState<Tab>(startTab === 'open' || startTab === 'acknowledged' || startTab === 'closed' ? startTab : 'all');
+  const [prio, setPrio] = useState<Priority | 'all'>(startLevel === 'P1' || startLevel === 'P2' || startLevel === 'P3' || startLevel === 'P4' ? startLevel : 'all');
   const [area, setArea] = useState('all');
   const [q, setQ] = useState('');
   const [settings, setSettings] = useState(false);
-  const [config, setConfig] = useState(startConfig);
   // Opened from a camera (its badge on the video wall): only that camera's alerts, kept while you click through them.
-  const [params] = useSearchParams();
   const onlyCam = params.get('camera') ?? '';
   const keep = onlyCam ? `?camera=${encodeURIComponent(onlyCam)}` : '';
   const camById = useMemo(() => new Map(cams.map((c) => [c.id, c])), [cams]);
@@ -94,24 +96,15 @@ export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
             <Icon name="camera" size={16} />
             Camera {onlyCam}
             {camById.get(onlyCam) && <span className="camfilter__name">· {camById.get(onlyCam)!.name}</span>}
-            <button type="button" onClick={() => nav(`/alerts${alertId ? `/${alertId}` : ''}`)} aria-label="Show all cameras" title="Show all cameras">
+            <button type="button" onClick={() => nav(`/alerts${alertId ? `/${alertId}` : ''}`)} aria-label="Show all cameras" title="Show All Cameras">
               <Icon name="close" size={14} stroke={2.2} />
             </button>
           </span>
         )}
         <button type="button" className="listing-row__gear" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
-          <img src="/qv/hdr/gear.png" width={24} height={24} alt="" />
+          <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
         </button>
       </div>
-
-      {config && (
-        <AlertConfigPanel
-          onClose={() => {
-            setConfig(false);
-            if (startConfig) nav('/alerts', { replace: true });
-          }}
-        />
-      )}
 
       {settings && (
         <>
@@ -122,7 +115,7 @@ export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
               <div className="qset__sub">Alerts</div>
               <button type="button" className="qset__item" onClick={() => {
                 setSettings(false);
-                setConfig(true);
+                nav('/configuration/alerts');
               }}>
                 Configure alerts
                 <Icon name="chevron-right" size={16} stroke={2} />
@@ -140,7 +133,7 @@ export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
       <div className={`alerts${selected ? ' alerts--detail' : ''}`}>
         <section className="alerts__list">
           {filtered.length === 0 ? (
-            <Empty icon="shield" title="No alerts here">
+            <Empty icon="shield" title="No Alerts Here">
               Change the filters to see more.
             </Empty>
           ) : (
@@ -162,7 +155,7 @@ export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
                       </span>
                       <span className="alist__side">
                         <StateChip state={a.state} />
-                        {a.qavach && <span className="chip chip--outline mono">{a.qavach.ref}</span>}
+                        {a.qavach && <span className="chip chip--outline mono" title={`QHSE Report ${a.qavach.ref}`}>{a.qavach.ref}</span>}
                         <span className="meta">{ago(a.at, now)}</span>
                       </span>
                     </button>
@@ -176,8 +169,8 @@ export function Alerts({ startConfig = false }: { startConfig?: boolean }) {
           <AlertDetail alert={selected} onClose={() => nav(`/alerts${keep}`)} />
         ) : (
           <section className="card alerts__hint">
-            <Empty icon="bell" title="Pick an alert">
-              See the snapshot, the rule that fired, who was told and how, and raise it in Qavach.
+            <Empty icon="bell" title="Pick An Alert">
+              See the snapshot, the rule that fired, who was told and how, and raise it in QHSE.
             </Empty>
           </section>
         )}
@@ -215,7 +208,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
         <span className="mono">{alert.id}</span>
         <StateChip state={alert.state} />
         <span className="spacer" />
-        <a href={`#/m/${alert.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm" title="What the supervisor sees on the phone">
+        <a href={`#/m/${alert.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm" title="What The Supervisor Sees On The Phone">
           <Icon name="mobile" size={15} />
           Phone view
         </a>
@@ -234,13 +227,13 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
             <Icon name="clock" size={17} />
             {alert.state === 'escalated' ? (
               <span>
-                Not acknowledged in {policy.ackWithinMin} min · escalated to <strong>{userName(alert.escalatedTo)}</strong>
+                Not acknowledged in {policy.ackWithinMin}min · escalated to <strong>{userName(alert.escalatedTo)}</strong>
               </span>
             ) : policy.escalateTo === 'none' ? (
               <span>Open for {duration(now - alert.at)} · {policy.priority} alerts are not escalated</span>
             ) : (
               <span>
-                Acknowledge within {policy.ackWithinMin} min · escalates to the {roleText(policy.escalateTo)} in <strong className="mono">{duration(Math.max(0, dueAt - now))}</strong>
+                Acknowledge within {policy.ackWithinMin}min · escalates to the {roleText(policy.escalateTo)} in <strong className="mono">{duration(Math.max(0, dueAt - now))}</strong>
               </span>
             )}
           </div>
@@ -266,22 +259,23 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
         </div>
 
         <div className="adetail__actions">
+          {/* In the order they are usually done: acknowledge, escalate if needed, then report to QHSE. */}
           {open && (
-            <button type="button" className="btn" onClick={() => setDialog('ack')}>
+            <button type="button" className="btn btn--act btn--act-ack" onClick={() => setDialog('ack')}>
               <Icon name="check" size={16} />
               Acknowledge
             </button>
           )}
-          {!alert.qavach && alert.state !== 'false-alarm' && (
-            <button type="button" className="btn btn--ai-soft" onClick={() => setDialog('raise')}>
-              <Icon name="spark" size={16} />
-              Raise in Qavach
-            </button>
-          )}
           {open && (
-            <button type="button" className="btn btn--secondary" onClick={() => setDialog('escalate')}>
+            <button type="button" className="btn btn--act btn--act-esc" onClick={() => setDialog('escalate')}>
               <Icon name="arrow-right" size={16} />
               Escalate
+            </button>
+          )}
+          {!alert.qavach && alert.state !== 'false-alarm' && (
+            <button type="button" className="btn btn--act btn--report" onClick={() => setDialog('raise')}>
+              <Icon name="send" size={16} />
+              Report to QHSE
             </button>
           )}
           {alert.state === 'acknowledged' && (
@@ -291,6 +285,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
           )}
           {alert.state !== 'resolved' && alert.state !== 'false-alarm' && (
             <button type="button" className="btn btn--ghost" onClick={() => setDialog('false')}>
+              <Icon name="ban" size={16} />
               False alarm
             </button>
           )}
@@ -304,7 +299,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
                 Qavach
               </span>
               <strong>
-                {alert.qavach.type} <span className="mono">{alert.qavach.ref}</span>
+                {alert.qavach.type} <span className="mono" title={`QHSE Report ${alert.qavach.ref}`}>{alert.qavach.ref}</span>
               </strong>
               <span className="chip">{alert.qavach.severity}</span>
               <span className="chip">{alert.qavach.classification}</span>
@@ -316,7 +311,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
             <strong>{alert.qavach.title}</strong>
             <p>{alert.qavach.description}</p>
             <p className="meta">Immediate action: {alert.qavach.immediateAction}</p>
-            <p className="meta">In Qavach: Incidents and Learning · {alert.qavach.type === 'Incident' ? 'Incident register' : alert.qavach.type === 'Near miss' ? 'Near-miss register' : 'Observations'} · snapshot and 20 s clip attached</p>
+            <p className="meta">In QHSE: Incidents and Learning · {alert.qavach.type === 'Incident' ? 'Incident register' : alert.qavach.type === 'Near miss' ? 'Near-miss register' : 'Observations'} · snapshot and 20s clip attached</p>
           </div>
         )}
 
@@ -324,12 +319,12 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
           <div className="stack">
             <h3>Rule that fired</h3>
             {rule ? (
-              <Link to={`/rules/${rule.id}`} className="rulecard">
+              <Link to={`/configuration/rules/${rule.id}`} className="rulecard">
                 <span className="mono">{rule.id}</span>
                 <strong>{rule.name}</strong>
                 <span className="meta">{describeRule(rule, zoneNames)}</span>
                 <span className="meta">
-                  {rule.cameraIds.length} cameras · {rule.mode === 'live' ? 'Live' : 'Test'} · creates {rule.qavach === 'none' ? 'no Qavach record' : `a Qavach ${rule.qavach.toLowerCase()}`}
+                  {rule.cameraIds.length} cameras · {rule.mode === 'live' ? 'Live' : 'Test'} · creates {rule.qavach === 'none' ? 'no QHSE report' : `a QHSE ${rule.qavach.toLowerCase()}`}
                 </span>
               </Link>
             ) : (

@@ -8,6 +8,7 @@ import { draftRecord } from '../../lib/qai';
 import { ago, duration, hm, useNow } from '../../lib/time';
 import { acknowledge, AREAS_BY_ID, isOpen, markFalse, raiseInQavach, roleText, TEAMS_BY_ID, useAlerts, useCameras, usePolicies, useRules, useSession } from '../../state/store';
 import './phone.css';
+import { assetUrl } from '../../lib/assets';
 
 // What a shift supervisor sees on the phone: the alert arrives as a push,
 // they open it, acknowledge it, and report it into Qavach from the same page.
@@ -15,7 +16,7 @@ import './phone.css';
 const SUPERVISORS = USERS.filter((u) => u.role === 'Shift supervisor');
 type Page = 'home' | 'alerts' | 'reports' | 'menu';
 const PAGES: Page[] = ['home', 'alerts', 'reports', 'menu'];
-const TITLE: Record<Page, string> = { home: 'Dashboard', alerts: 'Alerts', reports: 'Raised in Qavach', menu: 'Features' };
+const TITLE: Record<Page, string> = { home: 'Dashboard', alerts: 'Alerts', reports: 'Reported to QHSE', menu: 'Features' };
 const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').slice(0, 2);
 
 export function Phone() {
@@ -53,7 +54,7 @@ export function Phone() {
         </div>
         <header className="phone__head">
           {page ? (
-            <img src="/brand/logo-mark.png" alt="" className="phone__logo" />
+            <img src={assetUrl('brand/logo-mark.png')} alt="" className="phone__logo" />
           ) : (
             <button type="button" className="phone__icon" onClick={() => nav('/m/alerts')} aria-label="Back to alerts">
               <Icon name="chevron-left" size={26} stroke={2} />
@@ -93,7 +94,7 @@ export function Phone() {
             [
               ['home', 'home', 'Home'],
               ['alerts', 'warning', 'Alerts'],
-              ['reports', 'shield', 'Raised in Qavach'],
+              ['reports', 'shield', 'Reported to QHSE'],
               ['menu', 'menu', 'Menu'],
             ] as const
           ).map(([p, icon, label]) => (
@@ -227,7 +228,7 @@ function PhoneReports({ list }: { list: Alert[] }) {
   const done = list.filter((a) => a.qavach);
   return (
     <div className="phone__scroll">
-      {done.length === 0 && <p className="phone__empty">Nothing raised in Qavach yet.</p>}
+      {done.length === 0 && <p className="phone__empty">Nothing reported to QHSE yet.</p>}
       {done.map((a) => (
         <Link key={a.id} to={`/m/${a.id}`} className="pcard preportrow">
           <span className="preportrow__type">
@@ -250,7 +251,7 @@ function PhoneMenu({ go }: { go: (p: Page) => void }) {
   const rows: [Page, IconName, string][] = [
     ['home', 'home', 'Home'],
     ['alerts', 'warning', 'Alerts'],
-    ['reports', 'shield', 'Raised in Qavach'],
+    ['reports', 'shield', 'Reported to QHSE'],
   ];
   return (
     <div className="phone__scroll phone__scroll--menu">
@@ -362,7 +363,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
           ) : (
             <button type="button" className="pbtn" onClick={() => setReporting(true)}>
               <Icon name="send" size={18} />
-              Report in Qavach
+              Report to QHSE
             </button>
           ))
         )}
@@ -382,7 +383,7 @@ function PhoneReport({ alert, userId, onDone }: { alert: Alert; userId: string; 
   const [note, setNote] = useState(d.immediateAction);
   return (
     <div className="preport">
-      <strong>Report in Qavach</strong>
+      <strong>Report to QHSE</strong>
       <div className="phone__tabs phone__tabs--inline">
         {(['Incident', 'Near miss', 'Observation'] as QavachRecordType[]).map((t) => (
           <button key={t} type="button" aria-pressed={type === t} onClick={() => setType(t)}>
@@ -407,7 +408,7 @@ function PhoneReport({ alert, userId, onDone }: { alert: Alert; userId: string; 
         />
       </label>
       <span className="meta">
-        <Icon name="camera" size={14} /> Snapshot and 20 s clip from {cam.id} attached
+        <Icon name="camera" size={14} /> Snapshot and 20s clip from {cam.id} attached
       </span>
       <button
         type="button"

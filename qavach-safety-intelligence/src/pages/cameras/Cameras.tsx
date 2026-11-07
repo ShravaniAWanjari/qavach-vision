@@ -5,7 +5,8 @@ import { CameraView, Choice, Empty, MultiSelect } from '../../components/ui';
 import { AREAS, DEPARTMENTS } from '../../data/seed';
 import type { Camera } from '../../data/types';
 import { download, writeXlsx } from '../../lib/sheet';
-import { AREAS_BY_ID, departmentOf, isAdmin, useCameras, useMe, useRules } from '../../state/store';
+import { setupFile } from '../../lib/setup';
+import { alertStore, AREAS_BY_ID, cameraStore, departmentOf, isAdmin, policyStore, ruleStore, useCameras, useMe, useRules, wallStore } from '../../state/store';
 import { ASSET_COLUMNS, assetRow, CameraImport } from './CameraImport';
 import './cameras.css';
 
@@ -147,13 +148,24 @@ export function Cameras() {
           Export
         </button>
         {admin && (
+          <button
+            type="button"
+            className="qact__btn"
+            title="Save The Cameras, Rules, Walls And Alerts As They Are Now, To Use As The Sample Data For Everyone"
+            onClick={() => download(setupFile({ cameras: cameraStore.get(), rules: ruleStore.get(), walls: wallStore.get(), alerts: alertStore.get(), policies: policyStore.get() }), 'qavach-setup.json')}
+          >
+            <Icon name="download" size={22} />
+            Save set-up
+          </button>
+        )}
+        {admin && (
           <button type="button" className="qact__btn" onClick={() => setImporting(true)}>
             <Icon name="upload" size={22} />
             Import
           </button>
         )}
         {admin && (
-          <Link to="/cameras/new" className="qact__btn">
+          <Link to="/configuration/cameras" className="qact__btn">
             <Icon name="add-circle" size={24} />
             Add camera
           </Link>
@@ -161,7 +173,7 @@ export function Cameras() {
       </div>
 
       {list.length === 0 ? (
-        <Empty icon="camera" title="No cameras match">
+        <Empty icon="camera" title="No Cameras Match">
           Change the search, or clear it to see the whole register.
         </Empty>
       ) : view === 'grid' ? (
@@ -208,7 +220,7 @@ function ThumbView({ list, ruleCount }: ViewProps) {
             </h2>
             <div className="camgrid">
               {items.map((c) => (
-                <Link key={c.id} to={`/cameras/${c.id}`} className="camcard">
+                <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="camcard">
                   <CameraView cam={c} still zones={c.zones} caption={false} />
                   <div className="camcard__body">
                     <div className="row">
@@ -267,7 +279,7 @@ function ListView({ list, ruleCount }: ViewProps) {
         </thead>
         <tbody>
           {rows.map((c) => (
-            <tr key={c.id} className="is-clickable" onClick={() => nav(`/cameras/${c.id}`)}>
+            <tr key={c.id} className="is-clickable" onClick={() => nav(`/configuration/cameras/${c.id}`)}>
               <td className="mono">{c.id}</td>
               <td>
                 <strong>{c.name}</strong>
@@ -338,7 +350,7 @@ function ColumnView({ list, ruleCount }: ViewProps) {
         <div className="colview__head">Cameras</div>
         <div className="colview__items">
           {inArea.map((c) => (
-            <button key={c.id} type="button" className={`colview__item${c.id === cam?.id ? ' is-sel' : ''}`} onClick={() => setCam(c.id)} onDoubleClick={() => nav(`/cameras/${c.id}`)} title="Double-click to open the camera set-up">
+            <button key={c.id} type="button" className={`colview__item${c.id === cam?.id ? ' is-sel' : ''}`} onClick={() => setCam(c.id)} onDoubleClick={() => nav(`/cameras/${c.id}`)} title="Double-click To Open The Camera Set-up">
               <span className={`dot dot--${c.status}`} />
               <span className="mono">{c.id}</span>
               <span className="ellipsis">{c.name}</span>
@@ -370,14 +382,14 @@ function ColumnView({ list, ruleCount }: ViewProps) {
               <dd>{cam.make}</dd>
               <dt>Resolution</dt>
               <dd>
-                {cam.resolution} · {cam.fps} fps
+                {cam.resolution} · {cam.fps}fps
               </dd>
               <dt>Zones</dt>
               <dd>{cam.zones.length ? cam.zones.map((z) => z.name).join(', ') : 'None yet'}</dd>
               <dt>Rules</dt>
               <dd>{rulesOn ? `${rulesOn} ${rulesOn === 1 ? 'rule watches it' : 'rules watch it'}` : 'None'}</dd>
             </dl>
-            <button type="button" className="btn" onClick={() => nav(`/cameras/${cam.id}`)}>
+            <button type="button" className="btn" onClick={() => nav(`/configuration/cameras/${cam.id}`)}>
               Open camera set-up
             </button>
           </>

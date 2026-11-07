@@ -1,0 +1,17 @@
+# Adds an NVIDIA GPU to the service. Needs the NVIDIA driver and the NVIDIA Container Toolkit on the host.
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+# Builds torch with CUDA (TORCH_INDEX empty = standard Linux wheels) and gives the container every GPU.
+# GET /api/health then reports "device":"cuda:0". Set QAVACH_DEVICE=cuda:1 to use another GPU, or cpu to force the CPU.
+services:
+  qavach:
+    image: qavach-safety-intelligence:gpu
+    build:
+      args:
+        TORCH_INDEX: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

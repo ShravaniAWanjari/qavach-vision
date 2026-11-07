@@ -92,12 +92,15 @@ def test_bad_input_is_rejected_with_a_message(registry):
         registry.put_camera(dict(CAM, zones=[dict(id='Z', points='nope')]))
 
 
-def test_the_password_the_page_does_not_keep_is_remembered_but_never_saved(registry, tmp_path):
+def test_the_password_the_page_does_not_keep_is_remembered_and_saved_for_the_demo(registry, tmp_path):
     cam = dict(CAM, source=dict(kind='link', url='rtsp://10.0.0.5/s1', user='svc', password='pw'))
     registry.put_camera(cam)
     registry.put_camera(dict(cam, source=dict(kind='link', url='rtsp://10.0.0.5/s1', user='svc')))
     assert registry.cameras['CAM-1']['source'].password == 'pw'
-    assert 'pw' not in (tmp_path / 'state.json').read_text()
+    assert '"password": "pw"' in (tmp_path / 'state.json').read_text()     # demo: plain text, so a restart keeps the camera
+    again = reg.Registry()
+    again.load()
+    assert again.cameras['CAM-1']['source'].password == 'pw'
 
 
 def test_state_survives_a_restart(registry, tmp_path, monkeypatch):

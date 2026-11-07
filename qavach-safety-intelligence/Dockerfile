@@ -21,17 +21,21 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Two environments, as in the port-safety project: the service (detector) and the tracker worker (BoxMOT).
-# --extra-index-url gives the CPU build of torch (about 200 MB) instead of the CUDA one (about 2.5 GB).
+# TORCH_INDEX picks the torch build. The default is the CPU build (about 200 MB). For an NVIDIA GPU server build with
+#   docker build --build-arg TORCH_INDEX= .        (empty: the standard Linux wheels from PyPI, which include CUDA, about 2.5 GB)
+# or give a specific CUDA index, e.g. --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu128, then run with --gpus all.
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
 ENV PIP_DEFAULT_TIMEOUT=300 PIP_RETRIES=10
 COPY backend/requirements.txt backend/requirements-tracker.txt /tmp/
 RUN python -m venv /opt/service \
-    && /opt/service/bin/pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements.txt \
+    && /opt/service/bin/pip install --no-cache-dir ${TORCH_INDEX:+--extra-index-url $TORCH_INDEX} -r /tmp/requirements.txt \
     && python -m venv /opt/tracker \
-    && /opt/tracker/bin/pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements-tracker.txt
+    && /opt/tracker/bin/pip install --no-cache-dir ${TORCH_INDEX:+--extra-index-url $TORCH_INDEX} -r /tmp/requirements-tracker.txt
 
 WORKDIR /app/backend
 COPY backend/qavach ./qavach
 COPY backend/weights ./weights
+COPY backend/samples ./samples
 COPY --from=web /web/dist /app/dist
 
 ENV QAVACH_HOST=0.0.0.0 \

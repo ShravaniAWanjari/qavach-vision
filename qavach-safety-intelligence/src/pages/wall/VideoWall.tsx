@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { AckDialog } from '../../components/AlertDialogs';
 import { Icon, Logo } from '../../components/Icon';
@@ -8,9 +8,25 @@ import type { Alert, Camera, PinnedLayout, Wall } from '../../data/types';
 import { uid } from '../../lib/persist';
 import { ago, hms, useNow } from '../../lib/time';
 import { AREAS_BY_ID, deleteWall, isAdmin, isOpen, saveWall, TEAMS_BY_ID, toast, useActivity, useAlerts, useCameras, useMe, useWalls } from '../../state/store';
+import { CastDialog } from './CastDialog';
 import { LAYOUT_SLOTS, useWallModel, WallBody } from './WallBody';
 
-const NEW_WALL = '__new_wall__';
+export const NEW_WALL = '__new_wall__';
+
+/** A new wall starts empty: no name, no cameras, empty tiles. Nothing is saved until Save wall. */
+export const newWall = (teamId: string): Wall => ({
+  id: uid('w'),
+  name: '',
+  teamId,
+  pinnedShare: 70,
+  pinnedLayout: '2x2',
+  pinned: [],
+  rollingTiles: 3,
+  rotation: [],
+  rotateSec: 10,
+  autoPinBusy: false,
+  alertTakeover: true,
+});
 
 const LAYOUTS: { value: PinnedLayout; label: string }[] = [
   { value: '1', label: '1' },
@@ -20,7 +36,7 @@ const LAYOUTS: { value: PinnedLayout; label: string }[] = [
   { value: '3x3', label: '3 × 3' },
 ];
 
-function useVisibleWalls() {
+export function useVisibleWalls() {
   const walls = useWalls();
   const me = useMe();
   return me.teamId === 't-hse' || isAdmin(me) ? walls : walls.filter((w) => w.teamId === me.teamId);
@@ -32,23 +48,23 @@ export function VideoWall() {
   const me = useMe();
   const visible = useVisibleWalls();
   const saved = visible.find((w) => w.id === wallId) ?? visible.find((w) => w.teamId === me.teamId) ?? visible[0];
-  const [draft, setDraft] = useState<Wall | null>(null);
   const alerts = useAlerts();
   const [ack, setAck] = useState<Alert>();
   const [focus, setFocus] = useState<Camera>();
+
   const [settings, setSettings] = useState(false);
-
+  // Choosing cameras works on a copy of the wall; nothing changes until Save wall.
+  const [draft, setDraft] = useState<Wall | null>(null);
+  const confirm = useConfirm();
   useEffect(() => setDraft(null), [saved?.id]);
-
   const wall = draft ?? saved;
-  const isNewWall = !!draft && !visible.some((w) => w.id === draft.id);
   const modelWall = useMemo(() => (wall && draft ? { ...wall, alertTakeover: false, autoPinBusy: false } : wall), [wall, draft]);
   const model = useWallModel(modelWall ?? EMPTY_WALL, !!draft);
 
   if (!saved || !wall) {
     return (
       <div className="page">
-        <Empty icon="wall" title="No video wall for your team yet">
+        <Empty icon="wall" title="No Video Wall For Your Team Yet">
           Ask the safety admin to set one up.
         </Empty>
       </div>
@@ -84,24 +100,6 @@ export function VideoWall() {
     toast(replaced ? `${cam.id} pinned in place of ${replaced}` : `${cam.id} ${cam.name} pinned to ${wall.name}`);
   };
 
-  // A new wall starts empty: no name, no cameras, empty tiles, and the set-up panel open. Nothing is saved until Save wall.
-  const startWall = () => {
-    setSettings(false);
-    setDraft({
-      id: uid('w'),
-      name: '',
-      teamId: isAdmin(me) ? '' : me.teamId,
-      pinnedShare: 70,
-      pinnedLayout: '2x2',
-      pinned: [],
-      rollingTiles: 3,
-      rotation: [],
-      rotateSec: 10,
-      autoPinBusy: false,
-      alertTakeover: true,
-    });
-  };
-
   return (
     <div className="wallpage">
       <div className="wallpage__head">
@@ -109,24 +107,30 @@ export function VideoWall() {
           id="wall-pick"
           label="Video Wall"
           className="wallpage__pick"
-          value={draft && isNewWall ? NEW_WALL : saved.id}
-          onChange={(v) => (v === NEW_WALL ? startWall() : nav(`/wall/${v}`))}
+          value={saved.id}
+          onChange={(v) => (v === NEW_WALL ? nav('/configuration/walls') : nav(`/wall/${v}`))}
           options={[
             ...visible.map((w) => ({ value: w.id, label: w.teamId === me.teamId ? `${w.name} · Your team` : w.name })),
             { value: NEW_WALL, label: 'New wall', icon: 'plus' as const },
           ]}
         />
         <div className="page__actions">
-          <CastMenu />
+          <CastMenu wallId={saved.id} />
           {!draft && (
-            <button type="button" className="btn btn--secondary btn--icon" onClick={() => setDraft(saved)} title="Choose cameras" aria-label="Choose cameras">
+            <button type="button" className="btn btn--secondary btn--icon" onClick={() => { setSettings(false); setDraft(saved); }} title="Choose Cameras" aria-label="Choose cameras">
               <Icon name="camera-plus" size={22} />
             </button>
           )}
-          <button type="button" className={`btn btn--secondary btn--icon${settings ? ' is-on' : ''}`} onClick={() => setSettings((v) => !v)} title="Wall settings" aria-label="Wall settings" aria-pressed={settings}>
+          <button type="button" className={`btn btn--secondary btn--icon${settings && !draft ? ' is-on' : ''}`}
+            // With the camera panel open, this closes it as Cancel does and opens the settings in its place.
+            onClick={() => (draft ? (setDraft(null), setSettings(true)) : setSettings((v) => !v))}
+            title="Wall Settings"
+            aria-label="Wall settings"
+            aria-pressed={settings && !draft}
+          >
             <span className="qgear" aria-hidden="true" />
           </button>
-          <button type="button" className="btn btn--secondary btn--icon" onClick={() => window.open(`#/screen/${saved.id}`, `qsi-wall-${saved.id}`, 'popup,width=1600,height=900')} title="Pop out: open this wall in its own window for a second monitor" aria-label="Pop out">
+          <button type="button" className="btn btn--secondary btn--icon" onClick={() => window.open(`#/screen/${saved.id}`, `qsi-wall-${saved.id}`, 'popup,width=1600,height=900')} title="Pop Out: Open This Wall In Its Own Window For A Second Monitor" aria-label="Pop out">
             <Icon name="external" size={20} />
           </button>
         </div>
@@ -158,9 +162,29 @@ export function VideoWall() {
             height="100%"
           />
         </div>
-        {settings && !draft && <SettingsPanel wall={wall} update={update} model={model} onClose={() => setSettings(false)} />}
+        {settings && !draft && (
+          <SettingsPanel
+            wall={wall}
+            update={update}
+            model={model}
+            onClose={() => setSettings(false)}
+            onDelete={
+              visible.length > 1
+                ? () =>
+                    confirm.ask({ title: 'Delete this wall?', message: `“${saved.name}” is removed for everyone on its team.`, action: 'Delete wall' }, () => {
+                      const next = visible.find((w) => w.id !== saved.id);
+                      deleteWall(saved.id);
+                      setSettings(false);
+                      toast(`${saved.name} deleted`);
+                      nav(next ? `/wall/${next.id}` : '/wall');
+                    })
+                : undefined
+            }
+          />
+        )}
       </div>
 
+      {confirm.dialog}
       {ack && <AckDialog alert={ack} via="wall" onClose={() => setAck(undefined)} />}
       {focus && <FocusModal cam={focus} wall={wall} onPinToggle={pinToggle} onClose={() => setFocus(undefined)} onAck={(a) => setAck(a)} />}
     </div>
@@ -175,16 +199,18 @@ function cameraAlerts(alerts: Alert[], cameraId: string) {
 
 const EMPTY_WALL: Wall = { id: '-', name: '', teamId: 't-hse', pinnedShare: 70, pinnedLayout: '2x2', pinned: [], rollingTiles: 3, rotation: [], rotateSec: 10, autoPinBusy: false, alertTakeover: false };
 
-function SettingsPanel({ wall, update, model, onClose }: { wall: Wall; update: (patch: Partial<Wall>) => void; model: ReturnType<typeof useWallModel>; onClose: () => void }) {
+export function SettingsPanel({ wall, update, model, onClose, onDelete }: { wall: Wall; update: (patch: Partial<Wall>) => void; model?: ReturnType<typeof useWallModel>; onClose?: () => void; onDelete?: () => void }) {
   const solo = wall.pinnedShare === 0;
   return (
     <aside className="wedit wset" aria-label="Wall settings">
       <div className="wedit__head wset__head">
         <h2>Wall settings</h2>
         <span className="spacer" />
-        <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Close">
-          <Icon name="close" size={18} />
-        </button>
+        {onClose && (
+          <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={18} />
+          </button>
+        )}
       </div>
       <div className="wset__body">
         <div className="wset__group">
@@ -223,7 +249,7 @@ function SettingsPanel({ wall, update, model, onClose }: { wall: Wall; update: (
             </div>
             <div className="wset__group">
               <span className="walltools__label">Next set every</span>
-              <Seg label="Rotation interval" small value={wall.rotateSec} onChange={(v) => update({ rotateSec: v })} options={[10, 15, 30, 60].map((n) => ({ value: n as Wall['rotateSec'], label: `${n} s` }))} />
+              <Seg label="Rotation interval" small value={wall.rotateSec} onChange={(v) => update({ rotateSec: v })} options={[10, 15, 30, 60].map((n) => ({ value: n as Wall['rotateSec'], label: `${n}s` }))} />
             </div>
           </>
         )}
@@ -231,10 +257,18 @@ function SettingsPanel({ wall, update, model, onClose }: { wall: Wall; update: (
           <Switch checked={wall.alertTakeover} onChange={(v) => update({ alertTakeover: v })} label="Alerts take over a tile" />
           {!solo && <Switch checked={wall.autoPinBusy} onChange={(v) => update({ autoPinBusy: v })} label="Auto-pin the busiest camera" />}
         </div>
-        {wall.pinnedShare !== 100 && (
+        {onDelete && (
+          <div className="wset__group">
+            <button type="button" className="btn btn--ghost btn--sm wset__delete" onClick={onDelete}>
+              <Icon name="trash" size={15} />
+              Delete wall
+            </button>
+          </div>
+        )}
+        {model && wall.pinnedShare !== 100 && (
           <span className="meta">
             Rolling set {model.page + 1} of {model.pages} · {model.pool.length} cameras
-            {` · next in ${model.secsLeft} s`}
+            {` · next in ${model.secsLeft}s`}
           </span>
         )}
       </div>
@@ -242,7 +276,7 @@ function SettingsPanel({ wall, update, model, onClose }: { wall: Wall; update: (
   );
 }
 
-function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: (w: Wall) => void; saved: Wall; onDone: () => void }) {
+export function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: (w: Wall) => void; saved: Wall; onDone: () => void }) {
   const cams = useCameras();
   const walls = useWalls();
   const me = useMe();
@@ -267,8 +301,17 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
     }
     while (pinned.length <= i) pinned.push(null);
     pinned[i] = id;
-    setDraft({ ...draft, pinned });
+    // A camera is pinned or it rolls, not both.
+    setDraft({ ...draft, pinned, rotation: draft.rotation.filter((x) => x !== id) });
   };
+  // Unpinning puts the camera back in the rolling section; untick Rolls to take it off the wall.
+  const unpin = (id: string) => setDraft({ ...draft, pinned: draft.pinned.map((p) => (p === id ? null : p)), rotation: draft.rotation.includes(id) ? draft.rotation : [...draft.rotation, id] });
+  const setRolls = (id: string, on: boolean) =>
+    setDraft({
+      ...draft,
+      pinned: on ? draft.pinned.map((p) => (p === id ? null : p)) : draft.pinned,
+      rotation: on ? (draft.rotation.includes(id) ? draft.rotation : [...draft.rotation, id]) : draft.rotation.filter((x) => x !== id),
+    });
 
   return (
     <aside className="wedit" aria-label="Choose cameras">
@@ -301,7 +344,7 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
             {pinnedSet.size} of {slots} pinned · {draft.rotation.filter((id) => !pinnedSet.has(id)).length} rolling
           </span>
           <span className="spacer" />
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDraft({ ...draft, rotation: inScope.map((c) => c.id) })}>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDraft({ ...draft, rotation: inScope.map((c) => c.id).filter((id) => !pinnedSet.has(id)) })}>
             All roll
           </button>
         </div>
@@ -326,16 +369,19 @@ function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; setDraft: 
                       <span className="mono">{c.id}</span> {c.name}
                     </span>
                   </span>
-                  {pinnedSet.has(c.id) ? (
-                    <span className="chip chip--ai">Pinned</span>
-                  ) : (
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => pin(c.id)} disabled={!slots}>
-                      <Icon name="pin" size={14} />
-                      Pin
-                    </button>
-                  )}
-                  <label className="check" title="Include in the rolling section">
-                    <input type="checkbox" checked={rot.has(c.id)} onChange={(e) => setDraft({ ...draft, rotation: e.target.checked ? [...draft.rotation, c.id] : draft.rotation.filter((x) => x !== c.id) })} />
+                  <button
+                    type="button"
+                    className={`btn btn--ghost btn--sm wedit__pin${pinnedSet.has(c.id) ? ' is-on' : ''}`}
+                    aria-pressed={pinnedSet.has(c.id)}
+                    title={pinnedSet.has(c.id) ? 'Pinned: click to unpin' : 'Pin to a slot'}
+                    onClick={() => (pinnedSet.has(c.id) ? unpin(c.id) : pin(c.id))}
+                    disabled={!slots && !pinnedSet.has(c.id)}
+                  >
+                    <Icon name="pin" size={14} />
+                    Pin
+                  </button>
+                  <label className="check" title="Include In The Rolling Section">
+                    <input type="checkbox" checked={rot.has(c.id) && !pinnedSet.has(c.id)} onChange={(e) => setRolls(c.id, e.target.checked)} />
                     <span className="meta">Rolls</span>
                   </label>
                 </div>
@@ -403,7 +449,7 @@ function FocusModal({ cam, wall, onClose, onPinToggle, onAck }: { cam: Camera; w
               <Icon name={pinned ? 'unpin' : 'pin'} size={15} />
               {pinned ? 'Unpin from this wall' : 'Pin to this wall'}
             </button>
-            <Link to={`/cameras/${cam.id}`} className="btn btn--secondary btn--sm">
+            <Link to={`/configuration/cameras/${cam.id}`} className="btn btn--secondary btn--sm">
               <Icon name="camera" size={15} />
               Camera set-up
             </Link>
@@ -465,6 +511,22 @@ export function WallScreen() {
     document.title = `${wall?.name ?? 'Wall'} · Safety Intelligence`;
   }, [wall?.name]);
   if (!wall) return null;
+  // The pop-out sits on a second monitor: pages open in the console window that opened it, or here when there is none.
+  const consoleWindow = window.opener && !window.opener.closed ? window.opener : null;
+  const openInConsole = (hash: string) => {
+    if (consoleWindow) {
+      consoleWindow.location.hash = hash;
+      consoleWindow.focus();
+    } else window.location.hash = hash;
+  };
+  // Exit goes back to the video wall page: close this window when it is a pop-out, otherwise navigate there.
+  const exit = () => {
+    if (consoleWindow) {
+      consoleWindow.location.hash = `#/wall/${wall.id}`;
+      consoleWindow.focus();
+      window.close();
+    } else window.location.hash = `#/wall/${wall.id}`;
+  };
   return (
     <div className="wallscreen">
       <div className="wallscreen__bar">
@@ -473,22 +535,23 @@ export function WallScreen() {
         <span className="muted">{TEAMS_BY_ID[wall.teamId]?.name}</span>
         <span className="spacer" />
         {model.scopeAlerts.length > 0 ? (
-          <span className="chip chip--danger">{model.scopeAlerts.length} open alerts</span>
+          <button type="button" className="chip chip--danger wallscreen__alerts" onClick={() => openInConsole('#/alerts')} title="Open The Alerts Page">
+            {model.scopeAlerts.length} open alerts
+          </button>
         ) : (
           <span className="chip chip--good">No open alerts</span>
         )}
         <span className="mono">{hms(now)}</span>
+        <button type="button" className="wallscreen__exit" onClick={exit} title="Back To The Video Wall Page" aria-label="Exit to the video wall page">
+          <Icon name="close" size={16} stroke={2.2} />
+          Exit
+        </button>
       </div>
       <WallBody
         wall={wall}
         model={model}
         onAlert={(a) => {
-          // The pop-out sits on a second monitor: show the alerts in the console window that opened it.
-          const to = `#${cameraAlerts(alerts, a.cameraId)}`;
-          if (window.opener && !window.opener.closed) {
-            window.opener.location.hash = to;
-            window.opener.focus();
-          } else window.location.hash = to;
+          openInConsole(`#${cameraAlerts(alerts, a.cameraId)}`);
         }}
         height="calc(100vh - 44px)"
       />
@@ -497,33 +560,14 @@ export function WallScreen() {
 }
 
 /** The Cast to display button: its menu lists what can be done with it; for now one option, Cast to display. */
-function CastMenu() {
+function CastMenu({ wallId }: { wallId?: string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', away);
-    document.addEventListener('keydown', esc);
-    return () => {
-      document.removeEventListener('mousedown', away);
-      document.removeEventListener('keydown', esc);
-    };
-  }, [open]);
   return (
-    <div className="castmenu" ref={ref}>
-      <button type="button" className={`btn btn--secondary btn--icon${open ? ' is-on' : ''}`} onClick={() => setOpen(!open)} title="Cast to display" aria-label="Cast to display" aria-haspopup="menu" aria-expanded={open}>
+    <>
+      <button type="button" className={`btn btn--secondary btn--icon${open ? ' is-on' : ''}`} onClick={() => setOpen(true)} title="Cast To Display" aria-label="Cast to display">
         <Icon name="cast" size={22} />
       </button>
-      {open && (
-        <div className="castmenu__menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => setOpen(false)}>
-            <Icon name="cast" size={20} />
-            Cast to display
-          </button>
-        </div>
-      )}
-    </div>
+      {open && <CastDialog currentWallId={wallId} onClose={() => setOpen(false)} />}
+    </>
   );
 }

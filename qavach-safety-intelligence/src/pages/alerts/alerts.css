@@ -3,14 +3,14 @@
 .alerts__list { min-width: 0; }
 .alerts__hint { min-height: 320px; display: flex; align-items: center; justify-content: center; }
 .alist { list-style: none; margin: 0; padding: 0 2px 2px; max-height: calc(100vh - 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 13px; }
-.alist__item { width: 100%; display: flex; align-items: center; gap: 15px; padding: 16.7px 15px; border: 0; background: #fff; border-radius: 4px; box-shadow: 0 1px 2px rgba(0, 0, 0, .1); text-align: left; font-size: 14px; line-height: 21px; color: var(--q-muted); }
-.alist__item:hover { background: #F1FBFE; }
+.alist__item { width: 100%; display: flex; align-items: center; gap: 15px; padding: 16.7px 15px; border: 0; background: var(--c-white); border-radius: 4px; box-shadow: 0 1px 2px color-mix(in srgb, var(--c-black) 10%, transparent); text-align: left; font-size: 14px; line-height: 21px; color: var(--q-muted); }
+.alist__item:hover { background: var(--c-wash); }
 .alist__item.is-selected { background: var(--q-ai-wash); box-shadow: inset 3px 0 0 var(--q-ai); }
 /* A slot as wide as the P1 badge, so every title starts at the same place; the badge sits on the title line. */
 .alist__lvl { flex: 0 0 51px; display: flex; align-self: flex-start; margin-top: -1.5px; }
 .alist__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; align-self: flex-start; }
-.alist__title { font-weight: 700; font-size: 14px; line-height: 21px; color: #2D4046; }
-.alist__id { font-size: 14px; line-height: 21px; color: #09D1E7; }
+.alist__title { font-weight: 700; font-size: 14px; line-height: 21px; color: var(--c-black); }
+.alist__id { font-size: 14px; line-height: 21px; color: var(--c-blue); }
 .alist__main .meta { font-size: 14px; color: var(--q-muted); }
 .alist__side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
 
@@ -29,7 +29,7 @@
 
 .qrec { border: 1px solid var(--q-border); border-left: 4px solid var(--q-good); border-radius: var(--q-r-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; background: var(--q-surface-2); font-size: 13.5px; }
 .qrec__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.qrec__badge { display: inline-flex; align-items: center; gap: 5px; background: var(--q-dock-active); color: #fff; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.qrec__badge { display: inline-flex; align-items: center; gap: 5px; background: var(--q-dock-active); color: var(--c-white); font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
 .qrec p { margin: 0; color: var(--q-ink-2); }
 
 .rulecard { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--q-border); border-radius: var(--q-r); color: var(--q-ink); }
@@ -39,12 +39,12 @@
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .timeline li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 0 0 16px 24px; }
 .timeline li:last-child { padding-bottom: 0; }
-.timeline li::before { content: ''; position: absolute; left: 0; top: 5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--q-p4); background: #fff; }
-.timeline li::after { content: ''; position: absolute; left: 4px; top: 17px; bottom: -3px; width: 2px; background: #D7DEE0; }
+.timeline li::before { content: ''; position: absolute; left: 0; top: 5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--q-faint); background: var(--c-white); }
+.timeline li::after { content: ''; position: absolute; left: 4px; top: 17px; bottom: -3px; width: 2px; background: var(--c-light); }
 .timeline li:last-child::after { display: none; }
-.timeline li:first-child::before { border-color: var(--q-p2); background: var(--q-p2); }
-.timeline__text { font-size: 14px; line-height: 20px; color: var(--q-p2); }
-.timeline__meta { font-size: 12px; line-height: 16px; color: var(--q-p3); }
+.timeline li:first-child::before { border-color: var(--q-ink); background: var(--q-ink); }
+.timeline__text { font-size: 14px; line-height: 20px; color: var(--q-ink); }
+.timeline__meta { font-size: 12px; line-height: 16px; color: var(--q-muted); }
 
 .table--compact th, .table--compact td { padding: 7px 8px; font-size: 12.5px; }
 
@@ -52,4 +52,12 @@
 .camfilter { display: inline-flex; align-items: center; gap: 6px; height: 32px; margin-right: 16px; padding: 0 6px 0 10px; border: 1px solid var(--q-ai-border); border-radius: var(--q-r); background: var(--q-ai-tint); color: var(--q-ai-deep); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .camfilter__name { font-weight: 400; }
 .camfilter button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--q-ai-deep); }
-.camfilter button:hover { background: rgba(0, 0, 0, .06); }
+.camfilter button:hover { background: color-mix(in srgb, var(--c-black) 6%, transparent); }
+
+/* Alert actions: outlined, on a pale fill of their own colour, 5% smaller than a standard button.
+   Acknowledge blue, Escalate yellow (dark text so it stays readable), Report to QHSE red. */
+.adetail__actions .btn--act { min-height: 47.5px; padding: 0 31px; font-size: 13.7px; }
+.btn.btn--act-ack { background: var(--c-blue-wash); border-color: var(--c-blue); color: var(--c-blue); }
+.btn.btn--act-ack:hover { background: color-mix(in srgb, var(--c-blue) 18%, var(--c-white)); border-color: var(--c-blue); color: var(--c-blue); }
+.btn.btn--act-esc { background: color-mix(in srgb, var(--c-yellow) 16%, var(--c-white)); border-color: var(--c-yellow); color: color-mix(in srgb, var(--c-yellow) 45%, var(--c-black)); }
+.btn.btn--act-esc:hover { background: color-mix(in srgb, var(--c-yellow) 28%, var(--c-white)); border-color: var(--c-yellow); color: color-mix(in srgb, var(--c-yellow) 45%, var(--c-black)); }

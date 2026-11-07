@@ -8,17 +8,7 @@ import { isAdmin, isOpen, sessionStore, toast, useAlerts, useMe, useSession } fr
 import { Icon, type IconName } from './Icon';
 import { useConfirm } from './ui';
 import './Shell.css';
-
-/** The CCTV module's own screens. In Qavach they sit under Autonomous Safety, CCTV in the left menu. */
-const TABS: { to: string; label: string; end?: boolean; external?: boolean }[] = [
-  { to: '/', label: 'Overview', end: true },
-  { to: '/wall', label: 'Video wall' },
-  { to: '/alerts', label: 'Alerts' },
-  { to: '/cameras', label: 'Cameras' },
-  { to: '/rules', label: 'Rules' },
-  { to: '/notifications', label: 'Alert Configuration' },
-  { to: '#/m', label: 'Phone view', external: true },
-];
+import { assetUrl } from '../lib/assets';
 
 // The header names the page, as Qavach does ("Listing", "New Incident"); the most specific match wins.
 const PAGE_NAMES: [string, string][] = [
@@ -30,7 +20,7 @@ const PAGE_NAMES: [string, string][] = [
   ['/rules/new', 'New Rule'],
   ['/rules/', 'Rule'],
   ['/rules', 'Rules'],
-  ['/notifications', 'Alert Configuration'],
+  ['/configuration', 'Configuration'],
 ];
 
 const PARENTS: [string, string, string][] = [
@@ -39,16 +29,28 @@ const PARENTS: [string, string, string][] = [
 ];
 
 /** Qavach's left menu, with Qavach's own icons (public/qv). Only Autonomous Safety leads anywhere in this demo. */
-const SIDE: { label: string; img: string; to?: string }[] = [
+const SIDE: { label: string; img?: string; icon?: IconName; to?: string; menu?: 'auto' | 'cv' }[] = [
   { label: 'Home', img: 'home' },
   { label: 'Dashboard', img: 'dashboard' },
   { label: 'Management Report', img: 'management-report' },
-  { label: 'Autonomous Safety', img: 'autonomous-safety', to: '/' },
+  { label: 'Autonomous Safety', img: 'autonomous-safety', menu: 'auto' },
+  { label: 'Computer Vision Safety', img: 'computer-vision-safety', to: '/', menu: 'cv' },
   { label: 'Risk Assessment', img: 'risk-assessment' },
   { label: 'Unsafe Action', img: 'unsafe-action' },
   { label: 'Observation', img: 'observation' },
   { label: 'Incident Management', img: 'incident' },
   { label: 'Inspection', img: 'inspection' },
+];
+
+/** Computer Vision Safety's tiles: the CCTV module's screens, in the same tile layout as Qavach's other menus. */
+const CV_TILES: { to: string; label: string; end?: boolean; external?: boolean; img?: string; icon?: IconName }[] = [
+  { to: '/', label: 'Overview', end: true, img: 'dashboard' },
+  { to: '/wall', label: 'Video Wall', icon: 'wall' },
+  { to: '/alerts', label: 'Alerts', icon: 'bell' },
+  { to: '/cameras', label: 'Cameras', icon: 'cctv' },
+  { to: '/rules', label: 'Rules', icon: 'rule' },
+  { to: '/configuration', label: 'Configuration', img: 'configuration' },
+  { to: '#/m', label: 'Phone View', external: true, icon: 'mobile' },
 ];
 
 /** Autonomous Safety's tiles, in Qavach's order. CCTV is this module, so it has no Qavach icon and keeps the drawn one. */
@@ -58,7 +60,6 @@ const FLY: { label: string; img?: string; icon?: IconName }[] = [
   { label: 'Polaris', img: 'polaris' },
   { label: 'Analyzer', img: 'analyzer' },
   { label: 'Intelligence', img: 'intelligence' },
-  { label: 'CCTV', icon: 'cctv' },
   { label: 'New', img: 'new' },
   { label: 'Listing', img: 'listing' },
   { label: 'Review', img: 'review' },
@@ -104,10 +105,23 @@ export function Shell() {
 
 const OPEN_MENU = 'qsi:open-autonomous-safety';
 
+/** Where a tab's menu panel starts, as in Q-HSE: a menu whose tiles fit in one row sits level with its tab; a longer one
+ *  starts a little above the tab and runs down. Tiles sit in 8 equal columns with 12px between them. */
+const TILES_PER_ROW = 8;
+
+function flyTopFor(menu: 'auto' | 'cv', tab: DOMRect): number {
+  const tiles = menu === 'cv' ? CV_TILES.length : FLY.length;
+  const rows = Math.ceil(tiles / TILES_PER_ROW);
+  const panelH = 38 + rows * 102 + (rows - 1) * 12;
+  const centre = tab.top + tab.height / 2;
+  const top = rows === 1 ? centre - panelH / 2 - 14 : tab.top - 72;
+  return Math.max(96, Math.min(top, window.innerHeight - panelH - 8));
+}
+
 function SideMenu() {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
-  const [fly, setFly] = useState(false);
+  const [fly, setFly] = useState<'auto' | 'cv' | null>(null);
   const [sub, setSub] = useState<string | null>(null);
   const { pathname } = useLocation();
   const [flyTop, setFlyTop] = useState(240);
@@ -115,12 +129,13 @@ function SideMenu() {
   const close = () => {
     window.clearTimeout(timer.current);
     setOpen(false);
-    setFly(false);
+    setFly(null);
     setSub(null);
   };
   // A short grace period, so a pointer that leaves for a moment (or jumps to the menu) does not close it.
   const later = () => {
     window.clearTimeout(timer.current);
+    if (fly) return; // an open menu stays until a click on the dim layer (or a tile) closes it
     timer.current = window.setTimeout(close, 220);
   };
   const keep = () => {
@@ -130,11 +145,11 @@ function SideMenu() {
   // The breadcrumb's "Autonomous Safety" opens the same menu as its sidebar item.
   useEffect(() => {
     const show = () => {
-      const item = document.querySelector('.side__item.is-active');
+      const item = document.querySelector('.side__item[data-menu="cv"]');
       window.clearTimeout(timer.current);
       setOpen(true);
-      setFly(true);
-      if (item) setFlyTop(Math.max(96, item.getBoundingClientRect().top - 72));
+      setFly('cv');
+      if (item) setFlyTop(flyTopFor('cv', item.getBoundingClientRect()));
     };
     window.addEventListener(OPEN_MENU, show);
     return () => window.removeEventListener(OPEN_MENU, show);
@@ -144,39 +159,62 @@ function SideMenu() {
       {open && <div className="side__scrim" onClick={close} />}
       <aside className={`side${open ? ' is-open' : ''}`} aria-label="Qavach" onMouseEnter={keep} onMouseMove={keep} onMouseLeave={later} onFocus={keep}>
         <Link to="/" className="side__logo" aria-label="Qavach">
-          <img className="side__mark" src="/brand/logo-mark.png" alt="" />
-          <img className="side__wordmark" src="/brand/logo-wordmark.png" alt="" />
+          <img className="side__mark" src={assetUrl('brand/qhse-logo-mark.svg')} alt="" />
+          <img className="side__wordmark" src={assetUrl('brand/qhse-logo-text.svg')} alt="" />
         </Link>
         <nav className="side__nav">
           {SIDE.map((n) => {
-            const active = n.label === 'Autonomous Safety';
+            // The selected tab is the one whose menu is open; with none open it is the module this page belongs to.
+            const active = n.menu === (fly ?? 'cv');
             return (
               <button
                 key={n.label}
                 type="button"
+                data-menu={n.menu}
                 className={`side__item${active ? ' is-active' : ''}`}
                 aria-current={active ? 'page' : undefined}
-                onMouseEnter={(e) => {
-                  setFly(active);
-                  if (active) setFlyTop(Math.max(96, e.currentTarget.getBoundingClientRect().top - 72));
-                }}
-                onClick={() => {
-                  if (n.to) {
-                    setFly((v) => !v);
+                onClick={(e) => {
+                  if (n.menu) {
+                    // A menu opens when its tab is clicked, as in Q-HSE; hovering only highlights.
+                    setFlyTop(flyTopFor(n.menu, e.currentTarget.getBoundingClientRect()));
+                    setFly((v) => (v === n.menu ? null : n.menu!));
                   } else if (n.label === 'Home') {
                     nav('/');
                     close();
                   } else notInDemo(n.label);
                 }}
               >
-                <img className="side__img" src={`/qv/side/${n.img}.png`} alt="" />
+                {n.img ? <img className="side__img" src={assetUrl(`qv/side/${n.img}.png`)} alt="" /> : <Icon name={n.icon!} size={30} stroke={1.4} className="side__img side__img--drawn" />}
                 <span className="side__label">{n.label}</span>
-                <Icon name={open && fly && active ? 'chevron-left' : 'chevron-right'} size={18} stroke={2.4} className="side__more" />
+                <Icon name={open && n.menu && fly === n.menu ? 'chevron-left' : 'chevron-right'} size={18} stroke={2.4} className="side__more" />
               </button>
             );
           })}
         </nav>
-        {open && fly && (
+        {open && fly === 'cv' && (
+          <div className="fly" style={{ top: flyTop }} role="menu" aria-label="Computer Vision Safety">
+            <div className="fly__grid">
+              {CV_TILES.map((t) => (
+                <button
+                  key={t.to}
+                  type="button"
+                  className={`fly__tile${!t.external && (t.end ? pathname === t.to : pathname.startsWith(t.to)) ? ' is-on' : ''}`}
+                  role="menuitem"
+                  title={t.external ? "Opens the supervisor's phone view in a new window" : undefined}
+                  onClick={() => {
+                    if (t.external) window.open(t.to, '_blank', 'noopener');
+                    else nav(t.to);
+                    close();
+                  }}
+                >
+                  {t.img ? <img className="fly__img" src={assetUrl(`qv/fly/${t.img}.png`)} alt="" /> : <Icon name={t.icon!} size={42} stroke={1.3} className="fly__svg" />}
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {open && fly === 'auto' && (
           <div className="fly" style={{ top: flyTop }} role="menu" aria-label="Autonomous Safety">
             <div className="fly__grid">
               {FLY.map((f) => (
@@ -185,10 +223,10 @@ function SideMenu() {
                   type="button"
                   className={`fly__tile${f.label === sub ? ' is-on' : ''}`}
                   role="menuitem"
-                  onMouseEnter={() => setSub(f.label === 'Intelligence' || f.label === 'CCTV' ? f.label : null)}
-                  onClick={() => (f.label === 'Intelligence' || f.label === 'CCTV' ? setSub((v) => (v === f.label ? null : f.label)) : notInDemo(f.label))}
+                  onMouseEnter={() => setSub(f.label === 'Intelligence' ? f.label : null)}
+                  onClick={() => (f.label === 'Intelligence' ? setSub((v) => (v === f.label ? null : f.label)) : notInDemo(f.label))}
                 >
-                  {f.img ? <img className="fly__img" src={`/qv/fly/${f.img}.png`} alt="" /> : <Icon name={f.icon!} size={42} stroke={1.3} className="fly__svg" />}
+                  {f.img ? <img className="fly__img" src={assetUrl(`qv/fly/${f.img}.png`)} alt="" /> : <Icon name={f.icon!} size={42} stroke={1.3} className="fly__svg" />}
                   <span>{f.label}</span>
                   {f.label === 'Intelligence' && sub === 'Intelligence' && (
                     <span className="fly__sub" role="menu" aria-label="Intelligence">
@@ -207,32 +245,6 @@ function SideMenu() {
                           {m}
                         </span>
                       ))}
-                    </span>
-                  )}
-                  {f.label === 'CCTV' && sub === 'CCTV' && (
-                    <span className="fly__sub" role="menu" aria-label="CCTV">
-                      {TABS.map((t) => {
-                        const here = !t.external && (t.end ? pathname === t.to : pathname.startsWith(t.to));
-                        return (
-                          <span
-                            key={t.to}
-                            role="menuitem"
-                            tabIndex={0}
-                            className={`fly__subitem${here ? ' is-on' : ''}`}
-                            title={t.external ? "Opens the supervisor's phone view in a new window" : undefined}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (t.external) window.open(t.to, '_blank', 'noopener');
-                              else nav(t.to);
-                              close();
-                            }}
-                            onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLElement).click()}
-                          >
-                            {t.label}
-                            {t.external && <Icon name="external" size={14} />}
-                          </span>
-                        );
-                      })}
                     </span>
                   )}
                 </button>
@@ -260,7 +272,7 @@ const NAV: Record<string, [string, number, number]> = {
 };
 function NavIcon({ name }: { name: keyof typeof NAV }) {
   const [file, w, h] = NAV[name];
-  return <img className="hdr__img" src={`/qv/hdr/${file}`} width={w} height={h} style={{ width: w, height: h }} alt="" />;
+  return <img className="hdr__img" src={assetUrl(`qv/hdr/${file}`)} width={w} height={h} style={{ width: w, height: h }} alt="" />;
 }
 
 function TopBar({ onBell, onProfile }: { onBell: () => void; onProfile: () => void }) {
@@ -278,26 +290,24 @@ function TopBar({ onBell, onProfile }: { onBell: () => void; onProfile: () => vo
       <div className="hdr__title">
         <nav className="crumbs" aria-label="Breadcrumb">
           <Link to="/">Home</Link>
-          <img className="crumbs__sep" src="/qv/hdr/crumb.png" alt="" />
+          <img className="crumbs__sep" src={assetUrl('qv/hdr/crumb.png')} alt="" />
           <button type="button" className="crumbs__link" onClick={() => window.dispatchEvent(new Event(OPEN_MENU))}>
-            Autonomous Safety
+            Computer Vision Safety
           </button>
-          <img className="crumbs__sep" src="/qv/hdr/crumb.png" alt="" />
-          <Link to="/">CCTV</Link>
           {parent && (
             <>
-              <img className="crumbs__sep" src="/qv/hdr/crumb.png" alt="" />
+              <img className="crumbs__sep" src={assetUrl('qv/hdr/crumb.png')} alt="" />
               <Link to={parent[1]}>{parent[2]}</Link>
             </>
           )}
-          <img className="crumbs__sep" src="/qv/hdr/crumb.png" alt="" />
+          <img className="crumbs__sep" src={assetUrl('qv/hdr/crumb.png')} alt="" />
           <span className="is-last">{title}</span>
         </nav>
         <div className="hdr__h">{title}</div>
       </div>
       <span className="spacer" />
       <div className="hdr__icons">
-        <button type="button" className="hdr__icon" aria-label="QAI assistant" title="QAI assistant" onClick={() => notInDemo('The QAI assistant')}>
+        <button type="button" className="hdr__icon" aria-label="QAI assistant" title="QAI Assistant" onClick={() => notInDemo('The QAI assistant')}>
           <NavIcon name="ai" />
         </button>
         <button type="button" className="hdr__icon hdr__opt" aria-label="Messages" title="Messages" onClick={() => notInDemo('Messages')}>
@@ -319,7 +329,7 @@ function TopBar({ onBell, onProfile }: { onBell: () => void; onProfile: () => vo
         <button type="button" className="hdr__icon hdr__opt" aria-label="Help" title="Help" onClick={() => notInDemo('Help')}>
           <NavIcon name="help" />
         </button>
-        <button type="button" className="hdr__icon hdr__opt" aria-label="Training videos" title="Training videos" onClick={() => notInDemo('Training videos')}>
+        <button type="button" className="hdr__icon hdr__opt" aria-label="Training videos" title="Training Videos" onClick={() => notInDemo('Training videos')}>
           <NavIcon name="videos" />
         </button>
         <button type="button" className="hdr__icon" aria-label="Logout menu" title="Logout" aria-haspopup="menu" aria-expanded={out} onClick={() => setOut((v) => !v)}>
@@ -351,7 +361,7 @@ function TopBar({ onBell, onProfile }: { onBell: () => void; onProfile: () => vo
           <strong>{me.name}</strong>
           <span>{me.role}</span>
         </span>
-        <span className="hdr__avatar">
+        <span className="hdr__avatar" data-tip={me.name}>
           {me.name
             .split(' ')
             .map((p) => p[0])

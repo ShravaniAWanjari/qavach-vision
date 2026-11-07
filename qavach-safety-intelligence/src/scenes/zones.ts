@@ -56,15 +56,15 @@ export function defaultZones(scene: SceneKind, variant: number, cameraId: string
 }
 
 export const ZONE_COLORS: Record<ZonePurpose, string> = {
-  walkway: '#3DD68C',
-  restricted: '#FF5C7A',
-  exclusion: '#FFB45C',
-  'deck-edge': '#FF5C7A',
-  'work-area': '#7D9BFF',
-  'vehicle-lane': '#FFD166',
-  line: '#FF5C7A',
-  'fire-watch': '#FF9F40',
-  'fire-ignore': '#A6B8BD',
+  walkway: 'var(--c-green)',
+  restricted: 'var(--c-red)',
+  exclusion: 'var(--c-orange)',
+  'deck-edge': 'var(--c-red)',
+  'work-area': 'var(--c-blue)',
+  'vehicle-lane': 'var(--c-violet)',
+  line: 'var(--c-red)',
+  'fire-watch': 'var(--c-orange)',
+  'fire-ignore': 'var(--c-grey)',
 };
 
 export const PURPOSE_LABEL: Record<ZonePurpose, string> = {

@@ -1,0 +1,40 @@
+/* Cast to a display: walls on the left, the chosen display's screens on the right. */
+.cast { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; min-height: 420px; }
+@media (max-width: 760px) { .cast { grid-template-columns: 1fr; } }
+.cast__walls { display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid var(--q-divider); min-width: 0; }
+.cast__label { font-size: 12px; font-weight: 800; color: var(--q-muted); letter-spacing: .4px; }
+.cast__hint { margin: 0 0 6px; font-size: 12px; }
+.castwall { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--q-border); border-radius: var(--q-r); background: var(--q-surface); text-align: left; font: inherit; color: inherit; cursor: grab; }
+.castwall:hover:not(:disabled) { border-color: var(--c-blue); background: var(--c-blue-wash); }
+.castwall:disabled { cursor: not-allowed; opacity: .5; }
+.castwall > i { flex: 0 0 auto; width: 10px; height: 28px; border-radius: 3px; }
+.castwall.is-current { box-shadow: inset 3px 0 0 var(--c-blue); }
+.castwall__grip { margin-left: auto; flex: 0 0 auto; color: var(--q-faint); }
+.castwall--clear > i { background: repeating-linear-gradient(45deg, var(--c-light) 0 3px, var(--c-white) 3px 6px); border: 1px solid var(--q-border); }
+.cast__main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cast__top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.msel.cast__pick { flex: 1 1 300px; max-width: 420px; }
+.cast__status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--q-muted); }
+.cast__status i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-green); }
+.cast__status.is-off i { background: var(--c-red); }
+.cast__status.is-off { color: var(--c-red); }
+.cast__tools { display: flex; align-items: center; gap: 14px; }
+.castgrid { display: grid; gap: 6px; padding: 10px; border-radius: var(--q-r-md); background: var(--q-night); }
+.castscreen { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 92px; padding: 10px 12px; border: 2px solid transparent; border-radius: 4px; background: color-mix(in srgb, var(--c-white) 8%, transparent); color: var(--c-white); text-align: left; font: inherit; cursor: pointer; transition: transform .1s; }
+.castscreen:not(.is-on) { border: 2px dashed color-mix(in srgb, var(--c-white) 25%, transparent); }
+.castscreen__n { font-size: 12px; font-weight: 700; opacity: .85; }
+.castscreen__wall { font-size: 14px; font-weight: 700; }
+.castscreen:not(.is-on) .castscreen__wall { font-weight: 400; opacity: .6; }
+.castscreen.is-picked { border: 2px solid var(--c-white); box-shadow: 0 0 0 2px var(--c-blue); }
+.castscreen.is-over { transform: scale(.97); border: 2px solid var(--c-white); }
+.castgrid.is-dragging .castscreen:not(.is-over) { opacity: .85; }
+/* Same wall on neighbours: close the gap so they read as one picture. */
+.castscreen.join-r { margin-right: -6px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.castscreen.join-d { margin-bottom: -6px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.cast__note { margin: 0; font-size: 12px; }
+.cast__opts { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--q-divider); }
+.cast__untilwrap { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
+.cast__untillabel { font-size: 14px; font-weight: 600; color: var(--q-ink); white-space: nowrap; }
+.msel.cast__until { flex: 0 0 220px; width: 220px; }
+.cast__offline { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px; border: 1px dashed var(--q-border); border-radius: var(--q-r-md); color: var(--q-muted); text-align: center; }
+.cast__summary { font-size: 13px; color: var(--q-muted); }

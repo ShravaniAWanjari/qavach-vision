@@ -1,3 +1,4 @@
+import { assetUrl } from '../lib/assets';
 // Stroke icons on a 24px grid, from the Qavach AI-native icon set
 // (qavach-ai/src/app/ui/icon.ts), plus a few for walls and zones in the same style.
 const ICONS = {
@@ -13,7 +14,7 @@ const ICONS = {
   wall: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M12 4.5v12M3 10.5h9"/><path d="M8.5 20h7M12 16.5V20"/>',
   'camera-plus': '<path d="M13.5 4.5h-4.2L7.8 7H5.5A1.5 1.5 0 0 0 4 8.5v9A1.5 1.5 0 0 0 5.5 19h13a1.5 1.5 0 0 0 1.5-1.5V12"/><circle cx="12" cy="12.8" r="3.3"/><path d="M18 3v6M15 6h6"/>',
   camera: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.3l1.5-2.5h5.4L16.2 7h2.3A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/>',
-  cctv: '<path d="M3.5 7.5 15 4l2 5.5-11.5 3.5z"/><path d="m17 9.5 3-1M9 12l1.5 4.5H5M5 14v5"/>',
+  cctv: '<path d="M9.1 4.2 21 9.6 16.4 14.4 6.4 9.8z"/><path d="M17 14.1l3.2 1.4L22 10.8l-1.1-.5"/><path d="M8.4 11.1 7.6 12.9l4.6 2.2 1.1-2.2"/><path d="M10 14.8 8.2 16.4a1 1 0 0 1-.8.4H4.9"/><path d="M2 13.5 4.9 14v5.4L2 19.9z"/>',
   rule: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   route: '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7.5a3 3 0 0 0 0-6h-7a3 3 0 0 1 0-6H16"/>',
   shield: '<path d="M12 3.5 19 6v5.5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/>',
@@ -34,7 +35,7 @@ const ICONS = {
   'arrow-right': '<path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5"/>',
   'arrow-left': '<path d="M19 12H5M10.5 6.5 5 12l5.5 5.5"/>',
   plus: '<path d="M12 5.5v13M5.5 12h13"/>',
-  'add-circle': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7v10M7 12h10" stroke="#fff" stroke-width="2"/>',
+  'add-circle': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7v10M7 12h10" stroke="var(--c-white)" stroke-width="2"/>',
   close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   check: '<path d="m5.5 12.5 4 4 9-9.5"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
@@ -61,6 +62,7 @@ const ICONS = {
   external: '<path d="M13.5 4.5h6v6M19.5 4.5 11 13"/><path d="M17.5 14v4.5A1.5 1.5 0 0 1 16 20H6a1.5 1.5 0 0 1-1.5-1.5V8.5A1.5 1.5 0 0 1 6 7h4.5"/>',
   refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.8v.2"/>',
+  ban: '<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   more: '<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="2.6"/>',
   logout: '<path d="M14 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H14"/><path d="M10 12h10.5M17 8.5l3.5 3.5-3.5 3.5"/>',
@@ -124,5 +126,5 @@ export function Icon({ name, size = 20, stroke = 1.7, className }: { name: IconN
 }
 
 export function Logo({ size = 38 }: { size?: number }) {
-  return <img src="/brand/logo-mark.png" height={size} style={{ height: size, width: 'auto', alignSelf: 'flex-start', flex: 'none' }} alt="" aria-hidden="true" />;
+  return <img src={assetUrl('brand/logo-mark.png')} height={size} style={{ height: size, width: 'auto', alignSelf: 'flex-start', flex: 'none' }} alt="" aria-hidden="true" />;
 }

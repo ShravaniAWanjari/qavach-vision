@@ -3,7 +3,7 @@
 .ruleai__row .textarea { min-height: 56px; }
 .ruleai__row .btn { height: auto; }
 .ruleai .chip { height: auto; min-height: 24px; padding: 3px 10px; white-space: normal; text-align: left; font-weight: 500; }
-.ruleai__out { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; padding: 10px 12px; background: var(--q-surface); border: 1px solid #F3F3F3; border-radius: var(--q-r); color: var(--q-ink); font-size: 13.5px; }
+.ruleai__out { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; padding: 10px 12px; background: var(--q-surface); border: 1px solid var(--c-wash); border-radius: var(--q-r); color: var(--q-ink); font-size: 13.5px; }
 .ruleai__out ul { margin: 4px 0 0; padding-left: 18px; }
 .ruleai__out p { grid-column: 1 / -1; }
 @media (max-width: 800px) { .ruleai__out { grid-template-columns: 1fr; } .ruleai__row { flex-direction: column; } }
@@ -24,12 +24,51 @@
 
 /* New rule side panel: the plain-words box first, then the fields in the order a rule reads. */
 .newrule { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
-.newrule__ai { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid #F3F3F3; }
+.newrule__ai { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--c-wash); }
 .newrule__ai .textarea { min-height: 64px; }
 .newrule__airow { display: flex; align-items: center; gap: 12px; }
 .newrule__examples { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .newrule__examples .chip { height: auto; min-height: 24px; padding: 3px 10px; white-space: normal; text-align: left; font-weight: 500; }
 .newrule__assumed { font-size: 13px; color: var(--q-ink); }
 .newrule__assumed ul { margin: 4px 0 0; padding-left: 18px; color: var(--q-muted); }
-.newrule__sentence { margin: 0; padding: 12px 14px; background: #F2F4F5; border-radius: 4px; font-size: 14px; line-height: 21px; color: var(--q-ink); }
+.newrule__sentence { margin: 0; padding: 12px 14px; background: var(--c-wash); border-radius: 4px; font-size: 14px; line-height: 21px; color: var(--q-ink); }
 .newrule__pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 16px; }
+
+/* The rule list as a table: one grey header band, full-width rows with dividers, rounded frame, pager underneath. */
+.card.card--grid { overflow-x: auto; background: var(--q-surface); border: 1px solid var(--q-border); border-radius: var(--q-r-lg); box-shadow: var(--q-shadow-card); }
+.card:has(> .table.table--grid) { background: var(--q-surface); box-shadow: var(--q-shadow-card); }
+.table.table--grid { border-collapse: collapse; border-spacing: 0; margin: 0; min-width: 900px; }
+.table.table--grid td:nth-child(2) { min-width: 280px; }
+.listbar:has(.rtabs) { flex-wrap: wrap; row-gap: 8px; }
+.rtabs { flex: 1 1 260px; }
+.table.table--grid th { padding: 12px 16px; background: var(--c-light); color: var(--q-ink); font-weight: 700; font-size: 13.5px; }
+.table.table--grid td { padding: 14px 16px; border-bottom: 1px solid var(--q-divider); background: var(--q-surface); }
+.table.table--grid tbody tr { box-shadow: none; border-radius: 0; }
+.table.table--grid td:first-child, .table--grid td:last-child { border-radius: 0; }
+.table.table--grid tbody tr:last-child td { border-bottom: 0; }
+.table.table--grid .col-id { width: 84px; white-space: nowrap; }
+.table.table--grid td.col-id strong { color: var(--q-ink); }
+.rtabs { margin: 0; border-bottom: 0; gap: 28px; }
+.rtabs button { font-size: 15px; padding: 10px 0 8px; }
+.rtabs__n { min-width: 24px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--c-light); color: var(--q-ink); font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; }
+.rtabs button[aria-selected='true'] .rtabs__n { background: var(--q-ink); color: var(--c-white); }
+.pager { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--q-divider); font-size: 13.5px; color: var(--q-muted); }
+.pager__size { display: inline-flex; align-items: center; gap: 8px; margin-right: 12px; }
+.pager__btn { min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid var(--q-divider); border-radius: var(--q-r-sm); background: var(--q-surface); color: var(--q-ink); font-weight: 700; font-size: 14px; }
+.pager__btn.is-on { background: var(--q-ink); border-color: var(--q-ink); color: var(--c-white); }
+.pager__btn:disabled { opacity: .45; cursor: not-allowed; }
+.table.table--grid .col-act { width: 64px; text-align: right; padding-right: 14px; }
+.rule-edit:hover { color: var(--c-blue); background: var(--c-blue-wash); }
+/* Level tags in the rules table: small, and all the same width. */
+.table.table--grid .prio { box-sizing: border-box; justify-content: center; height: 20px; width: 46px; padding: 0 4px; gap: 3px; font-size: 10.5px; letter-spacing: .2px; border-radius: 3px; }
+.table.table--grid .prio svg { width: 11px; height: 11px; }
+.pager__size { display: inline-flex; align-items: center; gap: 10px; margin-right: 12px; }
+.pager__label { white-space: nowrap; }
+.msel.pager__choice { width: 84px; flex: 0 0 84px; }
+.newrule__forcam { margin: 0; padding: 10px 12px; border-radius: var(--q-r-sm); background: var(--c-blue-wash); color: var(--q-ink); font-size: 13px; line-height: 1.4; }
+.apreview { display: flex; flex-direction: column; gap: 14px; }
+.apreview__note { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--q-r-sm); background: var(--c-blue-wash); color: var(--q-ink); font-size: 13px; text-transform: none; }
+.apreview__card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--q-border); border-left: 4px solid var(--q-p1); border-radius: var(--q-r); }
+.apreview__who { display: flex; flex-direction: column; gap: 6px; }
+.apreview__label { font-size: 12px; font-weight: 800; color: var(--q-muted); letter-spacing: .3px; }
+.apreview__person { display: flex; align-items: baseline; gap: 10px; }

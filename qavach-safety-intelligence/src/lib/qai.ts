@@ -24,7 +24,7 @@ export const SCHEDULE_LABEL: Record<Schedule, string> = {
 
 export const SUBJECT_LABEL: Record<Subject, string> = { person: 'A person', vehicle: 'A vehicle', any: 'Anything' };
 
-const secs = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n} s`);
+const secs = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
 
 /** One sentence for what a rule watches for. */
 export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver'>, zoneNames: string[]): string {
@@ -234,7 +234,7 @@ export function draftRecord(alert: Alert, cam: Camera, rule: Rule | undefined, a
     title: `${alert.title} · ${cam.name}`,
     description:
       `At ${when}, camera ${cam.id} (${cam.name}, ${area?.name ?? cam.areaId}) saw: ${alert.detail.charAt(0).toLowerCase()}${alert.detail.slice(1)}. ` +
-      `Detected by rule ${rule?.id ?? alert.ruleId} "${rule?.name ?? alert.title}" with ${Math.round(alert.confidence * 100)}% confidence. Snapshot and 20 s clip attached.`,
+      `Detected by rule ${rule?.id ?? alert.ruleId} "${rule?.name ?? alert.title}" with ${Math.round(alert.confidence * 100)}% confidence. Snapshot and 20s clip attached.`,
     classification: rule?.classification ?? 'Unsafe act',
     severity: SEVERITY[alert.priority],
     immediateAction: ACTION[rule?.condition ?? 'enters'],

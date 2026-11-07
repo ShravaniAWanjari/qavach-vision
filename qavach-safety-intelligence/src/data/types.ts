@@ -95,7 +95,7 @@ export interface Rule {
   subject: Subject;
   condition: Condition;
   durationSec: number;
-  /** Detection steadiness for "enters the zone" on a real camera. Defaults: 3 frames, 25 %, 120 s, 10 px. */
+  /** Detection steadiness for "enters the zone" on a real camera. Defaults: 3 frames, 25 %, 120s, 10px. */
   minFrames?: number;
   minConfidence?: number;
   repeatSec?: number;

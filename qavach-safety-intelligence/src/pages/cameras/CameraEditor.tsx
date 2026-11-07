@@ -10,6 +10,7 @@ import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 import { useService } from '../../state/bridge';
 import { departmentOf, isAdmin, placementFor, removeCamera, saveCamera, saveRule, saveWall, setCameraOnRule, toast, useCameras, useMe, useRules, useWalls } from '../../state/store';
 import { LAYOUT_SLOTS } from '../wall/WallBody';
+import { NewRulePanel } from '../rules/NewRulePanel';
 import { ZoneEditor } from './ZoneEditor';
 
 type Step = 'connect' | 'zones' | 'walls';
@@ -41,6 +42,7 @@ export function CameraEditor() {
   const picker = useRef<HTMLInputElement>(null);
   const [wallPlan, setWallPlan] = useState<Record<string, 'off' | 'rolls' | 'pinned'>>({});
   const [rulePlan, setRulePlan] = useState<Record<string, boolean>>({});
+  const [newRule, setNewRule] = useState(false);
   // A camera being added starts on the walls and rules that already cover its work area, until someone changes a choice.
   const [touched, setTouched] = useState(false);
 
@@ -189,7 +191,7 @@ export function CameraEditor() {
   const canNext = step !== 'connect' || test === 'ok';
 
   return (
-    <div className="page">
+    <div className="page camsetup">
       <div className="page__head">
         <div className="page__title">
           <span className="page__sub">{isNew ? 'Add a camera' : `${cam.id} · ${cam.name}`}</span>
@@ -327,7 +329,7 @@ export function CameraEditor() {
                 {test === 'ok' && (
                   <span className="chip chip--good">
                     <Icon name="check" size={14} />
-                    Connected · {cam.resolution} · {cam.fps} fps · {cam.source ? (cam.source.live ? 'live' : 'video, plays in a loop') : 'H.265'}
+                    Connected · {cam.resolution} · {cam.fps}fps · {cam.source ? (cam.source.live ? 'live' : 'video, plays in a loop') : 'H.265'}
                   </span>
                 )}
                 {test === 'fail' && <span className="chip chip--danger">{err || 'Could not connect'}</span>}
@@ -391,10 +393,17 @@ export function CameraEditor() {
         {step === 'walls' && (
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card__head">
-              <h2>Rules that watch this camera</h2>
+              <h2>Apply rules</h2>
               <span className="meta">Rules already watching other cameras of this work area are ticked.</span>
+              <span className="spacer" />
+              {canEdit && (
+                <button type="button" className="qact__btn" onClick={() => setNewRule(true)}>
+                  <Icon name="add-circle" size={20} />
+                  New rule
+                </button>
+              )}
             </div>
-            <table className="table">
+            <table className="table camsetup__table">
               <thead>
                 <tr>
                   <th>Rule</th>
@@ -421,13 +430,20 @@ export function CameraEditor() {
             </table>
           </div>
         )}
+        {newRule && cam && (
+          <NewRulePanel
+            forCamera={cam.id}
+            onCreated={(r) => choose({ rule: [r.id, true] })}
+            onClose={() => setNewRule(false)}
+          />
+        )}
         {step === 'walls' && (
           <div className="card">
             <div className="card__head">
               <h2>Where this camera shows</h2>
               <span className="meta">Pinned cameras stay on screen; the others take turns in the rolling section.</span>
             </div>
-            <table className="table">
+            <table className="table camsetup__table">
               <thead>
                 <tr>
                   <th>Wall</th>

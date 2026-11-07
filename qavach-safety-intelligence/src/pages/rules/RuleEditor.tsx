@@ -9,8 +9,9 @@ import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJE
 import { apiUrl } from '../../lib/backend';
 import { hm } from '../../lib/time';
 import { useMatches } from '../../state/bridge';
-import { raiseFor } from '../../state/engine';
-import { deleteRule, isAdmin, nextRuleId, roleText, saveRule, toast, useCameras, useMe, usePolicies, useRules } from '../../state/store';
+import { previewFor } from '../../state/engine';
+import { deleteRule, isAdmin, nextRuleId, roleText, saveRule, toast, useCameras, useMe, usePolicies, useRules, userName } from '../../state/store';
+import type { Alert } from '../../data/types';
 import './rules.css';
 
 export const EXAMPLES = [
@@ -32,6 +33,7 @@ export function RuleEditor() {
   const confirm = useConfirm();
   const admin = isAdmin(me);
   const existing = rules.find((r) => r.id === ruleId);
+  const [preview, setPreview] = useState<Alert>();
   const [rule, setRule] = useState<Rule>(
     () =>
       existing ?? {
@@ -376,8 +378,8 @@ export function RuleEditor() {
               {policy && (
                 <span className="field__hint">
                   {policy.channels.map((c) => CHANNEL[c].label).join(', ')} to the {policy.notify.map(roleText).join(' and ')}
-                  {policy.escalateTo !== 'none' ? `; escalates to the ${roleText(policy.escalateTo)} if not acknowledged in ${policy.ackWithinMin} min` : ''}.{' '}
-                  <Link to="/notifications">Open alert configuration</Link>
+                  {policy.escalateTo !== 'none' ? `; escalates to the ${roleText(policy.escalateTo)} if not acknowledged in ${policy.ackWithinMin}min` : ''}.{' '}
+                  <Link to="/configuration/alerts">Open alert configuration</Link>
                 </span>
               )}
             </div>
@@ -386,7 +388,7 @@ export function RuleEditor() {
               <div className="field">
                 <Choice
                   id="r-q"
-                  label="Qavach Record"
+                  label="Reported to QHSE"
                   value={rule.qavach}
                   onChange={(qavach) => set({ qavach }, 'qavach')}
                   options={[
@@ -422,7 +424,7 @@ export function RuleEditor() {
               <p className="rulesentence">
                 {sentence}
                 {rule.schedule !== 'always' ? `, ${SCHEDULE_LABEL[rule.schedule].toLowerCase()}` : ''} on {chosen.length} camera{chosen.length === 1 ? '' : 's'} → <PriorityBadge p={rule.priority} />
-                {rule.qavach !== 'none' ? ` and a Qavach ${rule.qavach.toLowerCase()}` : ''}.
+                {rule.qavach !== 'none' ? ` and a QHSE ${rule.qavach.toLowerCase()}` : ''}.
               </p>
               {chosen[0] && (
                 <CameraView cam={chosen[0]} still zones={chosen[0].zones} highlightZones={rule.zoneIds} showZoneLabels />
@@ -440,7 +442,7 @@ export function RuleEditor() {
                   {rule.mode === 'test' && matches.length === 0 && <span className="meta">None yet. Matches from the real camera appear here as they happen.</span>}
                   {matches.slice(0, 6).map((m) => (
                     <a key={m.id} className="meta" href={apiUrl(m.snapshot)} target="_blank" rel="noreferrer">
-                      {hm(m.at)} · {m.cameraId} · {m.hazard ? `${m.hazard === 'fire' ? 'Fire' : 'Smoke'} · ` : ''}{m.zoneName || 'whole view'} · {Math.round(m.confidence * 100)}%{m.hazard ? '' : ` · ${m.dwell.toFixed(1)} s`}
+                      {hm(m.at)} · {m.cameraId} · {m.hazard ? `${m.hazard === 'fire' ? 'Fire' : 'Smoke'} · ` : ''}{m.zoneName || 'whole view'} · {Math.round(m.confidence * 100)}%{m.hazard ? '' : ` · ${m.dwell.toFixed(1)}s`}
                     </a>
                   ))}
                 </div>
@@ -467,19 +469,16 @@ export function RuleEditor() {
                   type="button"
                   className="btn btn--secondary"
                   disabled={!chosen.some((c) => c.status !== 'offline')}
-                  onClick={() => {
-                    const cam = chosen.find((c) => c.status !== 'offline')!;
-                    const a = raiseFor(existing, cam, { quiet: true });
-                    toast(`Test alert ${a.id} raised on ${cam.id}: it follows the ${existing.priority} policy`, { link: `/alerts/${a.id}` });
-                  }}
+                  onClick={() => setPreview(previewFor(existing, chosen.find((c) => c.status !== 'offline')!))}
                 >
-                  <Icon name="bell" size={16} />
-                  Raise a test alert now
+                  <Icon name="eye" size={16} />
+                  Preview the alert
                 </button>
               )}
             </div>
           </aside>
         </div>
+        {preview && <AlertPreview alert={preview} onClose={() => setPreview(undefined)} />}
       </fieldset>
 
       <div className="camedit__foot">
@@ -545,13 +544,13 @@ function CameraPicker({ selected, onClose, onDone }: { selected: string[]; onClo
   const [q, setQ] = useState('');
   const toggle = (id: string, on: boolean) => {
     const s = new Set(sel);
-    if (on) s.add(id);
+    if (on)s.add(id);
     else s.delete(id);
     setSel(s);
   };
   return (
     <Modal
-      title="Choose cameras"
+      title="Choose Cameras"
       wide
       onClose={onClose}
       footer={
@@ -601,6 +600,58 @@ function CameraPicker({ selected, onClose, onDone }: { selected: string[]; onClo
           </div>
         );
       })}
+    </Modal>
+  );
+}
+
+/** What an alert from this rule would look like, and who would be told. Built on the spot: nothing is stored and no one
+ *  is notified, so a check leaves no trace in the alert list. */
+function AlertPreview({ alert, onClose }: { alert: Alert; onClose: () => void }) {
+  const cams = useCameras();
+  const policy = usePolicies().find((p) => p.priority === alert.priority);
+  const cam = cams.find((c) => c.id === alert.cameraId);
+  const people = [...new Set(alert.deliveries.map((d) => d.to))].map((to) => ({ to, channels: alert.deliveries.filter((d) => d.to === to).map((d) => CHANNEL[d.channel].label) }));
+  return (
+    <Modal
+      title="Alert preview"
+      onClose={onClose}
+      footer={
+        <button type="button" className="btn" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="apreview">
+        <p className="apreview__note">
+          <Icon name="info" size={16} />
+          Preview only. Nothing is saved to the alert list and no one is told.
+        </p>
+        <div className="apreview__card">
+          <div className="row" style={{ gap: 10 }}>
+            <PriorityBadge p={alert.priority} />
+            <strong>{alert.title}</strong>
+          </div>
+          <span className="meta">{alert.detail}</span>
+          <span className="meta">
+            {cam?.id} · {cam?.name}
+          </span>
+        </div>
+        <div className="apreview__who">
+          <span className="apreview__label">Who would be told</span>
+          {people.length === 0 && <span className="meta">No one: this level has no one to notify.</span>}
+          {people.map((p) => (
+            <span key={p.to} className="apreview__person">
+              <strong>{userName(p.to)}</strong>
+              <span className="meta">{p.channels.join(', ')}</span>
+            </span>
+          ))}
+        </div>
+        {policy && (
+          <span className="meta">
+            Acknowledge within {policy.ackWithinMin}min{policy.escalateTo !== 'none' ? `, then it escalates to the ${roleText(policy.escalateTo)}` : ''}.
+          </span>
+        )}
+      </div>
     </Modal>
   );
 }

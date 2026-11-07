@@ -38,6 +38,11 @@ def main():
     stdin = sys.stdin.buffer
 
     from boxmot import BotSort
+    try:
+        from qavach.device import half_precision, pick_device
+    except ImportError:         # started as a script by path, so the package is not on sys.path; its folder is
+        from device import half_precision, pick_device
+    device = pick_device(allow_mps=False)
     tracker = None
     while True:
         try:
@@ -48,7 +53,7 @@ def main():
             return
         if kind == b'R':
             fps = struct.unpack('<f', read_exact(stdin, 4))[0]
-            tracker = BotSort(reid_weights=reid_weights, device='cpu', half=False, use_embeddings=True,
+            tracker = BotSort(reid_weights=reid_weights, device=device, half=half_precision(device), use_embeddings=True,
                               frame_rate=max(1, int(round(fps))), **TRACKER_OPTIONS)
             out.write(b'K')
         elif kind == b'U':

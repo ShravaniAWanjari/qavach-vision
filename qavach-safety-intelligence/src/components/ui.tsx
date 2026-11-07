@@ -13,7 +13,7 @@ export const PRIORITY_NAME: Record<Priority, string> = { P1: 'Critical', P2: 'Hi
 
 export function PriorityBadge({ p, short }: { p: Priority; short?: boolean }) {
   return (
-    <span className={`prio prio--${p}`}>
+    <span className={`prio prio--${p}${short ? '' : ' prio--fixed'}`}>
       {p === 'P1' && <Icon name="warning" size={13} stroke={2.2} />}
       {p}
       {!short && ` ${PRIORITY_NAME[p]}`}
@@ -348,7 +348,7 @@ export function MultiSelect<T extends string>({ id, label, options, value, onCha
             type="button"
             className="msel__clear"
             aria-label={`Clear ${label}`}
-            title="Clear all"
+            title="Clear All"
             onClick={(e) => {
               e.stopPropagation();
               onChange([]);
@@ -555,8 +555,23 @@ export function useConfirm() {
   return { ask, dialog };
 }
 
-export function Drawer({ title, onClose, children, footer, wide, sub }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
-  useEscape(onClose);
+export function Drawer({ title, onClose, children, footer, wide, sub, inline }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; inline?: boolean }) {
+  useEscape(inline ? () => {} : onClose);
+  // Inline: the same panel, sitting in the page (Configuration's right-hand side) instead of sliding over it.
+  if (inline) {
+    return (
+      <section className="cfgpanel">
+        <div className="modal__head">
+          <div className="stack" style={{ gap: 2 }}>
+            <h2>{title}</h2>
+            {sub && <span className="meta">{sub}</span>}
+          </div>
+        </div>
+        <div className="modal__body">{children}</div>
+        {footer && <div className="modal__foot">{footer}</div>}
+      </section>
+    );
+  }
   return (
     <>
       <div className="drawer-scrim" onClick={onClose} />
@@ -605,9 +620,9 @@ export function ZoneOverlay({ zones, highlight, box, aspect = SCENE_W / SCENE_H 
 
 // Detection boxes on the picture: [box line, label fill, label text], from the design system's swatches. Lines stay
 // light enough to see on video; the label matches the level's chip.
-const BOX_COLOR: Record<Priority, [string, string, string]> = { P1: ['#E5456D', '#E5456D', '#fff'], P2: ['#D7DEE0', '#0C323D', '#fff'], P3: ['#A6B8BD', '#567C87', '#fff'], P4: ['#A6B8BD', '#A6B8BD', '#0C323D'] };
+const BOX_COLOR: Record<Priority, [string, string, string]> = { P1: ['var(--q-p1)', 'var(--q-p1)', 'var(--c-white)'], P2: ['var(--q-p2)', 'var(--q-p2)', 'var(--c-white)'], P3: ['var(--q-p3)', 'var(--q-p3)', 'var(--c-white)'], P4: ['var(--q-p4)', 'var(--q-p4)', 'var(--q-p4-ink)'] };
 
-// A person on a wide camera is often 10 to 20 px tall, so a box drawn exactly on them is smaller than its own
+// A person on a wide camera is often 10 to 20px tall, so a box drawn exactly on them is smaller than its own
 // outline and reads as a blob. The box is grown around the person to a minimum size (in the overlay's 360-high units,
 // about 4 % of the picture's height for the smallest) so it is always a clear rectangle with the person inside.
 const BOX_PAD = 5;
@@ -630,7 +645,7 @@ function DetectionBox({ alert, W, H }: { alert: Alert; W: number; H: number }) {
   const lx = Math.min(vw - lw, bx);
   return (
     <g>
-      <rect x={bx} y={by} width={bw} height={bh} fill="none" stroke="#000" strokeOpacity={0.45} strokeWidth={3.5} vectorEffect="non-scaling-stroke" />
+      <rect x={bx} y={by} width={bw} height={bh} fill="none" stroke="var(--c-black)" strokeOpacity={0.45} strokeWidth={3.5} vectorEffect="non-scaling-stroke" />
       <rect x={bx} y={by} width={bw} height={bh} fill="none" stroke={stroke} strokeWidth={2} vectorEffect="non-scaling-stroke" />
       <rect x={lx} y={ly} width={lw} height={lh} fill={fill} />
       <text x={lx + 4} y={ly + lh - 3.5} fill={ink} fontSize={9} fontWeight={600} fontFamily="Exo 2, sans-serif">
@@ -674,7 +689,9 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
   const [bump, setBump] = useState(0);
   const [badBump, setBadBump] = useState(-1); // the refresh that found no picture yet
   const [failed, setFailed] = useState<string | null>(null); // the last address that could not be loaded at all
-  const refreshing = !!still && !frozen && !snapshot && serviceUp;
+  // A frame is fetched afresh while a still is wanted, and also for a connected camera that has no saved still (the sample
+  // cameras were never connection-tested), so zone drawing has a picture to draw on.
+  const refreshing = serviceUp && !snapshot && ((!!still && !frozen) || (!!frozen && !cam.source?.frameUrl));
   useEffect(() => {
     setBroken(false);
     setFailed(null);
@@ -689,6 +706,15 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
   const src = snapshot ? apiUrl(snapshot) : !still && !frozen && serviceUp && !broken ? streamUrl(cam) : (latest ?? fallback);
   const missing = !src || failed === src;
   useEffect(() => onMissing(missing), [missing, onMissing]);
+  // The service is up but cannot read this camera (stream down, address wrong, file missing): say so, not "no picture".
+  if (serviceUp && cam.status === 'offline')
+    return (
+      <div className="camview__nopic camview__nopic--lost" role="status">
+        <Icon name="camera" size={22} />
+        <span>Camera feed interrupted</span>
+        <small>The detection service cannot read this camera. It keeps trying.</small>
+      </div>
+    );
   if (missing)
     return (
       <div className="camview__nopic">

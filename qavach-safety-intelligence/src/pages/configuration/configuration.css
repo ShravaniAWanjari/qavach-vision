@@ -1,0 +1,14 @@
+.cfg { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cfg { grid-template-columns: 1fr; } }
+.cfg__nav { display: flex; flex-direction: column; padding: 8px 0; }
+.cfg__item { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: var(--q-muted); font-weight: 700; font-size: 15px; border-left: 4px solid transparent; text-decoration: none; }
+.cfg__item:hover { background: var(--c-wash); color: var(--q-ink); }
+.cfg__item.is-active { color: var(--q-ink); background: var(--c-wash); border-left-color: var(--c-blue); }
+.cfg__panel { min-width: 0; padding: 0; }
+.cfg__panel .page { padding: 16px 20px 24px; }
+.cfgpanel { display: flex; flex-direction: column; min-width: 0; }
+.cfgpanel > .modal__head { padding: 16px 20px; border-bottom: 1px solid var(--q-divider); }
+.cfgpanel > .modal__body { padding: 16px 20px; }
+.cfgpanel > .modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--q-divider); }
+.cfgwall { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; }
+.cfgwall .wedit { flex: 1 1 320px; max-width: 720px; max-height: 70vh; }

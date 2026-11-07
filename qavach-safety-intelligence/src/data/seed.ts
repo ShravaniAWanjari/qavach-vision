@@ -84,7 +84,37 @@ export function seedCameras(now: number): Camera[] {
       });
     });
   }
+  out.push(...liveCameras(now));
   return out;
+}
+
+/** The deck 4 clip, shipped with the detection service (backend/samples), and the ferry's public live stream. They are
+ *  connected cameras: the service reads them for real. If a feed cannot be opened the console shows it as interrupted. */
+export const DECK4_UPLOAD_ID = '5a3b1e000004';
+export const FERRY_LINK = 'https://www.youtube.com/watch?v=QO-hO_kwwmY';
+function liveCameras(now: number): Camera[] {
+  const real = { scene: 'deck', variant: 0, status: 'online', make: 'Demo feed', resolution: '1920 × 1080', fps: 25, addedAt: now - 2 * 86400000, addedBy: 'u-priya' } as const;
+  return [
+    {
+      ...real,
+      id: 'DCK-09',
+      name: 'Deck 4 · fire and smoke (video clip)',
+      areaId: 'deck',
+      stream: 'file://deck-4.mp4',
+      zones: [],
+      source: { kind: 'upload', uploadId: DECK4_UPLOAD_ID, fileName: 'Deck-4.mp4', title: 'Deck 4' },
+    },
+    {
+      ...real,
+      scene: 'perimeter',
+      id: 'PER-11',
+      name: 'Ferry cam · Southampton to Cowes (live)',
+      areaId: 'perimeter',
+      stream: FERRY_LINK,
+      zones: [{ id: 'PER-11-Z1', name: 'Restricted area', purpose: 'restricted', kind: 'polygon', points: [[18.8, 68], [17.2, 89], [49.8, 86.9], [86.2, 71.6], [89.5, 66.1], [76, 60]] }],
+      source: { kind: 'link', url: FERRY_LINK, live: true, title: 'Ferry cam · Southampton to Cowes' },
+    },
+  ];
 }
 
 export const TEAMS: Team[] = [
@@ -112,7 +142,7 @@ export function seedWalls(cams: Camera[]): Wall[] {
   return [
     {
       id: 'w-quay',
-      name: 'Quay and deck',
+      name: 'Quay And Deck',
       teamId: 't-quay',
       pinnedShare: 70,
       pinnedLayout: '2x2',
@@ -125,7 +155,7 @@ export function seedWalls(cams: Camera[]): Wall[] {
     },
     {
       id: 'w-yard',
-      name: 'Yard and gate',
+      name: 'Yard And Gate',
       teamId: 't-yard',
       pinnedShare: 70,
       pinnedLayout: '2x2',
@@ -138,7 +168,7 @@ export function seedWalls(cams: Camera[]): Wall[] {
     },
     {
       id: 'w-hse',
-      name: 'Critical areas',
+      name: 'Critical Areas',
       teamId: 't-hse',
       pinnedShare: 70,
       pinnedLayout: '1+5',
@@ -151,7 +181,7 @@ export function seedWalls(cams: Camera[]): Wall[] {
     },
     {
       id: 'w-tour',
-      name: 'All cameras tour',
+      name: 'All Cameras Tour',
       teamId: 't-hse',
       pinnedShare: 0,
       pinnedLayout: '2x2',
@@ -343,6 +373,36 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
       qavach: 'Observation',
       updatedAt: t(1),
     },
+    {
+      ...base,
+      id: 'R-12',
+      name: 'Smoke or flame on deck 4',
+      cameraIds: ['DCK-09'],
+      zoneIds: [],
+      subject: 'any',
+      condition: 'smoke',
+      durationSec: 0,
+      minFrames: 4,
+      fireClasses: 'both',
+      priority: 'P1',
+      qavach: 'Incident',
+      classification: 'Unsafe condition',
+      updatedAt: t(1),
+    },
+    {
+      ...base,
+      id: 'R-13',
+      name: 'Person in the ferry cam restricted area',
+      cameraIds: ['PER-11'],
+      zoneIds: ['PER-11-Z1'],
+      subject: 'person',
+      condition: 'enters',
+      durationSec: 3,
+      priority: 'P2',
+      mode: 'test',
+      qavach: 'Observation',
+      updatedAt: t(1),
+    },
   ];
 }
 
@@ -370,7 +430,7 @@ export function seedAlerts(now: number): Alert[] {
       zoneId: 'DCK-04-Z1',
       priority: 'P2',
       title: 'Person away from the deck walkway',
-      detail: 'Outside Deck walkway for 7 s (rule: 5 s or more)',
+      detail: 'Outside Deck walkway for 7s (rule: 5s or more)',
       at: now - 3 * MIN,
       state: 'new',
       box: [36, 50, 7, 22],
@@ -387,7 +447,7 @@ export function seedAlerts(now: number): Alert[] {
       cameraId: 'QUA-08',
       priority: 'P3',
       title: 'No helmet on the quay apron',
-      detail: 'Helmet not seen for 4 s (rule: 3 s or more)',
+      detail: 'Helmet not seen for 4s (rule: 3s or more)',
       at: now - 11 * MIN,
       state: 'acknowledged',
       ackBy: 'u-rahul',
@@ -427,7 +487,7 @@ export function seedAlerts(now: number): Alert[] {
       activity: [
         { at: now - 26 * MIN, text: 'Detected by the edge model', actor: 'system' },
         { at: now - 23 * MIN, text: 'Acknowledged on the phone', actor: 'u-sana' },
-        { at: now - 22 * MIN, text: 'Near miss NM-26-0187 raised in Qavach', actor: 'u-sana' },
+        { at: now - 22 * MIN, text: 'Near miss NM-26-0187 reported to QHSE', actor: 'u-sana' },
       ],
       qavach: {
         type: 'Near miss',
@@ -448,7 +508,7 @@ export function seedAlerts(now: number): Alert[] {
       cameraId: 'GTE-02',
       priority: 'P4',
       title: 'Truck stopped on the pedestrian crossing',
-      detail: 'Stopped 74 s on Pedestrian crossing (rule: 60 s or more)',
+      detail: 'Stopped 74s on Pedestrian crossing (rule: 60s or more)',
       at: now - 48 * MIN,
       state: 'resolved',
       ackBy: 'u-meera',
@@ -488,7 +548,7 @@ export function seedAlerts(now: number): Alert[] {
       activity: [
         { at: now - 74 * MIN, text: 'Detected by the edge model', actor: 'system' },
         { at: now - 73 * MIN, text: 'Acknowledged on the phone · crane stopped by radio', actor: 'u-rahul' },
-        { at: now - 73 * MIN, text: 'Incident INC-26-0412 raised in Qavach (policy: on acknowledge)', actor: 'system' },
+        { at: now - 73 * MIN, text: 'Incident INC-26-0412 reported to QHSE (policy: on acknowledge)', actor: 'system' },
         { at: now - 60 * MIN, text: 'Resolved · lasher removed from under the spreader', actor: 'u-rahul' },
       ],
       qavach: {
@@ -510,7 +570,7 @@ export function seedAlerts(now: number): Alert[] {
       cameraId: 'QUA-07',
       priority: 'P3',
       title: 'No vest on the quay apron',
-      detail: 'Vest not seen for 5 s (rule: 3 s or more)',
+      detail: 'Vest not seen for 5s (rule: 3s or more)',
       at: now - 132 * MIN,
       state: 'false-alarm',
       ackBy: 'u-arun',

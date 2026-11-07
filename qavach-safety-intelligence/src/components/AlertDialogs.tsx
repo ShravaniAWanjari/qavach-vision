@@ -33,7 +33,7 @@ function RecordFields({ value, onChange, edited, setEdited }: { value: Draft; on
     <div className="stack">
       <div className="grid-3" style={{ gap: 12 }}>
         <div className={cls('type')}>
-          <Choice id="rec-type" label="Qavach Record" value={value.type} onChange={(v) => set('type', v)} options={(['Incident', 'Observation', 'Near miss'] as QavachRecordType[]).map((v) => ({ value: v, label: v }))} />
+          <Choice id="rec-type" label="Reported to QHSE" value={value.type} onChange={(v) => set('type', v)} options={(['Incident', 'Observation', 'Near miss'] as QavachRecordType[]).map((v) => ({ value: v, label: v }))} />
         </div>
         <div className={cls('classification')}>
           <Choice id="rec-class" label="Classification" value={value.classification} onChange={(v) => set('classification', v)} options={(['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v }))} />
@@ -70,7 +70,7 @@ export function AckDialog({ alert, via, onClose }: { alert: Alert; via: 'wall' |
     acknowledge(alert.id, me.id, via, note.trim());
     if (raise && rec) {
       const ref = raiseInQavach(alert.id, { ...rec, createdBy: me.id, source: 'manual' });
-      toast(`${alert.id} acknowledged · ${rec.type} ${ref} raised in Qavach`);
+      toast(`${alert.id} acknowledged · ${rec.type} ${ref} reported to QHSE`);
     } else toast(`${alert.id} acknowledged`);
     onClose();
   };
@@ -129,18 +129,18 @@ export function RaiseDialog({ alert, onClose }: { alert: Alert; onClose: () => v
   if (!rec || !cam) return null;
   const submit = () => {
     const ref = raiseInQavach(alert.id, { ...rec, createdBy: me.id, source: 'manual' });
-    toast(`${rec.type} ${ref} raised in Qavach with the snapshot and clip`);
+    toast(`${rec.type} ${ref} reported to QHSE with the snapshot and clip`);
     onClose();
   };
   return (
     <Modal
-      title="Raise in Qavach"
+      title="Report to QHSE"
       wide
       onClose={onClose}
       footer={
         <>
           <span className="meta" style={{ marginRight: 'auto' }}>
-            Goes to Incidents and Learning in Qavach, with the snapshot and a 20 s clip.
+            Goes to Incidents and Learning in QHSE, with the snapshot and a 20s clip.
           </span>
           <button type="button" className="btn btn--secondary" onClick={onClose}>
             Cancel

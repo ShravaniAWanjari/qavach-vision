@@ -11,9 +11,9 @@ export const SCENE_W = 640;
 export const SCENE_H = 360;
 
 const BOX_PALETTES = [
-  ['#2F6DA3', '#B4432F', '#D9A13B', '#3E8A5B', '#7A8794', '#8C3D63'],
-  ['#C2552B', '#28597F', '#6F8E3C', '#C9A227', '#55606B', '#9B3B3B'],
-  ['#3D7DB8', '#D07A2A', '#4C6F55', '#A93A46', '#C7B79A', '#2E4F6E'],
+  ['#2F6DA3', 'var(--c-red)', '#D9A13B', '#3E8A5B', '#7A8794', '#8C3D63'],
+  ['#C2552B', '#28597F', '#6F8E3C', '#C9A227', '#55606B', 'var(--c-red)'],
+  ['#3D7DB8', '#D07A2A', '#4C6F55', 'var(--c-red)', '#C7B79A', '#2E4F6E'],
 ];
 
 const rnd = (seed: number) => {
@@ -37,7 +37,7 @@ function Person({ s = 1, vest = '#F28C28', helmet = '#F4F4F2', noPpe = false }: 
   );
 }
 
-function Truck({ s = 1, cab = '#C8452D', box }: { s?: number; cab?: string; box?: string }) {
+function Truck({ s = 1, cab = 'var(--c-red)', box }: { s?: number; cab?: string; box?: string }) {
   return (
     <g transform={`scale(${s})`}>
       <ellipse cx="0" cy="2" rx="44" ry="4" fill="#000" opacity=".22" />
@@ -233,7 +233,7 @@ function Quay({ id, pal = BOX_PALETTES[0], r = Math.random, still, mirror }: Dra
       <rect y="118" width={SCENE_W} height="40" fill="#4E6475" />
       {stacks}
       <path d="M0 96 L640 84 L640 186 L0 198 Z" fill="#1F3247" />
-      <path d="M0 186 L640 174 L640 186 L0 198 Z" fill="#7A2A2A" />
+      <path d="M0 186 L640 174 L640 186 L0 198 Z" fill="var(--c-red)" />
       <Label x={510} y={150} mirror={mirror} fill="#E8EDF3" opacity=".55" fontSize="20" fontFamily="Exo 2, sans-serif" fontWeight="700" letterSpacing="4">
         NORDIC STAR
       </Label>
@@ -264,7 +264,7 @@ function Quay({ id, pal = BOX_PALETTES[0], r = Math.random, still, mirror }: Dra
       <rect x="520" y="210" width="70" height="30" fill="#6E747A" stroke="#3B4045" />
       <path d="M520 220 h70 M520 230 h70" stroke="#3B4045" />
       <Mover path="M700 278 L-80 286" dur={22} begin={4} still={still}>
-        <Truck s={0.9} cab="#C8452D" box={pal[0]} />
+        <Truck s={0.9} cab="var(--c-red)" box={pal[0]} />
       </Mover>
       <Mover path="M600 252 L60 258 L600 252" dur={30} begin={9} still={still}>
         <Person s={1.05} />
@@ -419,7 +419,7 @@ function Gate({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
           <rect x={x} y="80" width="10" height="170" fill="#9AA1A8" />
           <rect x={x - 22} y="160" width="54" height="56" fill="#E6E9EC" stroke="#9AA1A8" />
           <rect x={x - 14} y="170" width="38" height="18" fill="#7EA8C8" />
-          <path d={`M${x + 32} 200 H${x + 120}`} stroke="#D33B2C" strokeWidth="4" strokeDasharray="12 10" />
+          <path d={`M${x + 32} 200 H${x + 120}`} stroke="var(--c-red)" strokeWidth="4" strokeDasharray="12 10" />
         </g>
       ))}
       {[[0, 140], [140, 300], [300, 460], [460, 640]].map(([a, b], i) => (
@@ -430,7 +430,7 @@ function Gate({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
       <path d="M0 268 H640" stroke="#F1F1EE" strokeWidth="5" />
       <path d="M10 300 H630" stroke="#F1F1EE" strokeWidth="14" strokeDasharray="20 16" opacity=".85" />
       <Mover path="M110 250 L110 250" dur={10} still>
-        <Truck s={0.95} cab="#C8452D" box={pal[0]} />
+        <Truck s={0.95} cab="var(--c-red)" box={pal[0]} />
       </Mover>
       <Mover path="M420 252 L430 252" dur={10} still>
         <Truck s={0.95} cab="#2F6DA3" box={pal[4]} />
@@ -472,9 +472,9 @@ function Workshop({ id, still }: DrawProps) {
       <path d="M380 180 L380 250 M520 180 L520 250" stroke="#E2B227" strokeWidth="2" strokeDasharray="8 6" />
       {/* reach stacker in a bay */}
       <g transform="translate(300 240)">
-        <rect x="-70" y="-40" width="110" height="34" rx="4" fill="#C8452D" />
+        <rect x="-70" y="-40" width="110" height="34" rx="4" fill="var(--c-red)" />
         <rect x="-40" y="-70" width="34" height="30" fill="#9EC2D8" stroke="#2B2F33" />
-        <path d="M30 -30 L140 -110" stroke="#C8452D" strokeWidth="14" />
+        <path d="M30 -30 L140 -110" stroke="var(--c-red)" strokeWidth="14" />
         <circle cx="-48" cy="-4" r="14" fill="#1C1F22" />
         <circle cx="16" cy="-4" r="14" fill="#1C1F22" />
       </g>
@@ -510,7 +510,7 @@ function Hazmat({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
         <g key={i}>
           <rect x={160 + i * 110} y={196} width="96" height="40" fill={pal[i + 1]} stroke="#000" strokeOpacity=".35" />
           <rect x={150 + i * 120} y={244} width="104" height="44" fill={pal[(i + 3) % pal.length]} stroke="#000" strokeOpacity=".35" />
-          {placard(208 + i * 110, 216, i === 1 ? '#D33B2C' : '#E6C229')}
+          {placard(208 + i * 110, 216, i === 1 ? 'var(--c-red)' : '#E6C229')}
           {placard(202 + i * 120, 266, '#F2F3F4')}
         </g>
       ))}
@@ -521,7 +521,7 @@ function Hazmat({ id, pal = BOX_PALETTES[0], still, mirror }: DrawProps) {
       <path d="M60 236 L250 236 L250 300 L60 300 Z" fill={`url(#${id('mesh')})`} stroke="#9AA1A8" strokeWidth="2" />
       <path d="M390 236 L580 236 L580 300 L390 300 Z" fill={`url(#${id('mesh')})`} stroke="#9AA1A8" strokeWidth="2" />
       <rect x="290" y="306" width="62" height="34" fill="#F2F3F4" stroke="#2B2F33" />
-      <Label x={321} y={320} mirror={mirror} fontSize="9" fontWeight="700" fill="#B42341" fontFamily="Exo 2, sans-serif">
+      <Label x={321} y={320} mirror={mirror} fontSize="9" fontWeight="700" fill="var(--c-red)" fontFamily="Exo 2, sans-serif">
         IMDG
       </Label>
       <Label x={321} y={333} mirror={mirror} fontSize="7" fill="#2B2F33" fontFamily="Exo 2, sans-serif">

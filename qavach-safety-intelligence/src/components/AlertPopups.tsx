@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Alert, Priority } from '../data/types';
 import { useStore } from '../lib/persist';
-import { useNow } from '../lib/time';
 import { quietAlerts } from '../state/engine';
 import { isOpen, toastStore, useAlerts, useCameras } from '../state/store';
 import { Icon, type IconName } from './Icon';
@@ -34,11 +33,6 @@ const iconFor = (a: Alert): IconName => {
 };
 const noteIcon = (text: string, tone?: 'alert'): IconName => (/escalated/i.test(text) ? 'arrow-up' : tone === 'alert' ? 'warning' : 'check');
 
-const age = (ms: number) => {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h`;
-};
-
 /** Every notification of the console, at the top right of each page: new alerts and messages such as an escalation. They sit
  *  stacked, newest on top; point at them to spread out up to four with a Clear all / View all bar. Timed ones show a line
  *  filling up and wait while you point at them. */
@@ -46,7 +40,6 @@ export function AlertPopups() {
   const alerts = useAlerts();
   const cams = useCameras();
   const toasts = useStore(toastStore);
-  const now = useNow(1000);
   const nav = useNavigate();
   const seen = useRef<Set<string>>(new Set(alerts.map((a) => a.id))); // alerts already there on load are not announced
   const [popups, setPopups] = useState<Popup[]>([]);
@@ -130,7 +123,6 @@ export function AlertPopups() {
                   <strong className="apop__title apop__title--wrap">{(p as Extract<Popup, { kind: 'note' }>).text}</strong>
                 )}
               </div>
-              {a && <span className="apop__age">{age(now - a.at)}</span>}
               {link && (
                 <button
                   type="button"
