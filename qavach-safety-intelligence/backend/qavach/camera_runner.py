@@ -357,10 +357,16 @@ class CameraRunner:
                  round(100 * (y2 - y1) / height, 1)]))
 
     @staticmethod
-    def _label(view, text, origin, colour):
-        """Small text with a dark outline, so it stays readable on a bright sky or a white road marking."""
-        cv2.putText(view, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(view, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
+    def _label(view, text, box_top_left, colour):
+        """Small text with a dark outline, so it stays readable on a bright sky or a white road marking. It sits above the
+        box; when the box starts at the top of the picture it goes just inside the box, and it never runs off an edge."""
+        height, width = view.shape[:2]
+        (text_w, text_h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        x = max(3, min(box_top_left[0], width - text_w - 4))
+        y = box_top_left[1] - 5 if box_top_left[1] - 5 >= text_h + 3 else box_top_left[1] + text_h + 6
+        y = max(text_h + 3, min(y, height - 4))
+        cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
 
     def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=()):
         """The live preview: the frame, downscaled, with a box on every tracked person. Zones are drawn by the page."""
@@ -372,7 +378,7 @@ class CameraRunner:
             p1, p2 = (int(x1 * scale) - 2, int(y1 * scale) - 2), (int(x2 * scale) + 2, int(y2 * scale) + 2)
             cv2.rectangle(view, p1, p2, colour, 2 if track_id in flagged else 1)
             if track_id in flagged:
-                self._label(view, f'#{track_id}', (p1[0], max(12, p1[1] - 4)), colour)
+                self._label(view, f'#{track_id}', p1, colour)
         for name, conf, (x1, y1, x2, y2), status in fires:
             p1, p2 = (int(x1 * scale), int(y1 * scale)), (int(x2 * scale), int(y2 * scale))
             if status == 'ignored':
@@ -380,7 +386,7 @@ class CameraRunner:
                 continue
             colour = FIRE_RED if name == 'fire' else FIRE_ORANGE
             cv2.rectangle(view, p1, p2, colour, 2)
-            self._label(view, f'{name.upper()} {int(conf * 100)}%', (p1[0], max(12, p1[1] - 5)), colour)
+            self._label(view, f'{name.upper()} {int(conf * 100)}%', p1, colour)
         ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
         self.jpeg = buffer.tobytes()
         self.seq += 1

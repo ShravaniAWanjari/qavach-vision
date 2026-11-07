@@ -93,8 +93,12 @@ const note = (a: Alert, e: ActivityEntry): Alert => ({ ...a, activity: [...a.act
 export function nextAlertId() {
   let n = 0;
   counters.set((c) => {
+    // Never hand out a number an alert already has: another window may have counted past this one, or the counter may
+    // have been reset while the alerts were kept.
+    const taken = new Set(alertStore.get().map((a) => a.id));
     n = c.alert;
-    return { ...c, alert: c.alert + 1 };
+    while (taken.has(`ALT-${n}`)) n++;
+    return { ...c, alert: n + 1 };
   });
   return `ALT-${n}`;
 }

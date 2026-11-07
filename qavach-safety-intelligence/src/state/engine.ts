@@ -156,8 +156,10 @@ function buildAlert(rule: Rule, cam: Camera, id: string): Alert {
 /** Raises an alert for something the detection service saw on a real camera. */
 export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert {
   // The same thing seen again while its alert is still open is one issue, not a new alert every time: a looping hazard
-  // would otherwise bury the list. The open alert counts the repeats and notes when it was last seen.
-  const open = alertStore.get().find((a) => (a.state === 'new' || a.state === 'escalated') && a.ruleId === rule.id && a.cameraId === cam.id && (a.zoneId ?? '') === (ev.zoneId ?? ''));
+  // would otherwise bury the list. The open alert counts the repeats and notes when it was last seen. Fire and smoke are
+  // different things: smoke seen while a fire alert is open is its own alert.
+  const title = ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name;
+  const open = alertStore.get().find((a) => (a.state === 'new' || a.state === 'escalated') && a.ruleId === rule.id && a.cameraId === cam.id && (a.zoneId ?? '') === (ev.zoneId ?? '') && a.title === title);
   if (open) {
     alertStore.set((list) => list.map((a) => (a.id === open.id ? { ...a, repeats: (a.repeats ?? 0) + 1, lastAt: ev.at } : a)));
     return open;
@@ -171,7 +173,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     cameraId: cam.id,
     zoneId: ev.zoneId ?? undefined,
     priority: rule.priority,
-    title: ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name,
+    title,
     detail: ev.hazard
       ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${ev.reentry ? ' · came back' : ''}`
       : `Inside ${where} for ${ev.dwell.toFixed(1)}s (rule: ${rule.durationSec}s or more) · moved ${Math.round(ev.moved)}px${ev.reentry ? ' · came back' : ''}`,

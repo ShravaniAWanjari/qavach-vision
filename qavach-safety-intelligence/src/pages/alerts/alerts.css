@@ -71,3 +71,22 @@
 .albar + .qsearch { margin-top: 12px; }
 @media (max-width: 600px) { .albar { flex-wrap: wrap; } .albar__sort { width: 100%; } }
 .albar__btn.is-open > svg:last-child { transform: rotate(180deg); }
+
+/* The alerts list as a table, like the rules table, on the left; the alert (or a hint) stays on the right. */
+.alerts__table { max-height: calc(100vh - 300px); overflow: auto; }
+.alerts .table.table--grid { min-width: 0; }
+.alerts .table.table--grid th { position: sticky; top: 0; z-index: 1; }
+.alerts .table.table--grid td:nth-child(2) { min-width: 0; }
+.alerts .table.table--grid .arow { cursor: pointer; }
+.alerts .table.table--grid .arow:hover td { background: var(--c-wash); }
+.alerts .table.table--grid .arow:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
+.alerts .table.table--grid .arow.is-selected td { background: var(--q-ai-wash); }
+.alerts .table.table--grid .arow.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--q-ai); }
+.arow__id { color: var(--c-blue); }
+.arow__detail { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alerts .col-hide { display: none; }
+/* Tighter cells so the five columns fit the left half without a sideways scroll. */
+.alerts .table.table--grid th, .alerts .table.table--grid td { padding: 10px 10px; }
+.alerts .table.table--grid .col-id { width: 74px; }
+.alerts .table.table--grid td:nth-child(2) { width: 100%; }
+.alerts .table.table--grid td:nth-child(5) .chip, .alerts .table.table--grid td:nth-child(6) { white-space: nowrap; }

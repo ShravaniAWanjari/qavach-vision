@@ -49,15 +49,16 @@ export function QavachReportsDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** "2 new QHSE reports" in the success green, as a text link that opens the panel. */
+/** "3 QHSE Reports in the last 5 min" in the success green: the reports raised lately, as a text link that opens the panel. */
 export function QavachReportsLink() {
-  const { records, fresh } = useQavachReports();
+  const { records } = useQavachReports();
+  const now = useNow(15000);
   const [open, setOpen] = useState(false);
-  if (!records.length) return null;
+  const recent = records.filter((a) => a.qavach!.at >= now - 5 * 60000).length;
   return (
     <>
-      <button type="button" className="qreports-link" onClick={() => setOpen(true)}>
-        {fresh ? `${fresh} new Qavach ${fresh === 1 ? 'report' : 'reports'}` : `${records.length} Qavach ${records.length === 1 ? 'report' : 'reports'}`}
+      <button type="button" className="qreports-link" onClick={() => setOpen(true)} title="Open the QHSE reports">
+        {recent ? `${recent} QHSE ${recent === 1 ? 'Report' : 'Reports'} in the last 5 min` : 'QHSE Reports'}
       </button>
       {open && <QavachReportsDrawer onClose={() => setOpen(false)} />}
     </>

@@ -167,32 +167,68 @@ export function Alerts() {
               Change the filters to see more.
             </Empty>
           ) : (
-            <ul className="alist">
-              {filtered.map((a) => {
-                const cam = camById.get(a.cameraId);
-                return (
-                  <li key={a.id}>
-                    <button type="button" className={`alist__item${a.id === alertId ? ' is-selected' : ''}${isOpen(a) ? ' is-open' : ''}`} onClick={() => nav(`/alerts/${a.id}${keep}`)}>
-                      <span className="alist__lvl">
-                        <PriorityBadge p={a.priority} short />
-                      </span>
-                      <span className="alist__main">
-                        <span className="alist__title">{a.title}</span>
-                        <span className="alist__id">{a.id}</span>
-                        <span className="meta ellipsis">
-                          {cam?.id} {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
-                        </span>
-                      </span>
-                      <span className="alist__side">
-                        <StateChip state={a.state} />
-                        {a.qavach && <span className="chip chip--outline mono" title={`QHSE Report ${a.qavach.ref}`}>{a.qavach.ref}</span>}
-                        <span className="meta">{ago(a.at, now)}</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="card card--grid alerts__table">
+              <table className="table table--grid">
+                <thead>
+                  <tr>
+                    <th className="col-id">Alert</th>
+                    <th>What happened</th>
+                    <th className="col-hide">Area</th>
+                    <th>Criticality</th>
+                    <th>Status</th>
+                    <th>Raised</th>
+                    <th className="col-hide">QHSE record</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((a) => {
+                    const cam = camById.get(a.cameraId);
+                    const go = () => nav(`/alerts/${a.id}${keep}`);
+                    return (
+                      <tr
+                        key={a.id}
+                        className={`arow${a.id === alertId ? ' is-selected' : ''}${isOpen(a) ? ' is-open' : ''}`}
+                        tabIndex={0}
+                        onClick={go}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            go();
+                          }
+                        }}
+                      >
+                        <td className="col-id">
+                          <strong className="arow__id">{a.id}</strong>
+                        </td>
+                        <td>
+                          <strong>{a.title}</strong>
+                          <div className="meta arow__detail">{cam ? `${cam.id} ${cam.name}` : a.cameraId}</div>
+                        </td>
+                        <td className="col-hide">{AREAS_BY_ID[cam?.areaId ?? '']?.name.split(' ·')[0]}</td>
+                        <td>
+                          <span title={`${a.priority} ${PRIORITY_NAME[a.priority]}`}>
+                            <PriorityBadge p={a.priority} short />
+                          </span>
+                        </td>
+                        <td>
+                          <StateChip state={a.state} />
+                        </td>
+                        <td title={dayTime(a.at)}>{ago(a.at, now)}</td>
+                        <td className="col-hide">
+                          {a.qavach ? (
+                            <span className="mono" title={`QHSE Report ${a.qavach.ref}`}>
+                              {a.qavach.ref}
+                            </span>
+                          ) : (
+                            <span className="meta">–</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
         {selected ? (
