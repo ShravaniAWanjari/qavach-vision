@@ -165,6 +165,10 @@ export interface Alert {
   snapshot?: string;
   /** The detection service's id for the event, so an alert is never created twice. */
   eventId?: string;
+  /** Detections of the same rule on the same camera while this alert was still open; they add to it, not to the list. */
+  repeats?: number;
+  /** When the latest of those repeat detections happened. */
+  lastAt?: number;
   ackBy?: string;
   ackAt?: number;
   ackVia?: 'wall' | 'console' | 'mobile';

@@ -106,13 +106,13 @@ button.kpi:hover { box-shadow: 0 0 0 1px var(--c-blue), var(--q-shadow-card); }
    its menu keeps a readable width and still lists the terminal in full. */
 .ovbar__site .msel__icon { display: none; }
 .ovbar__site .msel__menu { min-width: 300px; }
-@container ovbar (max-width: 1400px) {
+@container ovbar (max-width: 1220px) {
   .ovbar--custom .ovbar__site { flex: 0 0 56px; min-width: 56px; width: 56px; }
 }
 @container ovbar (max-width: 1150px) {
   .ovbar__site { flex: 0 0 56px; min-width: 56px; width: 56px; }
 }
-@container ovbar (max-width: 1400px) {
+@container ovbar (max-width: 1220px) {
   .ovbar--custom .ovbar__site .msel__icon { display: grid; }
   .ovbar--custom .ovbar__site .msel__label, .ovbar--custom .ovbar__site .msel__row, .ovbar--custom .ovbar__site .msel__arrow { opacity: 0; pointer-events: none; }
 }
@@ -198,3 +198,81 @@ button.kpi:hover { box-shadow: 0 0 0 1px var(--c-blue), var(--q-shadow-card); }
 .ovcam.ovcam--head { min-height: 30px; border-bottom: 1px solid var(--q-divider); font-size: 11.5px; font-weight: 700; color: var(--q-muted); }
 .ovcam.ovcam--head:hover { background: none; }
 .ovcam--head .ovcam__id, .ovcam--head .ovcam__state, .ovcam--head .ovcam__since { font-size: 11.5px; font-weight: 700; color: var(--q-muted); }
+
+/* Action Centre issues, Insights findings, hotspots, rule health and the hour pattern. */
+.ovissue { display: flex; align-items: center; gap: 8px; padding-right: 14px; border-top: 1px solid var(--q-divider); }
+.ovissue:first-child { border-top: 0; }
+.ovissue .ovlist__item { flex: 1 1 auto; min-width: 0; border-top: 0; }
+.ovissue__n { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--c-light); color: var(--q-ink); font-size: 11.5px; font-weight: 700; }
+.ovsla { flex: 0 0 auto; width: 96px; text-align: right; font-size: 12px; color: var(--q-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ovsla.is-late { color: var(--c-red); font-weight: 700; }
+.ovfind { margin-bottom: 16px; }
+.ovfind__list { list-style: none; margin: 0; padding: 4px 0 8px; }
+.ovfind__item { display: flex; align-items: center; gap: 12px; padding: 9px 20px; border-top: 1px solid var(--q-divider); }
+.ovfind__item:first-child { border-top: 0; }
+.ovfind__item svg { flex: 0 0 auto; }
+.ovfind__item--bad svg { color: var(--c-red); }
+.ovfind__item--warn svg { color: var(--c-orange); }
+.ovfind__item--info svg { color: var(--c-blue); }
+.ovfind__text { flex: 1 1 auto; font-size: 14px; line-height: 1.4; color: var(--q-ink); text-transform: none; }
+.ovhot, .ovrules { list-style: none; margin: 0; padding: 4px 0 8px; }
+.ovhot__row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 34px 46px; align-items: center; gap: 12px; padding: 8px 20px; color: var(--q-ink); border-top: 1px solid var(--q-divider); }
+.ovhot li:first-child .ovhot__row { border-top: 0; }
+.ovhot__row:hover, .ovrule:hover { background: var(--c-wash); color: var(--q-ink); }
+.ovhot__trend { font-size: 12px; text-align: right; color: var(--q-muted); font-variant-numeric: tabular-nums; }
+.ovhot__trend.is-up { color: var(--c-red); font-weight: 700; }
+.ovhot__trend.is-down { color: var(--c-green); font-weight: 700; }
+.ovrulehead, .ovrule { display: grid; grid-template-columns: minmax(0, 1fr) 52px 56px 76px; align-items: center; gap: 10px; padding: 0 20px; }
+.ovrulehead { padding-top: 10px; padding-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--q-muted); border-bottom: 1px solid var(--q-divider); }
+.ovrulehead span:not(:first-child), .ovrule__n { text-align: right; }
+.ovrule { padding-top: 8px; padding-bottom: 8px; color: var(--q-ink); border-top: 1px solid var(--q-divider); font-size: 13px; }
+.ovrules li:first-child .ovrule { border-top: 0; }
+.ovrule__n { font-variant-numeric: tabular-nums; }
+.ovrule__n.is-bad { color: var(--c-red); font-weight: 700; }
+.ovrule__flag { font-size: 11.5px; font-weight: 600; }
+.ovrule__flag--noisy { color: var(--c-orange); }
+.ovrule__flag--slow { color: var(--c-red); }
+.ovrule__flag--silent { color: var(--q-muted); }
+.ovhours { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 18px 20px 0; }
+.ovhours__col { position: relative; flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.ovhours__col i { display: block; width: 100%; max-width: 26px; border-radius: 3px 3px 0 0; background: var(--c-grey); opacity: .55; }
+.ovhours__col.is-day i { background: var(--c-blue-dark); opacity: .8; }
+.ovhours__col.is-peak i { background: var(--c-red); opacity: 1; }
+.ovhours__col span { height: 16px; font-size: 10.5px; color: var(--q-muted); line-height: 16px; }
+.ovhours__note { margin: 6px 20px 14px; font-size: 12px; text-transform: none; }
+.ovgap__more { font-size: 13px; font-weight: 700; color: var(--c-blue); }
+.ovrange__quick { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The last few minutes: a feed of what happened, and now against a normal day. */
+.ovfeed { list-style: none; margin: 0; padding: 4px 0 8px; }
+.ovfeed__row { display: grid; grid-template-columns: 52px 54px minmax(0, 1fr) 190px 96px; align-items: center; gap: 12px; padding: 8px 20px; color: var(--q-ink); border-top: 1px solid var(--q-divider); }
+.ovfeed li:first-child .ovfeed__row { border-top: 0; }
+.ovfeed__row:hover { background: var(--c-wash); color: var(--q-ink); }
+.ovfeed__time { font-size: 13px; color: var(--q-muted); font-variant-numeric: tabular-nums; }
+.ovfeed__resp { font-size: 12px; color: var(--q-muted); text-align: right; white-space: nowrap; }
+.ovfeed__resp.is-late { color: var(--c-red); font-weight: 700; }
+.ovnorm { list-style: none; margin: 0; padding: 10px 20px 0; display: flex; flex-direction: column; gap: 12px; }
+.ovnorm__row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 130px; align-items: center; gap: 12px; }
+.ovnorm__bars { display: flex; flex-direction: column; gap: 3px; }
+.ovnorm__bars i { display: block; height: 7px; border-radius: 4px; min-width: 2px; }
+.ovnorm__now { box-shadow: none; }
+.ovnorm__usual { background: var(--c-light); }
+.ovnorm__n { font-size: 12px; color: var(--q-muted); white-space: nowrap; }
+.ovnorm__n b { color: var(--q-ink); }
+@media (max-width: 900px) { .ovfeed__row { grid-template-columns: 48px 54px minmax(0, 1fr) 90px; } .ovfeed__resp { display: none; } }
+/* Who knows, and what to do. */
+.ovwho { list-style: none; margin: 0; padding: 2px 0 6px; }
+.ovwho__item { display: flex; flex-direction: column; gap: 5px; padding: 11px 20px; border-top: 1px solid var(--q-divider); }
+.ovwho__item:first-child { border-top: 0; }
+.ovwho__head { display: flex; align-items: center; gap: 10px; }
+.ovwho__title { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--q-ink); font-size: 14px; }
+.ovwho__title:hover { color: var(--c-blue); }
+.ovwho__told { display: flex; flex-wrap: wrap; gap: 6px 14px; padding-left: 50px; font-size: 12px; color: var(--q-muted); }
+.ovwho__person { display: inline-flex; align-items: baseline; gap: 5px; color: var(--q-ink); }
+.ovwho__person i { font-style: normal; font-size: 11.5px; color: var(--q-muted); }
+.ovwho__person--read i { color: var(--c-green); font-weight: 700; }
+.ovwho__person--failed i, .ovwho__person--delivered i { color: var(--c-orange); font-weight: 700; }
+.ovwho__warn { color: var(--c-red); font-weight: 700; }
+.ovwho__do { display: flex; align-items: flex-start; gap: 6px; padding-left: 50px; font-size: 12.5px; color: var(--q-ink); text-transform: none; }
+.ovwho__do svg { flex: 0 0 auto; margin-top: 2px; color: var(--c-blue); }
+.kpi__n--text.is-late { color: var(--c-red); }
+.ovdl__foot { white-space: normal; line-height: 1.35; }

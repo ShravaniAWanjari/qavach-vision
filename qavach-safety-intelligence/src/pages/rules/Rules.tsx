@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
 import { CascadeSelect, type CascadeField, Choice, PRIORITY_NAME, PriorityBadge, Switch } from '../../components/ui';
@@ -39,7 +39,9 @@ export function Rules() {
   const [sort, setSort] = useState<{ key: SortField; dir: SortDir }>({ key: 'id', dir: 'a' });
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
-  const [tab, setTab] = useState<'all' | 'live' | 'test'>('all');
+  // The Overview's "rules still in test" opens this list on the Test Only tab: ?tab=test.
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<'all' | 'live' | 'test'>(params.get('tab') === 'test' ? 'test' : 'all');
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const active = Object.values(filters).reduce((n, v) => n + v.length, 0);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Icon, type IconName } from '../../components/Icon';
 import { CameraView, Choice, Empty, MultiSelect } from '../../components/ui';
 import { AREAS, DEPARTMENTS } from '../../data/seed';
@@ -23,13 +23,15 @@ const VIEW_KEY = 'qsi.v1.cameraView';
 const savedView = (): View => {
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return v === 'list' || v === 'columns' ? v : 'grid';
+    // The column view (departments, work areas, cameras, then the picture and details) is the default; a choice made on this
+    // computer is remembered.
+    return v === 'grid' || v === 'list' || v === 'columns' ? v : 'columns';
   } catch {
-    return 'grid';
+    return 'columns';
   }
 };
 
-type Show = 'all' | 'nozones' | 'issues';
+type Show = 'all' | 'nozones' | 'norules' | 'issues';
 const STATUS_TEXT: Record<Camera['status'], string> = { online: 'Online', degraded: 'Degraded', offline: 'Offline' };
 
 /** Departments in their usual order, then any others the register uses. */
@@ -47,7 +49,9 @@ export function Cameras() {
   const [areas, setAreas] = useState<string[]>([]);
   const [idQ, setIdQ] = useState('');
   const [locQ, setLocQ] = useState('');
-  const [show, setShow] = useState<Show>('all');
+  // The Overview's coverage gaps open this list already narrowed: ?coverage=no-zones or no-rules.
+  const [coverage] = useSearchParams();
+  const [show, setShow] = useState<Show>(coverage.get('coverage') === 'no-zones' ? 'nozones' : coverage.get('coverage') === 'no-rules' ? 'norules' : 'all');
   const [view, setViewState] = useState<View>(savedView);
   const [importing, setImporting] = useState(false);
   const setView = (v: View) => {
@@ -69,7 +73,7 @@ export function Cameras() {
       (!areas.length || areas.includes(c.areaId)) &&
       (!id || c.id.toLowerCase().includes(id)) &&
       (!loc || c.name.toLowerCase().includes(loc)) &&
-      (show === 'all' || (show === 'nozones' ? c.zones.length === 0 : c.status !== 'online')),
+      (show === 'all' || (show === 'nozones' ? c.zones.length === 0 : show === 'norules' ? !rules.some((r) => r.cameraIds.includes(c.id)) : c.status !== 'online')),
   );
   const ruleCount = (camId: string) => rules.filter((r) => r.cameraIds.includes(camId)).length;
   const online = list.filter((c) => c.status === 'online').length;
@@ -110,6 +114,7 @@ export function Cameras() {
             options={[
               { value: 'all' as Show, label: 'All cameras' },
               { value: 'nozones' as Show, label: `Need zones (${cams.length - zoned})` },
+              { value: 'norules' as Show, label: `Not watched by a rule (${cams.filter((c) => !rules.some((r) => r.cameraIds.includes(c.id))).length})` },
               { value: 'issues' as Show, label: `Offline or degraded (${cams.filter((c) => c.status !== 'online').length})` },
             ]}
           />

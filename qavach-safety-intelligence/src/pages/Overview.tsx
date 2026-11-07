@@ -1,44 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import { cssVar } from '../styles/colors';
 import { Link, useNavigate, useSearchParams } from 'react-router';
+import { AckDialog, RaiseDialog } from '../components/AlertDialogs';
 import { Icon, type IconName } from '../components/Icon';
 import { QavachReportsDrawer } from '../components/QavachReports';
 import { Choice, PillTabs, PriorityBadge, StateChip, useConfirm } from '../components/ui';
-import { AREAS, SITE } from '../data/seed';
+import { SITE } from '../data/seed';
 import type { Alert, Priority, QavachRecordType } from '../data/types';
 import { healthReason } from '../lib/health';
+import { cameraImpact, DAY, findings, HOUR, hotspots, hourPattern, isOpenAlert, LEVELS, liveFindings, mean, MIN, nextDeadline, normalFor, openIssues, pct, peopleTold, responseStats, ruleHealth, unreportedAlerts, type Issue } from '../lib/ops';
 import { dataUrlBytes, jpegToPdf } from '../lib/pdf';
+import { draftRecord } from '../lib/qai';
 import { download, writeXlsx, type Cell } from '../lib/sheet';
 import { ago, duration, hm, useNow } from '../lib/time';
-import { draftRecord } from '../lib/qai';
-import { AREAS_BY_ID, isOpen, raiseInQavach, toast, unavailableSince, useAlerts, useCameras, useMe, useRules } from '../state/store';
+import { acknowledge, alertStore, AREAS_BY_ID, raiseInQavach, toast, unavailableSince, useAlerts, userName, useCameras, useMe, usePolicies, useRules } from '../state/store';
 import './overview.css';
 
 type Range = '5m' | '10m' | '15m' | 'custom';
 type ExportKind = 'pdf' | 'image' | 'excel';
-const HOUR = 3600000;
-const DAY = 24 * HOUR;
-const MIN = 60000;
+/** The custom period. `rolling` keeps it moving (the last 7 days, always ending now); without it the dates are fixed. */
+type Custom = { from: number; to: number; rolling?: number; label?: string };
 const RANGES: { value: Range; label: string; title: string; ms: number }[] = [
   { value: '5m', label: 'Past 5 min', title: 'past 5 min', ms: 5 * MIN },
   { value: '10m', label: 'Past 10 min', title: 'past 10 min', ms: 10 * MIN },
   { value: '15m', label: 'Past 15 min', title: 'past 15 min', ms: 15 * MIN },
   { value: 'custom', label: 'Custom', title: 'chosen period', ms: 0 },
 ];
-const LEVELS: Priority[] = ['P1', 'P2', 'P3', 'P4'];
 const LEVEL_COLOR: Record<Priority, string> = { P1: 'var(--q-p1)', P2: 'var(--q-p2)', P3: 'var(--q-p3)', P4: 'var(--q-p4)' };
 const RECORD_COLOR: Record<QavachRecordType, string> = { Incident: 'var(--q-p1)', 'Near miss': 'var(--q-ink)', Observation: 'var(--c-blue-dark)' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayName = (ts: number) => `${new Date(ts).getDate()} ${MONTHS[new Date(ts).getMonth()]}`;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const since = (ts: number, now: number) => ago(ts, now).replace(' ago', '');
-
-/** When the period starts: a few minutes back, or the chosen date and time. */
-function rangeStart(r: Range, now: number, custom?: { from: number; to: number }): number {
-  if (r === 'custom' && custom) return custom.from;
-  return now - (RANGES.find((x) => x.value === r)?.ms ?? 15 * MIN);
-}
-
+const dayTimeShort = (ts: number) => `${dayName(ts)} ${hm(ts)}`;
 /** Alert counts per minute (up to two hours), per hour (up to two days) or per day, oldest first. */
 function buckets(list: Alert[], start: number, now: number) {
   const span = now - start;
@@ -49,88 +43,71 @@ function buckets(list: Alert[], start: number, now: number) {
   return { counts, unit: step === MIN ? 'minute' : step === HOUR ? 'hour' : 'day' };
 }
 
-/** "7 Nov 10:30" */
-const dayTimeShort = (ts: number) => `${dayName(ts)} ${hm(ts)}`;
-
 type View = 'actions' | 'insights';
-const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
-const pct = (n: number, of: number) => (of ? Math.round((n / of) * 100) : null);
+type Dialog = { kind: 'ack' | 'raise'; alert: Alert; group: string[] };
 
-/** Two views of one terminal. Action Centre is now: what is open, what was handled but never reported to QHSE, which
- *  cameras are broken and what the cameras cannot see. Insights is the period: how many alerts, how fast they were
- *  acknowledged, how many were false, what was reported, and where and what the hazards were. */
+/** Two views of one terminal, for the person who has to get things done.
+ *  Action Centre is what needs doing now, whatever the period: open issues (repeat detections grouped, with how long is left to
+ *  respond), handled P1 and P2 alerts nobody reported to QHSE, cameras that are down and what they leave unwatched.
+ *  Insights is the period, for deciding what to change: whether responses met their targets, which locations and rules
+ *  produce the alerts or the false alarms, and when alerts happen. */
 export function Overview() {
   const cams = useCameras();
   const alerts = useAlerts();
   const rules = useRules();
+  const policies = usePolicies();
   const now = useNow(5000);
   const nav = useNavigate();
   const me = useMe();
   const confirm = useConfirm();
+  // Insights is about the last few minutes: at a port, an hour is already too long to wait to know something.
   const [range, setRange] = useState<Range>('15m');
-  const [custom, setCustom] = useState<{ from: number; to: number }>();
+  const [custom, setCustom] = useState<Custom | undefined>();
   const [picking, setPicking] = useState(false); // whether the date and time panel is open
   const [reports, setReports] = useState(false);
+  const [dialog, setDialog] = useState<Dialog>();
   const sheet = useRef<HTMLDivElement>(null);
 
-  const dates = custom ? `${dayTimeShort(custom.from)} to ${dayTimeShort(custom.to)}` : '';
-  const base = RANGES.find((r) => r.value === range)!;
-  const period = range === 'custom' && custom ? { ...base, label: dates, title: dates } : base;
-  const inPeriod = range === 'custom' ? `from ${dates}` : `in the ${period.title}`;
-  const start = rangeStart(range, now, custom);
-  const end = range === 'custom' && custom ? Math.min(now, custom.to) : now;
-  const span = end - start;
-  const inRange = alerts.filter((a) => a.at >= start && a.at <= end);
-  const before = alerts.filter((a) => a.at >= start - span && a.at < start).length;
-  const camById = new Map(cams.map((c) => [c.id, c]));
   const [params, setParams] = useSearchParams();
   const view: View = params.get('view') === 'insights' ? 'insights' : 'actions';
   const setView = (v: View) => setParams(v === 'insights' ? { view: 'insights' } : {}, { replace: true });
-  // Action Centre shows everything that needs doing, whenever it was raised; Insights follows the chosen period.
-  const openAll = alerts.filter(isOpen).sort((a, b) => (a.priority === b.priority ? b.at - a.at : a.priority.localeCompare(b.priority)));
-  const open = view === 'actions' ? openAll : openAll.filter((a) => a.at >= start && a.at <= end);
-  const escalated = open.filter((a) => a.state === 'escalated').length;
-  const oldest = open.reduce((m, a) => Math.min(m, a.at), now);
-  const { counts, unit } = buckets(inRange, start, end);
-  const busiest = counts.reduce((m, b) => (b.n > m.n ? b : m), counts[0]);
 
-  const live = cams.filter((c) => c.status === 'online').length;
-  const degraded = cams.filter((c) => c.status === 'degraded').length;
-  const offline = cams.filter((c) => c.status === 'offline').length;
-  const faulty = cams.filter((c) => c.status !== 'online').sort((a, b) => (a.status === b.status ? a.id.localeCompare(b.id) : a.status === 'offline' ? -1 : 1));
-
-  const raised = alerts.filter((a) => a.qavach && a.qavach.at >= start && a.qavach.at <= end);
-  const raisedBefore = alerts.filter((a) => a.qavach && a.qavach.at >= start - span && a.qavach.at < start).length;
-  const byType = (['Incident', 'Near miss', 'Observation'] as QavachRecordType[]).map((t) => ({ t, n: raised.filter((a) => a.qavach!.type === t).length }));
-
-  const byArea = AREAS.map((a) => ({
-    a,
-    n: inRange.filter((x) => camById.get(x.cameraId)?.areaId === a.id).length,
-    open: open.filter((x) => camById.get(x.cameraId)?.areaId === a.id).length,
-  })).sort((x, y) => y.n - x.n || y.open - x.open);
-  const areaMax = Math.max(1, ...byArea.map((x) => x.n));
-
-  const hazardCount = new Map<string, number>();
-  for (const a of inRange) {
-    const name = rules.find((r) => r.id === a.ruleId)?.name ?? a.title;
-    hazardCount.set(name, (hazardCount.get(name) ?? 0) + 1);
-  }
-  const hazards = [...hazardCount.entries()].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
-  const hazardMax = Math.max(1, ...hazards.map((h) => h.n));
-
-
-  // Action Centre
+  // ── The period (Insights) ──
+  const base = RANGES.find((r) => r.value === range)!;
+  const rolling = range === 'custom' && custom?.rolling;
+  const start = rolling ? now - rolling : range === 'custom' && custom ? custom.from : now - base.ms;
+  const end = rolling ? now : range === 'custom' && custom ? Math.min(now, custom.to) : now;
+  const span = Math.max(1, end - start);
+  const dates = custom ? (custom.label ?? `${dayTimeShort(start)} to ${dayTimeShort(end)}`) : '';
+  const period = range === 'custom' && custom ? { ...base, label: dates, title: dates.toLowerCase() } : base;
+  const inPeriod = range === 'custom' ? (custom?.label ? `in ${custom.label.toLowerCase()}` : `from ${dates}`) : `in the ${period.title}`;
+  const inRange = alerts.filter((a) => a.at >= start && a.at <= end);
+  const previous = alerts.filter((a) => a.at >= start - span && a.at < start);
+  const camById = new Map(cams.map((c) => [c.id, c]));
   const ruleById = new Map(rules.map((r) => [r.id, r]));
-  const escalatedList = open.filter((a) => a.state === 'escalated');
-  const oldestEscalated = escalatedList.reduce((m, a) => Math.min(m, a.at), now);
-  // Handled (acknowledged or resolved) P1 and P2 alerts whose rule asks for a QHSE record, but none was raised.
-  const unreported = alerts
-    .filter((a) => (a.priority === 'P1' || a.priority === 'P2') && !a.qavach && (a.state === 'acknowledged' || a.state === 'resolved') && (ruleById.get(a.ruleId)?.qavach ?? 'none') !== 'none')
-    .sort((a, b) => a.priority.localeCompare(b.priority) || b.at - a.at);
-  // Handled alerts of one level, in the period, whose rule asks for a QHSE record and that have none yet.
-  const unreportedOf = (p: Priority) =>
-    alerts.filter((a) => a.priority === p && a.at >= start && a.at <= end && !a.qavach && (a.state === 'acknowledged' || a.state === 'resolved') && (ruleById.get(a.ruleId)?.qavach ?? 'none') !== 'none');
-  // Sends a batch to QHSE, each with the record drafted from its own alert (type from its rule, snapshot and clip attached).
+  const camName = (id: string) => camById.get(id)?.name ?? '';
+  // A window of up to two hours is read as "what is happening", longer ones as "how are we doing".
+  const short = span <= 2 * HOUR;
+  const minutes = Math.max(1, Math.round(span / MIN));
+
+  // ── Action Centre: everything open, whenever it was raised ──
+  const issues = openIssues(alerts, policies, now);
+  const openAlerts = alerts.filter(isOpenAlert);
+  const late = issues.filter((i) => i.overdue > 0);
+  const unreported = unreportedAlerts(alerts, rules);
+  const faulty = cams.filter((c) => c.status !== 'online').sort((a, b) => (a.status === b.status ? a.id.localeCompare(b.id) : a.status === 'offline' ? -1 : 1));
+  const live = cams.length - faulty.length;
+  const offline = faulty.filter((c) => c.status === 'offline').length;
+  const degraded = faulty.length - offline;
+  const blindRules = new Set(faulty.flatMap((c) => cameraImpact(c, rules, cams).blind.map((r) => r.id)));
+  const noZones = cams.filter((c) => c.zones.length === 0);
+  const unwatched = cams.filter((c) => !rules.some((r) => r.cameraIds.includes(c.id)));
+  const testRules = rules.filter((r) => r.mode === 'test');
+  const toFix = issues.length + unreported.length + faulty.length;
+  const deadline = nextDeadline(issues);
+
+  // Handled alerts of one level in the period whose rule asks for a QHSE record and that have none yet.
+  const unreportedOf = (p: Priority) => unreportedAlerts(alerts, rules, start, end).filter((a) => a.priority === p);
   const sendToQhse = (list: Alert[]) =>
     confirm.ask(
       {
@@ -150,62 +127,94 @@ export function Overview() {
         toast(`${plural(sent, 'alert')} reported to QHSE`);
       },
     );
-  const noZones = cams.filter((c) => c.status !== 'offline' && c.zones.length === 0);
-  const unwatched = cams.filter((c) => !rules.some((r) => r.cameraIds.includes(c.id)));
-  const testRules = rules.filter((r) => r.mode === 'test');
-  const toFix = openAll.length + unreported.length + faulty.length;
+  // Acknowledging an issue acknowledges every open alert in it, not just the latest.
+  const closeDialog = () => {
+    const d = dialog;
+    setDialog(undefined);
+    if (d?.kind === 'ack' && alertStore.get().find((a) => a.id === d.alert.id)?.state === 'acknowledged') {
+      for (const id of d.group) if (id !== d.alert.id) acknowledge(id, me.id, 'console', 'Acknowledged with the rest of the issue');
+    }
+  };
 
-  // Insights
-  const ackTimes = (list: Alert[]) => list.filter((a) => a.ackAt && a.ackAt >= a.at).map((a) => a.ackAt! - a.at);
-  const beforeList = alerts.filter((a) => a.at >= start - span && a.at < start);
-  const mtta = mean(ackTimes(inRange));
-  const mttaBefore = mean(ackTimes(beforeList));
-  const closedIn = (list: Alert[]) => list.filter((a) => a.state !== 'new' && a.state !== 'escalated');
-  const falseRate = pct(inRange.filter((a) => a.state === 'false-alarm').length, closedIn(inRange).length);
-  const falseBefore = pct(beforeList.filter((a) => a.state === 'false-alarm').length, closedIn(beforeList).length);
-  const escRate = pct(inRange.filter((a) => a.escalatedTo || a.state === 'escalated').length, inRange.length);
-  const lowerIsBetter = (n: number | null, was: number | null, fmt: (v: number) => string) =>
-    n === null || was === null || n === was ? { text: n === null ? 'No data' : 'No change', tone: 'neutral' } : { text: `${n > was ? '▲' : '▼'} ${fmt(Math.abs(n - was))}`, tone: n > was ? 'bad' : 'good' };
-
-  const change = (n: number, was: number) => (n === was ? { text: 'No change', tone: 'neutral' } : { text: `${n > was ? '▲' : '▼'} ${Math.abs(n - was)}`, tone: n > was ? 'bad' : 'good' });
-  const alertsChange = change(inRange.length, before);
+  // ── Insights ──
+  const levelOpen = inRange.filter(isOpenAlert);
+  const sla = responseStats(inRange, policies, now);
+  const slaBefore = responseStats(previous, policies, now);
+  const hot = hotspots(inRange, previous, rules);
+  const health = ruleHealth(inRange, rules, policies, span);
+  const pattern = hourPattern(inRange);
+  const handled = inRange.filter((a) => a.state === 'acknowledged' || a.state === 'resolved' || a.state === 'false-alarm');
+  const falseCount = handled.filter((a) => a.state === 'false-alarm').length;
+  const falsePct = pct(falseCount, handled.length);
+  const handledBefore = previous.filter((a) => a.state === 'acknowledged' || a.state === 'resolved' || a.state === 'false-alarm');
+  const falseBefore = pct(handledBefore.filter((a) => a.state === 'false-alarm').length, handledBefore.length);
+  const falseByRule = health.filter((h) => h.falseAlarms > 0).sort((a, b) => b.falseAlarms - a.falseAlarms);
+  const unreportedInPeriod = unreportedAlerts(alerts, rules, start, end);
+  const raised = alerts.filter((a) => a.qavach && a.qavach.at >= start && a.qavach.at <= end);
+  const byType = (['Incident', 'Near miss', 'Observation'] as QavachRecordType[]).map((t) => ({ t, n: raised.filter((a) => a.qavach!.type === t).length }));
+  const reportable = raised.length + unreportedInPeriod.length;
+  const normal = normalFor(alerts, end, span);
+  const liveStand = liveFindings({ list: inRange, issues, normal, minutes, camName });
+  const stand = findings({ list: inRange, previous, sla, hot, rulesHealth: health, unreported: unreportedInPeriod.length, pattern, spanMs: span, camName, ruleName: (id) => ruleById.get(id)?.name ?? id });
+  const { counts, unit } = buckets(inRange, start, end);
+  const busiest = counts.reduce((m, b) => (b.n > m.n ? b : m), counts[0]);
+  const change = (n: number, was: number) => (was === 0 && n > 0 ? { text: 'No earlier data', tone: 'neutral' } : n === was ? { text: 'No change', tone: 'neutral' } : { text: `${n > was ? '▲' : '▼'} ${Math.abs(n - was)}`, tone: n > was ? 'bad' : 'good' });
+  const alertsChange = change(inRange.length, previous.length);
+  const slaChange = sla.pct === null || slaBefore.pct === null || sla.pct === slaBefore.pct ? { text: sla.pct === null ? 'No data' : 'No change', tone: 'neutral' } : { text: `${sla.pct > slaBefore.pct ? '▲' : '▼'} ${Math.abs(sla.pct - slaBefore.pct)} pts`, tone: sla.pct > slaBefore.pct ? 'good' : 'bad' };
+  const falseChange = falsePct === null || falseBefore === null || falsePct === falseBefore ? { text: falsePct === null ? 'No data' : 'No change', tone: 'neutral' } : { text: `${falsePct > falseBefore ? '▲' : '▼'} ${Math.abs(falsePct - falseBefore)} pts`, tone: falsePct > falseBefore ? 'bad' : 'good' };
   const busiestText = busiest.n === 0 ? `No alerts ${inPeriod}` : `${unit === 'minute' ? `Busiest minute ${hm(busiest.at)}` : unit === 'hour' ? `Busiest hour ${hm(busiest.at)}` : `Busiest day ${dayName(busiest.at)}`} · ${plural(busiest.n, 'alert')}`;
-  const fileBase = `overview-${SITE.name.toLowerCase().replace(/\s+/g, '-')}-${new Date(now).toISOString().slice(0, 10)}`;
+  const maxHour = Math.max(1, ...pattern.counts);
+  const hotMax = Math.max(1, ...hot.slice(0, 6).map((h) => h.count));
+  const fileBase = `overview-${SITE.name.toLowerCase().replace(/\s+/g, '-')}-${view}-${new Date(now).toISOString().slice(0, 10)}`;
 
   const exportSheet = () => {
-    const rows: Cell[][] = [
-      ['Overview', SITE.name],
-      ['Period', period.label],
-      ['Exported', new Date(now).toLocaleString()],
-      [],
-      ['Summary', 'Value'],
-      ['Open alerts', open.length],
-      ...LEVELS.map((p): Cell[] => [`Open ${p}`, open.filter((a) => a.priority === p).length]),
-      ['Escalated', escalated],
-      [`Alerts, ${period.title}`, inRange.length],
-      ['Cameras online', `${live} of ${cams.length}`],
-      ['Degraded cameras', degraded],
-      ['Offline cameras', offline],
-      ['Reported to QHSE', raised.length],
-      ...byType.map((b): Cell[] => [b.t, b.n]),
-      [],
-      ['Needs attention', 'Level', 'State', 'Camera', 'Area', 'Raised'],
-      ...open.map((a): Cell[] => {
-        const c = camById.get(a.cameraId);
-        return [a.title, a.priority, a.state, c ? `${c.id} ${c.name}` : a.cameraId, AREAS_BY_ID[c?.areaId ?? '']?.name ?? '', new Date(a.at).toLocaleString()];
-      }),
-      [],
-      ['Alerts by area', 'Alerts', 'Open'],
-      ...byArea.map((x): Cell[] => [x.a.name, x.n, x.open]),
-      [],
-      ['Camera health', 'Status', 'Reason'],
-      ...faulty.map((c): Cell[] => [`${c.id} ${c.name}`, c.status === 'offline' ? 'Offline' : 'Degraded', healthReason(c)]),
-      [],
-      ['Hazards detected', 'Count'],
-      ...hazards.map((h): Cell[] => [h.name, h.n]),
-    ];
+    const rows: Cell[][] = [[view === 'insights' ? 'Insights' : 'Action Centre', SITE.name], ['Exported', new Date(now).toLocaleString()]];
+    if (view === 'actions') {
+      rows.push(
+        [],
+        ['Open issues', issues.length],
+        ['Past response target', late.length],
+        ['Not reported to QHSE', unreported.length],
+        ['Cameras to fix', faulty.length],
+        [],
+        ['Open issue', 'Level', 'Detections', 'Camera', 'Area', 'First seen', 'Last seen', 'Response target'],
+        ...issues.map((i): Cell[] => {
+          const c = camById.get(i.cameraId);
+          return [i.title, i.priority, i.count, c ? `${c.id} ${c.name}` : i.cameraId, AREAS_BY_ID[c?.areaId ?? '']?.name ?? '', new Date(i.first).toLocaleString(), new Date(i.last).toLocaleString(), i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `Due in ${duration(i.left)}`];
+        }),
+        [],
+        ['Not reported to QHSE', 'Level', 'Camera', 'Raised'],
+        ...unreported.map((a): Cell[] => [a.title, a.priority, a.cameraId, new Date(a.at).toLocaleString()]),
+        [],
+        ['Camera to fix', 'Status', 'Down since', 'Reason'],
+        ...faulty.map((c): Cell[] => [`${c.id} ${c.name}`, c.status === 'offline' ? 'Offline' : 'Degraded', new Date(unavailableSince(c)).toLocaleString(), healthReason(c)]),
+      );
+    } else {
+      rows.push(
+        ['Period', period.label],
+        [],
+        ['What stands out'],
+        ...stand.map((f): Cell[] => [f.text]),
+        [],
+        ['Measure', 'Value', 'Previous period'],
+        ['Alerts', inRange.length, previous.length],
+        ['Acknowledged within target', sla.pct === null ? '' : `${sla.pct}%`, slaBefore.pct === null ? '' : `${slaBefore.pct}%`],
+        ['False alarms (share of handled)', falsePct === null ? '' : `${falsePct}%`, falseBefore === null ? '' : `${falseBefore}%`],
+        ['Reported to QHSE', raised.length],
+        ['Handled P1 and P2 not reported', unreportedInPeriod.length],
+        [],
+        ['Location', 'Alerts', 'Previous', 'Most common'],
+        ...hot.slice(0, 15).map((h): Cell[] => [`${h.cameraId} ${camName(h.cameraId)}`, h.count, h.before, h.topRule]),
+        [],
+        ['Rule', 'Alerts', 'False alarms', 'Average time to acknowledge', 'Note'],
+        ...health.map((h): Cell[] => [h.rule.name, h.alerts, h.falsePct === null ? '' : `${h.falsePct}%`, h.avgAck === null ? '' : duration(h.avgAck), h.flag?.text ?? '']),
+        [],
+        ['Hour of day', 'Alerts'],
+        ...pattern.counts.map((n, h): Cell[] => [`${String(h).padStart(2, '0')}:00`, n]),
+      );
+    }
     const width = Math.max(...rows.map((r) => r.length));
-    download(writeXlsx(rows.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')), 'Overview'), `${fileBase}.xlsx`);
+    download(writeXlsx(rows.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')), view === 'insights' ? 'Insights' : 'Action Centre'), `${fileBase}.xlsx`);
   };
 
   // A picture of the dashboard below the toolbar, at twice the screen's resolution, with a margin round it.
@@ -236,6 +245,35 @@ export function Overview() {
     }
   };
 
+  const issueRow = (i: Issue) => {
+    const cam = camById.get(i.cameraId);
+    const lateNow = i.overdue > 0;
+    return (
+      <li key={i.key} className="ovissue">
+        <Link to={`/alerts/${i.lead.id}`} className="ovlist__item ovissue__main">
+          <PriorityBadge p={i.priority} short />
+          <span className="stack" style={{ gap: 1, minWidth: 0, flex: 1 }}>
+            <strong className="ellipsis">
+              {i.title}
+              {i.count > 1 && <span className="ovissue__n" title={`${i.count} detections, last ${since(i.last, now)} ago`}>×{i.count}</span>}
+            </strong>
+            <span className="meta ellipsis">
+              {cam?.id} · {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+              {i.count > 1 ? ` · since ${since(i.first, now)}` : ''}
+            </span>
+          </span>
+          <span className={`ovsla${lateNow ? ' is-late' : ''}`} title={lateNow ? 'Past the response target for this level' : 'Time left to respond'}>
+            {lateNow ? `Overdue ${since(now - i.overdue, now) === '0s' ? '' : duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}
+          </span>
+        </Link>
+        <button type="button" className="lvact" onClick={() => setDialog({ kind: 'ack', alert: i.lead, group: openAlerts.filter((a) => a.ruleId === i.ruleId && a.cameraId === i.cameraId).map((a) => a.id) })}>
+          <Icon name="check" size={13} />
+          Acknowledge
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div className="page page--wide">
       <div className="tabs ovtabs" role="tablist" aria-label="Overview">
@@ -252,6 +290,7 @@ export function Overview() {
 
       <div className={`ovbar${view === 'insights' && range === 'custom' ? ' ovbar--custom' : ''}`}>
         <Choice id="ov-site" label="Terminal" icon="location" className="ovbar__site" value={SITE.name} onChange={() => {}} options={[{ value: SITE.name, label: `${SITE.name} · ${cams.length} cameras` }]} />
+        <span className="spacer" />
         {view === 'insights' && (
           <div className="ovperiod">
             <PillTabs
@@ -259,8 +298,7 @@ export function Overview() {
               value={range}
               onChange={(r) => {
                 if (r === 'custom') {
-                  // Custom starts on the last hour; the panel opens to change the dates and times.
-                  if (!custom) setCustom({ from: now - HOUR, to: now });
+                  if (!custom) setCustom({ from: now - 15 * MIN, to: now });
                   setRange('custom');
                   setPicking(true);
                 } else {
@@ -273,9 +311,7 @@ export function Overview() {
             {range === 'custom' && custom && (
               <button type="button" className="dfield ovperiod__field" aria-haspopup="dialog" aria-expanded={picking} onClick={() => setPicking(!picking)}>
                 <span className="dfield__label">From – To</span>
-                <span className="dfield__value">
-                  {dayTimeShort(custom.from)} | {dayTimeShort(custom.to)}
-                </span>
+                <span className="dfield__value">{custom.label ?? `${dayTimeShort(custom.from)} | ${dayTimeShort(custom.to)}`}</span>
                 <span className="dfield__icons">
                   <span
                     role="button"
@@ -304,10 +340,9 @@ export function Overview() {
                 </span>
               </button>
             )}
-            {picking && custom && <TimeRangePanel from={custom.from} to={custom.to} now={now} onChange={(from, to) => setCustom({ from, to })} onClose={() => setPicking(false)} />}
+            {picking && custom && <TimeRangePanel from={start} to={end} now={now} onChange={(c) => setCustom(c)} onClose={() => setPicking(false)} />}
           </div>
         )}
-        <span className="spacer" />
         <ExportMenu onPick={exportAs} />
         <Link to="/wall" className="btn btn--icon" title="Open Video Wall" aria-label="Open video wall">
           <Icon name="wall" size={22} />
@@ -325,168 +360,379 @@ export function Overview() {
         </div>
 
         {view === 'actions' ? (
-          <>
-            <div className="ovgrid">
-              <section className="card ovgrid__6 ovcol">
-                <div className="ovcol__kpi ovcol__pair">
-                  <button type="button" className="ovcol__stat" onClick={() => nav('/alerts')}>
-                    <KpiHead label="Open alerts" icon="warning" tone="bad" />
-                    <div className="kpi__value">
-                      <span className="kpi__n">{open.length}</span>
-                      {open.length > 0 && <span className="kdelta kdelta--bad">{open.filter((a) => a.priority === 'P1').length} P1</span>}
-                    </div>
-                    <SegBar parts={LEVELS.map((p) => ({ n: open.filter((a) => a.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
-                    <span className="kpi__foot">{open.length ? `Oldest open ${since(oldest, now)}` : 'Nothing open'}</span>
-                  </button>
-                  <button type="button" className="ovcol__stat" onClick={() => nav('/alerts')}>
-                    <KpiHead label="Escalated, not acknowledged" icon="arrow-up" tone="bad" />
-                    <div className="kpi__value">
-                      <span className="kpi__n">{escalatedList.length}</span>
-                      {escalatedList.length > 0 && <span className="kdelta kdelta--bad">{pct(escalatedList.length, open.length)}% of open</span>}
-                    </div>
-                    <SegBar parts={LEVELS.map((p) => ({ n: escalatedList.filter((a) => a.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
-                    <span className="kpi__foot">{escalatedList.length ? `Waiting longest ${since(oldestEscalated, now)}` : 'Nothing past its response time'}</span>
-                  </button>
+          <div className="ovgrid">
+            <section className="card ovgrid__6 ovcol">
+              <div className="ovcol__kpi ovcol__pair">
+                <button type="button" className="ovcol__stat" onClick={() => nav('/alerts?tab=open')}>
+                  <KpiHead label="Open issues" icon="warning" tone="bad" />
+                  <div className="kpi__value">
+                    <span className="kpi__n">{issues.length}</span>
+                    {openAlerts.length > issues.length && <span className="kdelta kdelta--neutral">{openAlerts.length} alerts</span>}
+                  </div>
+                  <SegBar parts={LEVELS.map((p) => ({ n: issues.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                  <span className="kpi__foot">{issues.length ? `Oldest open ${since(Math.min(...issues.map((i) => i.first)), now)}` : 'Nothing open'}</span>
+                </button>
+                <button type="button" className="ovcol__stat" onClick={() => nav('/alerts?tab=open')}>
+                  <KpiHead label="Past response target" icon="clock" tone="bad" />
+                  <div className="kpi__value">
+                    <span className="kpi__n">{late.length}</span>
+                    {late.length > 0 && <span className="kdelta kdelta--bad">{pct(late.length, issues.length)}% of open</span>}
+                  </div>
+                  <SegBar parts={LEVELS.map((p) => ({ n: late.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                  <span className="kpi__foot">{late.length ? `Longest overdue ${duration(Math.max(...late.map((i) => i.overdue)))}` : 'Everything is inside its target'}</span>
+                </button>
+              </div>
+              <div className="card__head">
+                <h2>
+                  Needs attention <span className="ovsub">· {plural(issues.length, 'issue')}</span>
+                </h2>
+                <span className="spacer" />
+                <Link to="/alerts?tab=open" className="ovlink">
+                  All alerts
+                </Link>
+              </div>
+              {issues.length === 0 && <p className="card__body meta">No open alerts.</p>}
+              <ul className="ovlist ovcol__list">{issues.map(issueRow)}</ul>
+            </section>
+
+            <section className="card ovgrid__3 ovcol" id="ov-unreported">
+              <div className="ovcol__kpi">
+                <KpiHead label="Not reported to QHSE" icon="shield" tone="neutral" />
+                <div className="kpi__value">
+                  <span className="kpi__n">{unreported.length}</span>
+                  {unreported.length > 0 && <span className="kdelta kdelta--bad">P1 and P2</span>}
                 </div>
+                <SegBar parts={(['P1', 'P2'] as Priority[]).map((p) => ({ n: unreported.filter((a) => a.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                <span className="kpi__foot">{unreported.length ? 'Handled, but no QHSE record yet' : 'Every high-priority alert is reported'}</span>
+                {unreported.length > 0 && (
+                  <button type="button" className="btn btn--report btn--sm ovsend" onClick={() => sendToQhse(unreported)}>
+                    <Icon name="send" size={15} />
+                    Send all {unreported.length} to QHSE
+                  </button>
+                )}
+              </div>
+              {unreported.length === 0 && <p className="card__body meta">Nothing to report.</p>}
+              <ul className="ovlist ovcol__list">
+                {unreported.map((a) => {
+                  const cam = camById.get(a.cameraId);
+                  return (
+                    <li key={a.id} className="ovissue">
+                      <Link to={`/alerts/${a.id}`} className="ovlist__item ovissue__main" title="Open The Alert">
+                        <PriorityBadge p={a.priority} short />
+                        <span className="stack" style={{ gap: 1, minWidth: 0, flex: 1 }}>
+                          <strong className="ellipsis">{a.title}</strong>
+                          <span className="meta ellipsis">
+                            {cam?.id} · {since(a.at, now)} ago
+                          </span>
+                        </span>
+                      </Link>
+                      <button type="button" className="lvact lvact--report" onClick={() => setDialog({ kind: 'raise', alert: a, group: [a.id] })}>
+                        <Icon name="send" size={13} />
+                        Report
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+
+            <section className="card ovgrid__3 ovcol">
+              <div className="ovcol__kpi">
+                <KpiHead label="Cameras to fix" icon="camera" tone="good" />
+                <div className="kpi__value">
+                  <span className="kpi__n">{faulty.length}</span>
+                  <span className="kpi__of">/ {cams.length}</span>
+                </div>
+                <SegBar
+                  parts={[
+                    { n: offline, color: 'var(--q-p1)', label: 'offline' },
+                    { n: degraded, color: 'var(--q-warn-dot)', label: 'degraded' },
+                  ]}
+                />
+                <span className="kpi__foot">{faulty.length ? `${live} of ${cams.length} live${blindRules.size ? ` · ${plural(blindRules.size, 'rule')} blind` : ''}` : 'Every camera is live'}</span>
+              </div>
+              <div className="card__head ovcol__subhead">
+                <span className="ovsub">Camera health</span>
+                <span className="spacer" />
+                <Link to="/cameras" className="ovlink">
+                  Cameras
+                </Link>
+              </div>
+              {faulty.length === 0 && <p className="card__body meta">Every camera is live.</p>}
+              {faulty.length > 0 && (
+                <div className="ovrows ovcam-headwrap" aria-hidden="true">
+                  <div className="ovcam ovcam--head">
+                    <span className="dot" style={{ visibility: 'hidden' }} />
+                    <span className="ovcam__id">ID</span>
+                    <span className="ovcam__state">Status</span>
+                    <span className="ovcam__since">Since</span>
+                  </div>
+                </div>
+              )}
+              <div className="ovrows ovcol__list">
+                {faulty.map((c) => {
+                  const { watching } = cameraImpact(c, rules, cams);
+                  return (
+                    <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="ovcam" title={`${healthReason(c)}${watching.length ? ` · watched by ${plural(watching.length, 'rule')}` : ''}`}>
+                      <span className={`dot dot--${c.status}`} />
+                      <span className="mono ovcam__id">{c.id}</span>
+                      <span className="ovcam__state">{c.status === 'offline' ? 'Offline' : 'Degraded'}</span>
+                      <span className="ovcam__since" title={`Unavailable since ${hm(unavailableSince(c))}`}>
+                        {since(unavailableSince(c), now)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="card ovgrid__12">
+              <div className="card__head">
+                <h2>Coverage gaps</h2>
+                <span className="ovsub">· what the cameras cannot catch yet</span>
+              </div>
+              <div className="ovgaps">
+                <GapList title="No zones drawn" hint="Detection only runs inside zones" all="/cameras?coverage=no-zones" items={noZones.map((c) => ({ id: c.id, text: c.name, to: `/configuration/cameras/${c.id}` }))} />
+                <GapList title="Not watched by any rule" hint="No rule raises alerts from these" all="/cameras?coverage=no-rules" items={unwatched.map((c) => ({ id: c.id, text: c.name, to: `/configuration/cameras/${c.id}` }))} />
+                <GapList title="Rules still in test" hint="Matches are logged, no one is told" all="/rules?tab=test" items={testRules.map((r) => ({ id: r.id, text: r.name, to: `/configuration/rules/${r.id}` }))} />
+              </div>
+            </section>
+          </div>
+        ) : short ? (
+          <>
+            {liveStand.length > 0 && (
+              <section className="card ovfind">
                 <div className="card__head">
-                  <h2>
-                    Needs attention <span className="ovsub">· {open.length} open</span>
-                  </h2>
+                  <h2>What stands out</h2>
+                  <span className="ovsub">· {period.label}</span>
+                </div>
+                <ul className="ovfind__list">
+                  {liveStand.map((f, i) => (
+                    <li key={i} className={`ovfind__item ovfind__item--${f.tone}`}>
+                      <Icon name={f.tone === 'info' ? 'info' : 'warning'} size={18} />
+                      <span className="ovfind__text">{f.text}</span>
+                      <Link to={f.to} className="lvact">
+                        {f.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            <div className="kpis">
+              <div className="kpi">
+                <KpiHead label={`Alerts, ${period.title}`} icon="bell" tone="info" />
+                <div className="kpi__value">
+                  <span className="kpi__n">{inRange.length}</span>
+                  {normal.days >= 3 && normal.total > 0 ? (
+                    <span className={`kdelta kdelta--${inRange.length >= 2 * normal.total && inRange.length >= 2 ? 'bad' : 'neutral'}`}>{(inRange.length / normal.total).toFixed(1)}× usual</span>
+                  ) : (
+                    <span className={`kdelta kdelta--${alertsChange.tone}`}>{alertsChange.text}</span>
+                  )}
+                </div>
+                <Spark values={counts.map((c) => c.n)} />
+                <span className="kpi__foot">{normal.days >= 3 ? `Usually ${normal.total.toFixed(1)} at this time of day` : busiestText}</span>
+              </div>
+
+              <button type="button" className="kpi" onClick={() => nav('/')}>
+                <KpiHead label="Waiting for a response" icon="clock" tone="bad" />
+                <div className="kpi__value">
+                  <span className="kpi__n">{issues.length}</span>
+                  {late.length > 0 && <span className="kdelta kdelta--bad">{late.length} past target</span>}
+                </div>
+                <SegBar parts={LEVELS.map((p) => ({ n: issues.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                <span className="kpi__foot">{issues.length ? (() => { const o = issues.reduce((a, b) => (b.first < a.first ? b : a)); return `Oldest ${since(o.first, now)} · ${o.cameraId} ${camName(o.cameraId)}`; })() : 'Nothing is waiting'}</span>
+              </button>
+
+              <Link to={deadline ? `/alerts/${deadline.lead.id}` : '/'} className="kpi">
+                <KpiHead label="Next deadline" icon="clock" tone={deadline ? 'info' : 'good'} />
+                <div className="kpi__value">
+                  {deadline ? (
+                    <>
+                      <span className="kpi__n kpi__n--text">{duration(deadline.left)}</span>
+                      <PriorityBadge p={deadline.priority} short />
+                    </>
+                  ) : late.length ? (
+                    <>
+                      <span className="kpi__n kpi__n--text is-late">Overdue</span>
+                      <span className="kdelta kdelta--bad">{plural(late.length, 'issue')}</span>
+                    </>
+                  ) : (
+                    <span className="kpi__n kpi__n--text">–</span>
+                  )}
+                </div>
+                <span className="kpi__foot ovdl__foot">
+                  {deadline ? `Response target for ${deadline.title} on ${deadline.cameraId}: ${Math.round((deadline.left + now - deadline.first) / 60000)} min` : late.length ? 'Everything open is already past its target' : 'Nothing is waiting on a response'}
+                </span>
+              </Link>
+
+              <Link to={hot[0] ? `/alerts?camera=${encodeURIComponent(hot[0].cameraId)}` : '/alerts'} className="kpi">
+                <KpiHead label="Busiest spot" icon="location" tone="neutral" />
+                <div className="kpi__value">
+                  <span className="kpi__n kpi__n--text">{hot[0]?.cameraId ?? '–'}</span>
+                  {hot[0] && <span className="kdelta kdelta--neutral">{plural(hot[0].count, 'alert')}</span>}
+                </div>
+                <span className="kpi__foot ellipsis">{hot[0] ? `${camName(hot[0].cameraId)} · ${AREAS_BY_ID[camById.get(hot[0].cameraId)?.areaId ?? '']?.name ?? ''}` : `No alerts ${inPeriod}`}</span>
+              </Link>
+            </div>
+
+            <div className="ovgrid">
+              <section className="card ovgrid__12">
+                <div className="card__head">
+                  <h2>What happened</h2>
+                  <span className="ovsub">· {period.label}, newest first</span>
                   <span className="spacer" />
                   <Link to="/alerts" className="ovlink">
                     All alerts
                   </Link>
                 </div>
-                {open.length === 0 && <p className="card__body meta">No open alerts.</p>}
-                <ul className="ovlist ovcol__list">
-                  {open.map((a) => {
-                    const cam = camById.get(a.cameraId);
-                    return (
-                      <li key={a.id}>
-                        <Link to={`/alerts/${a.id}`} className="ovlist__item">
-                          <PriorityBadge p={a.priority} short />
-                          <span className="stack" style={{ gap: 1, minWidth: 0, flex: 1 }}>
-                            <strong className="ellipsis">{a.title}</strong>
-                            <span className="meta ellipsis">
-                              {cam?.id} · {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+                {inRange.length === 0 && <p className="card__body meta">No alerts {inPeriod}.</p>}
+                <ul className="ovfeed">
+                  {[...inRange]
+                    .sort((a, b) => b.at - a.at)
+                    .slice(0, 12)
+                    .map((a) => {
+                      const cam = camById.get(a.cameraId);
+                      const target = (policies.find((p) => p.priority === a.priority)?.ackWithinMin ?? 15) * MIN;
+                      const answered = a.ackAt ? a.ackAt - a.at : null;
+                      const waiting = isOpenAlert(a) ? now - a.at : null;
+                      const lateRow = (answered ?? waiting ?? 0) > target;
+                      return (
+                        <li key={a.id}>
+                          <Link to={`/alerts/${a.id}`} className="ovfeed__row">
+                            <span className="ovfeed__time">{hm(a.at)}</span>
+                            <PriorityBadge p={a.priority} short />
+                            <span className="stack" style={{ gap: 1, minWidth: 0 }}>
+                              <strong className="ellipsis">
+                                {a.title}
+                                {(a.repeats ?? 0) > 0 && <span className="ovissue__n">×{1 + (a.repeats ?? 0)}</span>}
+                              </strong>
+                              <span className="meta ellipsis">
+                                {cam?.id} · {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+                              </span>
                             </span>
-                          </span>
-                          <span className="ovtime">{since(a.at, now)}</span>
-                          <span className="ovstate">
+                            <span className={`ovfeed__resp${lateRow ? ' is-late' : ''}`}>
+                              {answered !== null ? `Acknowledged in ${duration(answered)}` : waiting !== null ? `Waiting ${duration(waiting)}` : ''}
+                            </span>
                             <StateChip state={a.state} />
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
+                          </Link>
+                        </li>
+                      );
+                    })}
                 </ul>
               </section>
 
-              <section className="card ovgrid__3 ovcol" id="ov-unreported">
-                <div className="ovcol__kpi">
-                  <KpiHead label="Not reported to QHSE" icon="shield" tone="neutral" />
-                  <div className="kpi__value">
-                    <span className="kpi__n">{unreported.length}</span>
-                    {unreported.length > 0 && <span className="kdelta kdelta--bad">P1 and P2</span>}
-                  </div>
-                  <SegBar parts={(['P1', 'P2'] as Priority[]).map((p) => ({ n: unreported.filter((a) => a.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
-                  <span className="kpi__foot">{unreported.length ? 'Handled, but no QHSE record yet' : 'Every high-priority alert is reported'}</span>
-                  {unreported.length > 0 && (
-                    <button type="button" className="btn btn--report btn--sm ovsend" onClick={() => sendToQhse(unreported)}>
-                      <Icon name="send" size={15} />
-                      Send all {unreported.length} to QHSE
-                    </button>
-                  )}
-                </div>
-                {unreported.length === 0 && <p className="card__body meta">Nothing to report.</p>}
-                <ul className="ovlist ovcol__list">
-                  {unreported.map((a) => {
-                    const cam = camById.get(a.cameraId);
-                    return (
-                      <li key={a.id}>
-                        <Link to={`/alerts/${a.id}`} className="ovlist__item" title="Open The Alert To Report It">
-                          <PriorityBadge p={a.priority} short />
-                          <span className="stack" style={{ gap: 1, minWidth: 0, flex: 1 }}>
-                            <strong className="ellipsis">{a.title}</strong>
-                            <span className="meta ellipsis">
-                              {cam?.id} · {since(a.at, now)} ago
-                            </span>
-                          </span>
-                          <span className="ovaction">Report</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-
-              <section className="card ovgrid__3 ovcol">
-                <div className="ovcol__kpi">
-                  <KpiHead label="Cameras to fix" icon="camera" tone="good" />
-                  <div className="kpi__value">
-                    <span className="kpi__n">{faulty.length}</span>
-                    <span className="kpi__of">/ {cams.length}</span>
-                  </div>
-                  <SegBar
-                    parts={[
-                      { n: offline, color: 'var(--q-p1)', label: 'offline' },
-                      { n: degraded, color: 'var(--q-warn-dot)', label: 'degraded' },
-                    ]}
-                  />
-                  <span className="kpi__foot">{faulty.length ? `${live} of ${cams.length} live` : 'Every camera is live'}</span>
-                </div>
-                <div className="card__head ovcol__subhead">
-                  <span className="ovsub">Camera health</span>
-                  <span className="spacer" />
-                  <Link to="/cameras" className="ovlink">
-                    Cameras
-                  </Link>
-                </div>
-                {faulty.length === 0 && <p className="card__body meta">Every camera is live.</p>}
-                {faulty.length > 0 && (
-                  <div className="ovrows ovcam-headwrap" aria-hidden="true">
-                    <div className="ovcam ovcam--head">
-                      <span className="dot" style={{ visibility: 'hidden' }} />
-                      <span className="ovcam__id">ID</span>
-                      <span className="ovcam__state">Status</span>
-                      <span className="ovcam__since">Since</span>
-                    </div>
-                  </div>
-                )}
-                <div className="ovrows ovcol__list">
-                  {faulty.map((c) => (
-                    <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="ovcam" title={healthReason(c)}>
-                      <span className={`dot dot--${c.status}`} />
-                      <span className="mono ovcam__id">{c.id}</span>
-<span className="ovcam__state">{c.status === 'offline' ? 'Offline' : 'Degraded'}</span>
-                      <span className="ovcam__since" title={`Unavailable since ${hm(unavailableSince(c))}`}>{since(unavailableSince(c), now)}</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-
-              <section className="card ovgrid__12">
+              <section className="card ovgrid__6">
                 <div className="card__head">
-                  <h2>Coverage gaps</h2>
-                  <span className="ovsub">· what the cameras cannot catch yet</span>
-                  <span className="spacer" />
-                  <Link to="/configuration/cameras" className="ovlink">
-                    Configuration
-                  </Link>
+                  <h2>Against a normal day</h2>
+                  <span className="ovsub">· same {minutes} min on the last {normal.days || 0} days</span>
                 </div>
-                <div className="ovgaps">
-                  <GapList title="No zones drawn" hint="Detection only runs inside zones" items={noZones.map((c) => ({ id: c.id, text: c.name, to: `/configuration/cameras/${c.id}` }))} />
-                  <GapList title="Not watched by any rule" hint="No rule raises alerts from these" items={unwatched.map((c) => ({ id: c.id, text: c.name, to: `/configuration/cameras/${c.id}` }))} />
-                  <GapList title="Rules still in test" hint="Matches are logged, no one is told" items={testRules.map((r) => ({ id: r.id, text: r.name, to: `/configuration/rules/${r.id}` }))} />
+                <ul className="ovnorm">
+                  {LEVELS.map((p) => {
+                    const now1 = inRange.filter((a) => a.priority === p).length;
+                    const usual = normal.byLevel.find((x) => x.p === p)?.n ?? 0;
+                    const top = Math.max(1, now1, usual);
+                    return (
+                      <li key={p} className="ovnorm__row">
+                        <PriorityBadge p={p} short />
+                        <span className="ovnorm__bars">
+                          <i className="ovnorm__now" style={{ width: `${(now1 / top) * 100}%`, background: LEVEL_COLOR[p] }} />
+                          <i className="ovnorm__usual" style={{ width: `${(usual / top) * 100}%` }} />
+                        </span>
+                        <span className="ovnorm__n">
+                          <b>{now1}</b> now · usual {usual.toFixed(1)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="meta ovhours__note">Coloured bar: now. Grey bar: what this time of day usually has.</p>
+              </section>
+
+              <section className="card ovgrid__6">
+                <div className="card__head">
+                  <h2>Who knows, and what to do</h2>
+                  <span className="ovsub">· open issues, most urgent first</span>
                 </div>
+                {issues.length === 0 && <p className="card__body meta">Nothing is open.</p>}
+                <ul className="ovwho">
+                  {issues.slice(0, 4).map((i) => {
+                    const told = peopleTold(i.lead);
+                    const cam = camById.get(i.cameraId);
+                    const suggest = cam ? draftRecord(i.lead, cam, ruleById.get(i.ruleId), AREAS_BY_ID[cam.areaId], hm(i.lead.at)).immediateAction : '';
+                    const nobodyRead = told.length > 0 && !told.some((t) => t.status === 'read');
+                    return (
+                      <li key={i.key} className="ovwho__item">
+                        <div className="ovwho__head">
+                          <PriorityBadge p={i.priority} short />
+                          <Link to={`/alerts/${i.lead.id}`} className="ovwho__title ellipsis">
+                            {i.title} · {i.cameraId}
+                          </Link>
+                          <span className={`ovsla${i.overdue > 0 ? ' is-late' : ''}`}>{i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}</span>
+                        </div>
+                        <div className="ovwho__told">
+                          {told.length === 0 ? (
+                            <span className="ovwho__warn">No one has been notified</span>
+                          ) : (
+                            told.map((t) => (
+                              <span key={t.to} className={`ovwho__person ovwho__person--${t.status}`} title={`${[...t.channels].join(', ')}${t.escalation ? ' · escalation' : ''}`}>
+                                {t.escalation ? 'Escalated to ' : ''}
+                                {userName(t.to)}
+                                <i>{t.status === 'read' ? 'read' : t.status === 'delivered' ? 'not read' : t.status === 'sent' ? 'calling' : 'not reached'}</i>
+                              </span>
+                            ))
+                          )}
+                          {nobodyRead && <span className="ovwho__warn">No one has read it yet</span>}
+                        </div>
+                        {suggest && (
+                          <div className="ovwho__do">
+                            <Icon name="arrow-right" size={14} />
+                            <span>{suggest}</span>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </section>
             </div>
           </>
         ) : (
           <>
+            {stand.length > 0 && (
+              <section className="card ovfind">
+                <div className="card__head">
+                  <h2>What stands out</h2>
+                  <span className="ovsub">· {period.label}</span>
+                </div>
+                <ul className="ovfind__list">
+                  {stand.map((f, i) => (
+                    <li key={i} className={`ovfind__item ovfind__item--${f.tone}`}>
+                      <Icon name={f.tone === 'info' ? 'info' : 'warning'} size={18} />
+                      <span className="ovfind__text">{f.text}</span>
+                      <Link to={f.to} className="lvact">
+                        {f.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <div className="kpis">
               <div className="kpi">
-                <KpiHead label={`Alerts, ${period.title}`} icon="bell" tone="info" />
+                <KpiHead label="Acknowledged within target" icon="clock" tone="info" />
+                <div className="kpi__value">
+                  <span className="kpi__n">{sla.pct === null ? '–' : `${sla.pct}%`}</span>
+                  <span className={`kdelta kdelta--${slaChange.tone}`}>{slaChange.text}</span>
+                </div>
+                <SegBar parts={[{ n: sla.met, color: 'var(--c-green)', label: 'on time' }, { n: sla.missed, color: 'var(--q-p1)', label: 'late or missed' }]} />
+                <span className="kpi__foot">{sla.missed ? `${plural(sla.missed, 'alert')} missed their target` : 'Every alert was answered in time'}</span>
+              </div>
+
+              <div className="kpi">
+                <KpiHead label="Alerts" icon="bell" tone="info" />
                 <div className="kpi__value">
                   <span className="kpi__n">{inRange.length}</span>
                   <span className={`kdelta kdelta--${alertsChange.tone}`}>{alertsChange.text}</span>
@@ -496,39 +742,23 @@ export function Overview() {
               </div>
 
               <div className="kpi">
-                <KpiHead label="Mean time to acknowledge" icon="clock" tone="info" />
+                <KpiHead label="False alarms" icon="check" tone="good" />
                 <div className="kpi__value">
-                  <span className="kpi__n kpi__n--text">{mtta === null ? '–' : duration(mtta)}</span>
-                  {(() => {
-                    const c = lowerIsBetter(mtta, mttaBefore, duration);
-                    return <span className={`kdelta kdelta--${c.tone}`}>{c.text}</span>;
-                  })()}
+                  <span className="kpi__n">{falsePct === null ? '–' : `${falsePct}%`}</span>
+                  <span className={`kdelta kdelta--${falseChange.tone}`}>{falseChange.text}</span>
                 </div>
-                <span className="kpi__foot">{plural(ackTimes(inRange).length, 'alert')} acknowledged {inPeriod}</span>
+                <SegBar parts={[{ n: handled.length - falseCount, color: 'var(--c-green)', label: 'real' }, { n: falseCount, color: 'var(--q-p2)', label: 'false' }]} />
+                <span className="kpi__foot">{falseByRule[0] ? `Most from ${falseByRule[0].rule.name.toLowerCase()} (${falseByRule[0].falseAlarms})` : 'Of handled alerts'}</span>
               </div>
 
-              <div className="kpi">
-                <KpiHead label="False alarm rate" icon="check" tone="good" />
-                <div className="kpi__value">
-                  <span className="kpi__n">{falseRate === null ? '–' : `${falseRate}%`}</span>
-                  {(() => {
-                    const c = lowerIsBetter(falseRate, falseBefore, (v) => `${v} pts`);
-                    return <span className={`kdelta kdelta--${c.tone}`}>{c.text}</span>;
-                  })()}
-                </div>
-                <span className="kpi__foot">
-                  Of {plural(closedIn(inRange).length, 'handled alert')} · escalated {escRate === null ? '–' : `${escRate}%`}
-                </span>
-              </div>
-
-              <button type="button" className="kpi" onClick={() => setReports(true)}>
+              <button type="button" className="kpi" onClick={() => (unreportedInPeriod.length ? nav('/') : setReports(true))}>
                 <KpiHead label="Reported to QHSE" icon="shield" tone="neutral" />
                 <div className="kpi__value">
                   <span className="kpi__n">{raised.length}</span>
-                  <span className="kdelta kdelta--neutral">{change(raised.length, raisedBefore).text}</span>
+                  <span className={`kdelta kdelta--${unreportedInPeriod.length ? 'bad' : 'neutral'}`}>{unreportedInPeriod.length ? `${unreportedInPeriod.length} still to report` : reportable ? 'All reported' : 'None'}</span>
                 </div>
                 <SegBar parts={byType.map((b) => ({ n: b.n, color: RECORD_COLOR[b.t], label: b.t.toLowerCase() }))} />
-                <span className="kpi__foot">From alerts {inPeriod}</span>
+                <span className="kpi__foot">{unreportedInPeriod.length ? 'Open the Action Centre to report them' : `From alerts ${inPeriod}`}</span>
               </button>
             </div>
 
@@ -536,58 +766,111 @@ export function Overview() {
               <section className="card ovgrid__12">
                 <div className="card__head">
                   <h2>Alerts by level</h2>
+                  <span className="ovsub">· over time</span>
                   <span className="spacer" />
                   <span className="ovmeta">{period.label}</span>
                 </div>
-                <LevelChart list={inRange} openList={open} start={start} end={end} unreportedOf={unreportedOf} onSend={sendToQhse} />
+                <LevelChart list={inRange} openList={levelOpen} start={start} end={end} unreportedOf={unreportedOf} onSend={sendToQhse} />
               </section>
 
               <section className="card ovgrid__6">
                 <div className="card__head">
-                  <h2>Alerts by area</h2>
-                  <span className="spacer" />
-                  <span className="ovmeta">{period.label} · open</span>
+                  <h2>Where to look</h2>
+                  <span className="ovsub">· locations with the most alerts</span>
                 </div>
-                <div className="ovrows">
-                  {byArea.map(({ a, n, open: o }) => (
-                    <div key={a.id} className="ovarea">
-                      <span className="ellipsis">{a.name}</span>
-                      <span className="ovtrack">
-                        <i style={{ width: `${(n / areaMax) * 100}%` }} />
-                      </span>
-                      <b className="ovnum">{n}</b>
-                      <span className={`ovopen${o ? '' : ' is-none'}`}>{o ? `${o} open` : '–'}</span>
-                    </div>
-                  ))}
-                </div>
+                {hot.length === 0 && <p className="card__body meta">No alerts {inPeriod}.</p>}
+                <ul className="ovhot">
+                  {hot.slice(0, 6).map((h) => {
+                    const cam = camById.get(h.cameraId);
+                    const trend = h.count - h.before;
+                    return (
+                      <li key={h.cameraId}>
+                        <Link to={`/alerts?camera=${encodeURIComponent(h.cameraId)}`} className="ovhot__row" title="See The Alerts From This Camera">
+                          <span className="stack" style={{ gap: 0, minWidth: 0 }}>
+                            <strong className="ellipsis">
+                              <span className="mono">{h.cameraId}</span> {cam?.name}
+                            </strong>
+                            <span className="meta ellipsis">
+                              {AREAS_BY_ID[cam?.areaId ?? '']?.name} · mostly {h.topRule.toLowerCase()}
+                            </span>
+                          </span>
+                          <span className="ovtrack">
+                            <i style={{ width: `${(h.count / hotMax) * 100}%` }} />
+                          </span>
+                          <b className="ovnum">{h.count}</b>
+                          <span className={`ovhot__trend${trend > 0 ? ' is-up' : trend < 0 ? ' is-down' : ''}`}>{trend === 0 ? '–' : `${trend > 0 ? '▲' : '▼'} ${Math.abs(trend)}`}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               </section>
 
-              <section className="card ovgrid__6 ovhazards-card">
+              <section className="card ovgrid__6">
                 <div className="card__head">
-                  <h2>Hazards detected</h2>
+                  <h2>Rules</h2>
+                  <span className="ovsub">· which ones to tune</span>
                   <span className="spacer" />
-                  <span className="ovmeta">{period.label}</span>
+                  <Link to="/rules" className="ovlink">
+                    All rules
+                  </Link>
                 </div>
-                {hazards.length === 0 && <p className="card__body meta">No hazards detected {inPeriod}.</p>}
-                <div className="ovhazards">
-                  {hazards.map((h) => (
-                    <div key={h.name} className="ovhazard">
-                      <div className="ovhazard__row">
-                        <span className="ellipsis">{h.name}</span>
-                        <b className="ovnum">{h.n}</b>
-                      </div>
-                      <span className="ovtrack">
-                        <i style={{ width: `${(h.n / hazardMax) * 100}%` }} />
-                      </span>
+                {health.length === 0 && <p className="card__body meta">No rule raised an alert {inPeriod}.</p>}
+                <div className="ovrulehead" aria-hidden="true">
+                  <span>Rule</span>
+                  <span>Alerts</span>
+                  <span>False</span>
+                  <span>Avg ack</span>
+                </div>
+                <ul className="ovrules">
+                  {health.slice(0, 8).map((h) => (
+                    <li key={h.rule.id}>
+                      <Link to={`/configuration/rules/${h.rule.id}`} className="ovrule" title={h.flag ? `${h.flag.text}: open the rule` : 'Open The Rule'}>
+                        <span className="stack" style={{ gap: 1, minWidth: 0 }}>
+                          <strong className="ellipsis">{h.rule.name}</strong>
+                          {h.flag && <span className={`ovrule__flag ovrule__flag--${h.flag.kind}`}>{h.flag.text}</span>}
+                        </span>
+                        <span className="ovrule__n">{h.alerts}</span>
+                        <span className={`ovrule__n${h.flag?.kind === 'noisy' ? ' is-bad' : ''}`}>{h.falsePct === null ? '–' : `${h.falsePct}%`}</span>
+                        <span className="ovrule__n">{h.avgAck === null ? '–' : duration(h.avgAck)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="card ovgrid__12">
+                <div className="card__head">
+                  <h2>When alerts happen</h2>
+                  <span className="ovsub">· by hour of the day</span>
+                  <span className="spacer" />
+                  <span className="ovmeta">
+                    Day shift 06–18: {pattern.day} · Night shift 18–06: {pattern.night}
+                  </span>
+                </div>
+                <div className="ovhours">
+                  {pattern.counts.map((n, h) => (
+                    <div key={h} className={`ovhours__col${h >= 6 && h < 18 ? ' is-day' : ''}${n === Math.max(...pattern.counts) && n > 0 ? ' is-peak' : ''}`} title={`${String(h).padStart(2, '0')}:00 · ${plural(n, 'alert')}`}>
+                      <i style={{ height: `${Math.max(n ? 4 : 0, (n / maxHour) * 100)}%` }} />
+                      <span>{h % 3 === 0 ? String(h).padStart(2, '0') : ''}</span>
                     </div>
                   ))}
                 </div>
+                <p className="meta ovhours__note">
+                  {inRange.length === 0
+                    ? `No alerts ${inPeriod}.`
+                    : span < 2 * DAY
+                      ? 'A single day is too little to see a pattern. Pick a week or more.'
+                      : `Busiest hour ${String(pattern.peak).padStart(2, '0')}:00, about ${pattern.peakTimes.toFixed(1)} times the average hour.`}
+                </p>
               </section>
             </div>
           </>
         )}
       </div>
 
+      {dialog?.kind === 'ack' && <AckDialog alert={dialog.alert} via="console" onClose={closeDialog} />}
+      {dialog?.kind === 'raise' && <RaiseDialog alert={dialog.alert} onClose={closeDialog} />}
       {confirm.dialog}
       {reports && <QavachReportsDrawer onClose={() => setReports(false)} />}
     </div>
@@ -692,8 +975,8 @@ function LevelChart({ list, openList, start, end, unreportedOf, onSend }: { list
   );
 }
 
-/** The custom period: a start and an end, each a date and a time. Changes apply as they are made. */
-function TimeRangePanel({ from, to, now, onChange, onClose }: { from: number; to: number; now: number; onChange: (from: number, to: number) => void; onClose: () => void }) {
+/** The custom period: an exact start and end, each a date and a time. Changes apply as they are made. */
+function TimeRangePanel({ from, to, now, onChange, onClose }: { from: number; to: number; now: number; onChange: (c: Custom) => void; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const away = (e: MouseEvent) => {
@@ -725,7 +1008,7 @@ function TimeRangePanel({ from, to, now, onChange, onClose }: { from: number; to
           max={local(Math.min(to, now))}
           onChange={(e) => {
             const v = read(e.target.value);
-            if (!Number.isNaN(v)) onChange(Math.min(v, to), to);
+            if (!Number.isNaN(v)) onChange({ from: Math.min(v, to), to });
           }}
         />
       </label>
@@ -739,7 +1022,7 @@ function TimeRangePanel({ from, to, now, onChange, onClose }: { from: number; to
           max={local(now)}
           onChange={(e) => {
             const v = read(e.target.value);
-            if (!Number.isNaN(v)) onChange(from, Math.max(from, Math.min(v, now)));
+            if (!Number.isNaN(v)) onChange({ from, to: Math.max(from, Math.min(v, now)) });
           }}
         />
       </label>
@@ -751,7 +1034,7 @@ function TimeRangePanel({ from, to, now, onChange, onClose }: { from: number; to
 }
 
 /** One kind of coverage gap: a count, what it means, and the first few items with a link to fix each. */
-function GapList({ title, hint, items }: { title: string; hint: string; items: { id: string; text: string; to: string }[] }) {
+function GapList({ title, hint, items, all }: { title: string; hint: string; items: { id: string; text: string; to: string }[]; all: string }) {
   return (
     <div className="ovgap">
       <div className="ovgap__head">
@@ -772,7 +1055,11 @@ function GapList({ title, hint, items }: { title: string; hint: string; items: {
               </Link>
             </li>
           ))}
-          {items.length > 5 && <li className="meta">and {items.length - 5} more</li>}
+          <li>
+            <Link to={all} className="ovgap__more" title="See The Full List, Already Filtered">
+              View all {items.length}
+            </Link>
+          </li>
         </ul>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { backend, isOnline } from '../lib/backend';
 import { createStore, uid, useStore } from '../lib/persist';
 import { demoSetup } from '../lib/setup';
+import { seedHistory, seedOpenNow } from '../data/history';
 import { DOWN_FOR_MIN, AREA_DEPARTMENT, POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
 import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordType, Rule, User, Wall } from '../data/types';
 
@@ -16,7 +17,7 @@ const demo = demoSetup(T0);
 
 export const cameraStore = createStore<Camera[]>('cameras', () => demo?.cameras ?? seedCameras(T0));
 export const ruleStore = createStore<Rule[]>('rules', () => demo?.rules ?? seedRules(cameraStore.get(), T0));
-export const alertStore = createStore<Alert[]>('alerts', () => demo?.alerts ?? seedAlerts(T0));
+export const alertStore = createStore<Alert[]>('alerts', () => demo?.alerts ?? [...seedHistory(T0, cameraStore.get(), ruleStore.get()), ...seedAlerts(T0), ...seedOpenNow(T0, cameraStore.get(), ruleStore.get())]);
 export const wallStore = createStore<Wall[]>('walls', () => demo?.walls ?? seedWalls(cameraStore.get()));
 export const policyStore = createStore<Policy[]>('policies', () => demo?.policies ?? POLICIES);
 export const sessionStore = createStore<{ userId: string; live: boolean }>('session', { userId: 'u-priya', live: true });

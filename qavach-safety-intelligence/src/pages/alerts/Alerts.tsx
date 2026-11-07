@@ -17,6 +17,17 @@ type Tab = 'open' | 'acknowledged' | 'closed' | 'all';
 const inTab = (a: Alert, t: Tab) =>
   t === 'all' ? true : t === 'open' ? isOpen(a) : t === 'acknowledged' ? a.state === 'acknowledged' : a.state === 'resolved' || a.state === 'false-alarm';
 
+type Sort = 'newest' | 'crit-low' | 'crit-high' | 'open-first' | 'ack-first' | 'closed-first';
+const SORTS: { value: Sort; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'crit-high', label: 'Criticality: High to low' },
+  { value: 'crit-low', label: 'Criticality: Low to high' },
+  { value: 'open-first', label: 'Status: Open first' },
+  { value: 'ack-first', label: 'Status: Acknowledged first' },
+  { value: 'closed-first', label: 'Status: Closed first' },
+];
+const stateRank = (a: Alert) => (a.state === 'acknowledged' ? 1 : a.state === 'resolved' || a.state === 'false-alarm' ? 2 : 0);
+
 export function Alerts() {
   const { alertId } = useParams();
   const nav = useNavigate();
@@ -31,6 +42,8 @@ export function Alerts() {
   const [prio, setPrio] = useState<Priority | 'all'>(startLevel === 'P1' || startLevel === 'P2' || startLevel === 'P3' || startLevel === 'P4' ? startLevel : 'all');
   const [area, setArea] = useState('all');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<Sort>('newest');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [settings, setSettings] = useState(false);
   // Opened from a camera (its badge on the video wall): only that camera's alerts, kept while you click through them.
   const onlyCam = params.get('camera') ?? '';
@@ -46,13 +59,36 @@ export function Alerts() {
     const t = q.trim().toLowerCase();
     return !t || `${a.id} ${a.title} ${cam?.id} ${cam?.name} ${a.qavach?.ref ?? ''}`.toLowerCase().includes(t);
   });
+  // P1 is the most critical. Ties fall back to newest first.
+  const prioNo = (a: Alert) => Number(a.priority.slice(1));
+  const first = sort === 'open-first' ? 0 : sort === 'ack-first' ? 1 : 2;
+  const rank = (a: Alert) => (stateRank(a) === first ? 0 : stateRank(a) === 0 ? 1 : stateRank(a) === 1 ? 2 : 3);
+  filtered.sort((a, b) => {
+    const d = sort === 'crit-high' ? prioNo(a) - prioNo(b) : sort === 'crit-low' ? prioNo(b) - prioNo(a) : sort === 'newest' ? 0 : rank(a) - rank(b);
+    return d || b.at - a.at;
+  });
+  const activeFilters = [tab !== 'all', prio !== 'all', area !== 'all', q.trim() !== ''].filter(Boolean).length;
   const selected = alerts.find((a) => a.id === alertId);
   const openCount = alerts.filter(isOpen).length;
 
   return (
     <div className="page page--wide">
-      <div className="qsearch qsearch--first">
+      <div className="albar">
+        <button type="button" className={`albar__btn${filtersOpen ? ' is-open' : ''}`} aria-expanded={filtersOpen} aria-controls="al-filters" onClick={() => setFiltersOpen((v) => !v)}>
+          <Icon name="search" size={18} stroke={2} />
+          Search &amp; Filter
+          {activeFilters > 0 && <span className="albar__count">{activeFilters}</span>}
+          <Icon name="chevron-down" size={16} stroke={2} />
+        </button>
+        <div className="albar__sort"><Choice id="al-sort" label="Sort By" clearTo="newest" value={sort} onChange={setSort} options={SORTS} /></div>
+      </div>
+      {filtersOpen && (
+      <div className="qsearch" id="al-filters">
         <div className="qsearch__fields">
+          <div className="field">
+            <label htmlFor="al-q">Search</label>
+            <input id="al-q" className="input" placeholder="Search alerts" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
           <Choice
             id="al-state"
             label="Alert State"
@@ -68,10 +104,6 @@ export function Alerts() {
           />
           <Choice id="al-level" label="Alert Level" clearTo="all" value={prio} onChange={setPrio} options={[{ value: 'all' as Priority | 'all', label: 'All levels' }, ...(['P1', 'P2', 'P3', 'P4'] as const).map((p) => ({ value: p as Priority | 'all', label: `${p} ${PRIORITY_NAME[p]}` }))]} />
           <Choice id="al-area" label="Area" clearTo="all" value={area} onChange={setArea} options={[{ value: 'all', label: 'All areas' }, ...AREAS.map((a) => ({ value: a.id, label: a.name }))]} />
-          <div className="field">
-            <label htmlFor="al-q">Search</label>
-            <input id="al-q" className="input" placeholder="Search alerts" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
         </div>
         <button
           type="button"
@@ -86,6 +118,7 @@ export function Alerts() {
           Clear Search
         </button>
       </div>
+      )}
 
       <div className="listing-row">
         <span className="listing-tag">
