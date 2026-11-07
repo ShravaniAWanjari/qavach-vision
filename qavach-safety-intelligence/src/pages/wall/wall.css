@@ -110,3 +110,4 @@
 @container (max-width: 250px) { .wtile__label { display: none; } }
 .wtile__top { flex-wrap: wrap; row-gap: 4px; }
 .wtile__actions { margin-left: auto; }
+.wtile--open { cursor: pointer; }

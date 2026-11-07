@@ -11,7 +11,7 @@ import { dataUrlBytes, jpegToPdf } from '../lib/pdf';
 import { download, writeXlsx, type Cell } from '../lib/sheet';
 import { ago, duration, hm, useNow } from '../lib/time';
 import { draftRecord } from '../lib/qai';
-import { AREAS_BY_ID, isOpen, raiseInQavach, toast, useAlerts, useCameras, useMe, useRules } from '../state/store';
+import { AREAS_BY_ID, isOpen, raiseInQavach, toast, unavailableSince, useAlerts, useCameras, useMe, useRules } from '../state/store';
 import './overview.css';
 
 type Range = '5m' | '10m' | '15m' | 'custom';
@@ -83,8 +83,12 @@ export function Overview() {
   const inRange = alerts.filter((a) => a.at >= start && a.at <= end);
   const before = alerts.filter((a) => a.at >= start - span && a.at < start).length;
   const camById = new Map(cams.map((c) => [c.id, c]));
-  // Both views follow the chosen period: open alerts raised in it, and so on. Camera health is always now.
-  const open = alerts.filter((a) => isOpen(a) && a.at >= start && a.at <= end).sort((a, b) => (a.priority === b.priority ? b.at - a.at : a.priority.localeCompare(b.priority)));
+  const [params, setParams] = useSearchParams();
+  const view: View = params.get('view') === 'insights' ? 'insights' : 'actions';
+  const setView = (v: View) => setParams(v === 'insights' ? { view: 'insights' } : {}, { replace: true });
+  // Action Centre shows everything that needs doing, whenever it was raised; Insights follows the chosen period.
+  const openAll = alerts.filter(isOpen).sort((a, b) => (a.priority === b.priority ? b.at - a.at : a.priority.localeCompare(b.priority)));
+  const open = view === 'actions' ? openAll : openAll.filter((a) => a.at >= start && a.at <= end);
   const escalated = open.filter((a) => a.state === 'escalated').length;
   const oldest = open.reduce((m, a) => Math.min(m, a.at), now);
   const { counts, unit } = buckets(inRange, start, end);
@@ -114,9 +118,6 @@ export function Overview() {
   const hazards = [...hazardCount.entries()].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   const hazardMax = Math.max(1, ...hazards.map((h) => h.n));
 
-  const [params, setParams] = useSearchParams();
-  const view: View = params.get('view') === 'insights' ? 'insights' : 'actions';
-  const setView = (v: View) => setParams(v === 'insights' ? { view: 'insights' } : {}, { replace: true });
 
   // Action Centre
   const ruleById = new Map(rules.map((r) => [r.id, r]));
@@ -124,7 +125,7 @@ export function Overview() {
   const oldestEscalated = escalatedList.reduce((m, a) => Math.min(m, a.at), now);
   // Handled (acknowledged or resolved) P1 and P2 alerts whose rule asks for a QHSE record, but none was raised.
   const unreported = alerts
-    .filter((a) => a.at >= start && a.at <= end && (a.priority === 'P1' || a.priority === 'P2') && !a.qavach && (a.state === 'acknowledged' || a.state === 'resolved') && (ruleById.get(a.ruleId)?.qavach ?? 'none') !== 'none')
+    .filter((a) => (a.priority === 'P1' || a.priority === 'P2') && !a.qavach && (a.state === 'acknowledged' || a.state === 'resolved') && (ruleById.get(a.ruleId)?.qavach ?? 'none') !== 'none')
     .sort((a, b) => a.priority.localeCompare(b.priority) || b.at - a.at);
   // Handled alerts of one level, in the period, whose rule asks for a QHSE record and that have none yet.
   const unreportedOf = (p: Priority) =>
@@ -152,7 +153,7 @@ export function Overview() {
   const noZones = cams.filter((c) => c.status !== 'offline' && c.zones.length === 0);
   const unwatched = cams.filter((c) => !rules.some((r) => r.cameraIds.includes(c.id)));
   const testRules = rules.filter((r) => r.mode === 'test');
-  const toFix = open.length + unreported.length + faulty.length;
+  const toFix = openAll.length + unreported.length + faulty.length;
 
   // Insights
   const ackTimes = (list: Alert[]) => list.filter((a) => a.ackAt && a.ackAt >= a.at).map((a) => a.ackAt! - a.at);
@@ -249,61 +250,63 @@ export function Overview() {
         </button>
       </div>
 
-      <div className={`ovbar${range === 'custom' ? ' ovbar--custom' : ''}`}>
+      <div className={`ovbar${view === 'insights' && range === 'custom' ? ' ovbar--custom' : ''}`}>
         <Choice id="ov-site" label="Terminal" icon="location" className="ovbar__site" value={SITE.name} onChange={() => {}} options={[{ value: SITE.name, label: `${SITE.name} · ${cams.length} cameras` }]} />
-        <div className="ovperiod">
-          <PillTabs
-            label="Period"
-            value={range}
-            onChange={(r) => {
-              if (r === 'custom') {
-                // Custom starts on the last hour; the panel opens to change the dates and times.
-                if (!custom) setCustom({ from: now - HOUR, to: now });
-                setRange('custom');
-                setPicking(true);
-              } else {
-                setPicking(false);
-                setRange(r);
-              }
-            }}
-            options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
-          />
-          {range === 'custom' && custom && (
-            <button type="button" className="dfield ovperiod__field" aria-haspopup="dialog" aria-expanded={picking} onClick={() => setPicking(!picking)}>
-              <span className="dfield__label">From – To</span>
-              <span className="dfield__value">
-                {dayTimeShort(custom.from)} | {dayTimeShort(custom.to)}
-              </span>
-              <span className="dfield__icons">
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="dfield__clear"
-                  aria-label="Clear the custom period"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCustom(undefined);
-                    setPicking(false);
-                    setRange('15m');
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
+        {view === 'insights' && (
+          <div className="ovperiod">
+            <PillTabs
+              label="Period"
+              value={range}
+              onChange={(r) => {
+                if (r === 'custom') {
+                  // Custom starts on the last hour; the panel opens to change the dates and times.
+                  if (!custom) setCustom({ from: now - HOUR, to: now });
+                  setRange('custom');
+                  setPicking(true);
+                } else {
+                  setPicking(false);
+                  setRange(r);
+                }
+              }}
+              options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
+            />
+            {range === 'custom' && custom && (
+              <button type="button" className="dfield ovperiod__field" aria-haspopup="dialog" aria-expanded={picking} onClick={() => setPicking(!picking)}>
+                <span className="dfield__label">From – To</span>
+                <span className="dfield__value">
+                  {dayTimeShort(custom.from)} | {dayTimeShort(custom.to)}
+                </span>
+                <span className="dfield__icons">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="dfield__clear"
+                    aria-label="Clear the custom period"
+                    onClick={(e) => {
                       e.stopPropagation();
                       setCustom(undefined);
                       setPicking(false);
                       setRange('15m');
-                    }
-                  }}
-                >
-                  <Icon name="close" size={18} stroke={2} />
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setCustom(undefined);
+                        setPicking(false);
+                        setRange('15m');
+                      }
+                    }}
+                  >
+                    <Icon name="close" size={18} stroke={2} />
+                  </span>
+                  <Icon name="calendar" size={26} stroke={1.5} />
                 </span>
-                <Icon name="calendar" size={26} stroke={1.5} />
-              </span>
-            </button>
-          )}
-          {picking && custom && <TimeRangePanel from={custom.from} to={custom.to} now={now} onChange={(from, to) => setCustom({ from, to })} onClose={() => setPicking(false)} />}
-        </div>
+              </button>
+            )}
+            {picking && custom && <TimeRangePanel from={custom.from} to={custom.to} now={now} onChange={(from, to) => setCustom({ from, to })} onClose={() => setPicking(false)} />}
+          </div>
+        )}
         <span className="spacer" />
         <ExportMenu onPick={exportAs} />
         <Link to="/wall" className="btn btn--icon" title="Open Video Wall" aria-label="Open video wall">
@@ -317,7 +320,7 @@ export function Overview() {
             {SITE.name} · {view === 'insights' ? 'Insights' : 'Action Centre'}
           </strong>
           <span>
-            {period.label} · exported {new Date(now).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            {view === 'insights' ? `${period.label} · ` : ''}exported {new Date(now).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
@@ -440,15 +443,23 @@ export function Overview() {
                   </Link>
                 </div>
                 {faulty.length === 0 && <p className="card__body meta">Every camera is live.</p>}
+                {faulty.length > 0 && (
+                  <div className="ovrows ovcam-headwrap" aria-hidden="true">
+                    <div className="ovcam ovcam--head">
+                      <span className="dot" style={{ visibility: 'hidden' }} />
+                      <span className="ovcam__id">ID</span>
+                      <span className="ovcam__state">Status</span>
+                      <span className="ovcam__since">Since</span>
+                    </div>
+                  </div>
+                )}
                 <div className="ovrows ovcol__list">
                   {faulty.map((c) => (
-                    <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="ovcam">
+                    <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="ovcam" title={healthReason(c)}>
                       <span className={`dot dot--${c.status}`} />
                       <span className="mono ovcam__id">{c.id}</span>
-                      <span className="ovcam__why ellipsis" title={healthReason(c)}>
-                        {healthReason(c)}
-                      </span>
-                      <span className="ovcam__state">{c.status === 'offline' ? 'Offline' : 'Degraded'}</span>
+<span className="ovcam__state">{c.status === 'offline' ? 'Offline' : 'Degraded'}</span>
+                      <span className="ovcam__since" title={`Unavailable since ${hm(unavailableSince(c))}`}>{since(unavailableSince(c), now)}</span>
                     </Link>
                   ))}
                 </div>

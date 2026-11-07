@@ -1,7 +1,7 @@
 import { backend, isOnline } from '../lib/backend';
 import { createStore, uid, useStore } from '../lib/persist';
 import { demoSetup } from '../lib/setup';
-import { AREA_DEPARTMENT, POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
+import { DOWN_FOR_MIN, AREA_DEPARTMENT, POLICIES, TEAMS, USERS, seedAlerts, seedCameras, seedRules, seedWalls, AREAS } from '../data/seed';
 import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordType, Rule, User, Wall } from '../data/types';
 
 // Shared state for every screen. Seed times are relative to the first time the
@@ -9,6 +9,8 @@ import type { ActivityEntry, Alert, Camera, Policy, QavachRecord, QavachRecordTy
 
 const startedAt = createStore<number>('startedAt', () => Date.now());
 const T0 = startedAt.get();
+/** When a camera became offline or degraded. Saved data from before this was recorded falls back to the sample times. */
+export const unavailableSince = (c: Camera) => c.statusSince ?? T0 - (DOWN_FOR_MIN[c.id] ?? 30) * 60000;
 /** A set-up saved from this console (src/data/demo-state.json), when there is one; a first visit starts from it. */
 const demo = demoSetup(T0);
 

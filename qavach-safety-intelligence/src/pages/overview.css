@@ -62,7 +62,9 @@ button.kpi:hover { box-shadow: 0 0 0 1px var(--c-blue), var(--q-shadow-card); }
 .ovcam:hover { color: var(--q-ink); background: var(--c-wash); }
 .ovcam__id { width: 58px; flex: 0 0 auto; font-weight: 600; }
 .ovcam__why { flex: 1; min-width: 0; font-size: 12px; color: var(--q-muted); }
-.ovcam__state { font-size: 12px; color: var(--q-muted); white-space: nowrap; }
+.ovcam__id { flex: 1 1 auto; }
+.ovcam__state { width: 66px; flex: 0 0 auto; font-size: 12px; color: var(--q-muted); white-space: nowrap; }
+.ovcam__since { width: 70px; flex: 0 0 auto; text-align: right; font-size: 12px; color: var(--q-ink); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .ovtime { width: 76px; flex: 0 0 auto; text-align: right; font-size: 12px; color: var(--q-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ovstate { width: 96px; flex: 0 0 auto; display: flex; justify-content: flex-end; }
@@ -191,3 +193,8 @@ button.kpi:hover { box-shadow: 0 0 0 1px var(--c-blue), var(--q-shadow-card); }
 .ovsend { align-self: flex-start; margin-top: 4px; }
 @media (max-width: 1100px) { .lvchart__levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ovhazards-card .ovhazards { grid-template-columns: 1fr; }
+/* Column names over the camera health list. */
+.ovcam-headwrap { padding-bottom: 0; }
+.ovcam.ovcam--head { min-height: 30px; border-bottom: 1px solid var(--q-divider); font-size: 11.5px; font-weight: 700; color: var(--q-muted); }
+.ovcam.ovcam--head:hover { background: none; }
+.ovcam--head .ovcam__id, .ovcam--head .ovcam__state, .ovcam--head .ovcam__since { font-size: 11.5px; font-weight: 700; color: var(--q-muted); }

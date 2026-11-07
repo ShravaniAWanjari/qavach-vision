@@ -53,6 +53,8 @@ export interface Camera {
   /** Varies the sample picture so cameras in one area don't look identical. */
   variant: number;
   status: CameraStatus;
+  /** When the camera went offline or degraded (unset while it is online). */
+  statusSince?: number;
   stream: string;
   make: string;
   resolution: string;

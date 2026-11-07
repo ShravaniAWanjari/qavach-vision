@@ -59,6 +59,8 @@ const ZONED = new Set([
 ]);
 const DEGRADED = new Set(['YRD-14', 'PER-08', 'RFR-05']);
 const OFFLINE = new Set(['YRD-27', 'WSH-07']);
+/** How long ago, in minutes, each sample faulty camera became unavailable. */
+export const DOWN_FOR_MIN: Record<string, number> = { 'WSH-07': 220, 'YRD-27': 52, 'RFR-05': 75, 'PER-08': 26, 'YRD-14': 9 };
 
 export function seedCameras(now: number): Camera[] {
   const out: Camera[] = [];
@@ -74,6 +76,7 @@ export function seedCameras(now: number): Camera[] {
         scene: a.scene,
         variant,
         status: OFFLINE.has(id) ? 'offline' : DEGRADED.has(id) ? 'degraded' : 'online',
+        statusSince: DOWN_FOR_MIN[id] ? now - DOWN_FOR_MIN[id] * 60000 : undefined,
         stream: `rtsp://10.40.${Math.floor(ip / 250) + 1}.${ip++ % 250}:554/stream1`,
         make: MAKES[(i + a.id.length) % MAKES.length],
         resolution: i % 3 === 0 ? '3840 × 2160' : '2560 × 1440',

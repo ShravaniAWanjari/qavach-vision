@@ -194,7 +194,14 @@ export function WallBody({
         </div>
       );
     return (
-      <div key={key} className={cls} {...drop}>
+      <div
+        key={key}
+        className={`${cls}${onOpen && !editing ? ' wtile--open' : ''}`}
+        {...drop}
+        // Clicking the picture opens the same camera information as the (i) button; the buttons on the tile keep their own jobs.
+        onClick={onOpen && !editing ? (e) => !(e.target as HTMLElement).closest('button') && onOpen(cam) : undefined}
+        title={onOpen && !editing ? `${cam.id} · Camera Information` : undefined}
+      >
         <CameraView cam={cam} still={!animate} alert={alert} now={now} className="wtile__view" />
         <div className="wtile__top">
           {opts.reason === 'alert' && (

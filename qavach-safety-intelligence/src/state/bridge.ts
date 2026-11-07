@@ -45,7 +45,15 @@ function ingest(ev: BackendEvent) {
 function applyStatus(statuses: Record<string, CameraStatus>) {
   const toStatus = (s: CameraStatus['state']) => (s === 'running' ? 'online' : s === 'starting' ? 'degraded' : 'offline');
   const changed = cameraStore.get().some((c) => c.source && statuses[c.id] && toStatus(statuses[c.id].state) !== c.status);
-  if (changed) cameraStore.set((list) => list.map((c) => (c.source && statuses[c.id] ? { ...c, status: toStatus(statuses[c.id].state) } : c)));
+  if (changed)
+    cameraStore.set((list) =>
+      list.map((c) => {
+        if (!c.source || !statuses[c.id]) return c;
+        const status = toStatus(statuses[c.id].state);
+        // Note when it stopped being fully live, so the console can say how long it has been unavailable.
+        return status === c.status ? c : { ...c, status, statusSince: status === 'online' ? undefined : Date.now() };
+      }),
+    );
   activityStore.set((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(statuses).map(([id, s]) => [id, s.people])) }));
 }
 
