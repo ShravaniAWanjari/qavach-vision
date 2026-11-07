@@ -114,6 +114,8 @@ const ruleBody = (r: Rule) => ({ ...r });
 export const backend = {
   health: () => request<{ ok: boolean; epoch: string }>('/api/health'),
   probeLink: (url: string, creds?: Credentials) => request<ProbeResult>('/api/sources/probe', json('POST', { source: { kind: 'link', url, ...(creds ?? {}) } })),
+  /** Opens a video the service already holds (a bundled sample) and reads one frame from it. */
+  probeUpload: (uploadId: string) => request<ProbeResult>('/api/sources/probe', json('POST', { source: { kind: 'upload', uploadId } })),
   upload(file: File, onProgress: (share: number) => void): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();

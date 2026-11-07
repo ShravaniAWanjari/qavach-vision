@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Icon, type IconName } from '../../components/Icon';
-import { CameraView, Choice, Empty, MultiSelect } from '../../components/ui';
+import { CameraView, Choice, Empty, MultiSelect, SearchActions } from '../../components/ui';
 import { AREAS, DEPARTMENTS } from '../../data/seed';
 import type { Camera } from '../../data/types';
 import { download, writeXlsx } from '../../lib/sheet';
@@ -118,20 +118,16 @@ export function Cameras() {
               { value: 'issues' as Show, label: `Offline or degraded (${cams.filter((c) => c.status !== 'online').length})` },
             ]}
           />
-        </div>
-          <button
-            type="button"
-            className="qsearch__clear camsearch__clear"
-            onClick={() => {
+          <SearchActions
+            onClear={() => {
               setDepts([]);
               setAreas([]);
               setIdQ('');
               setLocQ('');
               setShow('all');
             }}
-          >
-            Clear Search
-          </button>
+          />
+        </div>
         </div>
         <div className="camsearch__actions">
           <div className="viewswitch" role="group" aria-label="View">

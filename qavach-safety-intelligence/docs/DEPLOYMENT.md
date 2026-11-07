@@ -20,6 +20,7 @@ Volume /data: state.json, uploads/, frames/, snapshots/
 - Demo cameras connected by default:
   - DCK-09: `backend/samples/5a3b1e000004.mp4` (copied to `/data/uploads` at start), rule R-12 live.
   - PER-11: public YouTube live stream, rule R-13 test mode. Needs outbound internet.
+- Sample video for camera set-up: `backend/samples/5a3b1e000005.mp4` ("Fire and Smoke Detection Sample"). It ships in the image (`COPY backend/samples`) and is copied to `/data/uploads` at start, so the "Sample Video" dropdown (Camera set-up, Upload a video) works on the live link with no upload. It plays in a loop. To add another sample, put a file named with a 12-character hex id in `backend/samples/` and list it in `src/data/samples.ts`.
 - Detection runs from first start. A feed that cannot be opened shows "Camera feed interrupted" in the console; the service retries.
 
 ## 2. Components

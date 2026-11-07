@@ -168,7 +168,9 @@ input[type='radio']:checked { background: var(--q-ai); box-shadow: inset 0 0 0 3
 .msel__opt--check { padding-top: 8px; padding-bottom: 8px; min-height: 39px; }
 .msel__opt--check input[type='checkbox'], .msel__opt--check input[type='checkbox']:checked { appearance: auto; -webkit-appearance: checkbox; width: 13px; height: 13px; margin: 4px; border: 0; border-radius: 0; background: none; flex: 0 0 auto; }
 .msel__opt--main { justify-content: space-between; }
-.msel__group { padding: 8px 10px; font-size: 14px; line-height: 17px; font-weight: 500; color: color-mix(in srgb, var(--c-black) 54%, transparent); cursor: default; }
+.msel__group { margin-top: 4px; padding: 12px 10px 4px; border-top: 1px solid var(--q-border); font-size: 11px; line-height: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--q-ink); cursor: default; pointer-events: none; }
+.msel__items > div:first-child > .msel__group { margin-top: 0; border-top: 0; padding-top: 8px; }
+.msel__items:has(.msel__group) .msel__opt { padding-left: 20px; }
 .msel__none { padding: 8px 10px; font-size: 14px; line-height: 17px; color: var(--c-light); }
 .msel__side { z-index: 1310; border-radius: 4px; }
 
@@ -228,8 +230,16 @@ button.chip[aria-pressed='true'] { background: var(--q-ai); color: var(--c-white
 .table tbody tr.is-selected td { background: var(--q-ai-wash); }
 .card:has(> .table), .card:has(> .table-wrap > .table) { background: transparent; box-shadow: none; }
 /* Qavach search card: 56px fields side by side, "Clear Search" under the right end */
-.qsearch { position: relative; background: var(--c-white); border-radius: 4px; box-shadow: 0 1px 2px color-mix(in srgb, var(--c-black) 10%, transparent); padding: 20px 20px 36px; }
-.qsearch__fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.qsearch { position: relative; background: var(--c-white); border-radius: 4px; box-shadow: 0 1px 2px color-mix(in srgb, var(--c-black) 10%, transparent); padding: 20px; }
+/* Fields share a line; the search buttons take the end of it, or drop to the right when the fields wrap. */
+.qsearch__fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.qsearch__fields > * { flex: 1 1 220px; min-width: 0; }
+.qsearch__fields > .sact { flex: 0 0 100%; margin-top: 4px; }
+/* Search and Clear Search, shared by every filter bar. Clear Search sits under Search, right-aligned. */
+.sact { display: flex; justify-content: flex-end; }
+.sact__clear { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--c-blue); background: var(--c-white); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 600; color: var(--c-blue); white-space: nowrap; cursor: pointer; }
+.sact__clear:hover { background: var(--c-blue-wash); }
+.sact__clear:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
 .qsearch__clear { position: absolute; right: 22px; bottom: 10px; border: 0; background: none; padding: 0 16px; font-size: 16px; line-height: 16px; color: var(--c-grey); }
 .qsearch__clear:hover { color: var(--q-ink); }
 /* A listing page that opens straight on its search card */
@@ -402,3 +412,13 @@ button.drcal__arrow:hover { background: var(--q-canvas); }
 /* Report to QHSE: red text on a pale red fill with a red outline. */
 .btn--report { background: var(--c-red-wash); border-color: var(--c-red); color: var(--c-red); }
 .btn--report:hover { background: color-mix(in srgb, var(--c-red) 16%, var(--c-white)); border-color: var(--c-red); color: var(--c-red); }
+.listbar:has(.sact) { flex-wrap: wrap; row-gap: 8px; }
+.listbar__sortcol { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.listbar__sortcol > .msel { width: 100%; }
+
+/* The search buttons sit level with the fields they search; New rule goes to the right end of its line. */
+.qsearch__fields > .sact, .camsearch__fields > .sact { align-self: center; }
+.listbar > .listbar__new { margin-left: auto; }
+
+/* Clear Search hangs under the Search button, so the button itself lines up with the fields. */
+.qsearch { padding-bottom: 20px; }

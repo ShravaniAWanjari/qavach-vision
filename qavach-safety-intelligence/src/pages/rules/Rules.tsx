@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CascadeSelect, type CascadeField, Choice, PRIORITY_NAME, PriorityBadge, Switch } from '../../components/ui';
+import { CascadeSelect, type CascadeField, Choice, PRIORITY_NAME, PriorityBadge, SearchActions, Switch } from '../../components/ui';
 import type { Classification, Condition, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, SCHEDULE_LABEL, SUBJECT_LABEL } from '../../lib/qai';
 import { AREAS_BY_ID, isAdmin, saveRule, toast, useAlerts, useCameras, useMe, useRules } from '../../state/store';
@@ -118,9 +118,17 @@ export function Rules() {
           Filter
           {active > 0 && <span className="listbar__count">{active}</span>}
         </button>
-        <CascadeSelect className="listbar__sort" label="Sort rules by" prefix="Sort by:" fields={SORT_FIELDS} value={sort} onChange={setSort} />
+        <div className="listbar__sortcol">
+          <CascadeSelect className="listbar__sort" label="Sort rules by" prefix="Sort by:" fields={SORT_FIELDS} value={sort} onChange={setSort} />
+          <SearchActions
+            onClear={() => {
+              setQ('');
+              setFilters(NO_FILTERS);
+            }}
+          />
+        </div>
         {admin && (
-          <button type="button" className="qact__btn" onClick={() => nav('/configuration/rules')}>
+          <button type="button" className="qact__btn listbar__new" onClick={() => nav('/configuration/rules')}>
             <Icon name="add-circle" size={24} />
             New rule
           </button>

@@ -328,20 +328,6 @@ export function RuleEditor() {
                 <span className="field__label">How steady and how sure</span>
                 <div className="grid-3" style={{ gap: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
                   <div className="field">
-                    <Choice
-                      id="r-look"
-                      label="Look For"
-                      value={rule.fireClasses ?? 'both'}
-                      onChange={(fireClasses) => set({ fireClasses })}
-                      options={[
-                        { value: 'both' as const, label: 'Fire and smoke' },
-                        { value: 'fire' as const, label: 'Fire only' },
-                        { value: 'smoke' as const, label: 'Smoke only' },
-                      ]}
-                    />
-                    <span className="field__hint">Each one raises its own alert.</span>
-                  </div>
-                  <div className="field">
                     <label htmlFor="r-hits">Frames seen, of the last 8</label>
                     <input id="r-hits" className="input" type="number" min={1} max={8} value={steady.frames} onChange={(e) => set({ minFrames: Math.min(8, Math.max(1, Math.round(Number(e.target.value)) || 1)) })} />
                     <span className="field__hint">Ignores a one-frame glint. They need not be in a row.</span>

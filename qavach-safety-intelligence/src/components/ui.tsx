@@ -745,6 +745,18 @@ function SmokePlume({ box, fire }: { box: Alert['box']; fire: boolean }) {
   );
 }
 
+/** Clear Search for a filter bar. It sits under the last dropdown, on the right, and empties the fields. */
+export function SearchActions({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="sact">
+      <button type="button" className="sact__clear" onClick={onClear}>
+        <Icon name="close" size={13} stroke={2.4} />
+        Clear Search
+      </button>
+    </div>
+  );
+}
+
 /** A camera picture with its caption, and optionally zones and an alert's detection box. */
 export function CameraView({
   cam,

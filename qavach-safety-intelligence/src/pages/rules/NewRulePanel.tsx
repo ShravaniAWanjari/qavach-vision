@@ -193,19 +193,6 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
         {rule.condition === 'crowd' && (
           <Choice id="nr-crowd" label="More Than" value={rule.crowdOver} onChange={(crowdOver) => set({ crowdOver })} options={[...new Set([2, 3, 4, 5, 6, 8, 10, 15, 20, rule.crowdOver])].sort((a, b) => a - b).map((n) => ({ value: n, label: `${n} people` }))} />
         )}
-        {isFire && (
-          <Choice
-            id="nr-look"
-            label="Look For"
-            value={rule.fireClasses ?? 'both'}
-            onChange={(fireClasses) => set({ fireClasses })}
-            options={[
-              { value: 'both' as const, label: 'Fire and smoke' },
-              { value: 'fire' as const, label: 'Fire only' },
-              { value: 'smoke' as const, label: 'Smoke only' },
-            ]}
-          />
-        )}
 
         <div className="newrule__pair">
           {!isFire && (

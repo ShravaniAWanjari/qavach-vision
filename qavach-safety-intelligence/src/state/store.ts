@@ -204,7 +204,15 @@ export function setCameraOnRule(rule: Rule, cam: Camera, on: boolean, zoneIds: s
   return on ? { ...rule, cameraIds: [...rest, cam.id], zoneIds: [...zones, ...zoneIds] } : { ...rule, cameraIds: rest, zoneIds: zones };
 }
 
-export function saveCamera(cam: Camera) {
+/** The next free camera number in an area: one past the highest in use, so a removed camera's number is never reused over another. */
+export function nextCameraId(areaPrefix: string, cams: Camera[]) {
+  const nums = cams.filter((c) => c.id.startsWith(`${areaPrefix}-`)).map((c) => Number(c.id.slice(areaPrefix.length + 1))).filter((n) => Number.isFinite(n));
+  return `${areaPrefix}-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
+}
+
+/** Saves a camera. A new one joins the walls and rules that cover its area unless `place` is false, which the camera editor
+ *  uses because it already applied what the admin ticked. */
+export function saveCamera(cam: Camera, opts: { place?: boolean } = {}) {
   const isNew = !cameraStore.get().some((c) => c.id === cam.id);
   cameraStore.set((list) => (list.some((c) => c.id === cam.id) ? list.map((c) => (c.id === cam.id ? cam : c)) : [...list, cam]));
   if (cam.source) pushToService(`camera ${cam.id}`, () => backend.putCamera(cam));
@@ -218,6 +226,7 @@ export function saveCamera(cam: Camera) {
     }
     return;
   }
+  if (opts.place === false) return;
   // A new camera joins the walls and rules that already cover its work area, so it shows up everywhere at once.
   // A connected camera (one with a real stream) is left off rules until someone chooses, since a rule starts real detection on it.
   const place = placementFor(cam, cameraStore.get(), ruleStore.get(), wallStore.get());

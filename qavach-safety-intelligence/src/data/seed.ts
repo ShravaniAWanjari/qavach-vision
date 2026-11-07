@@ -467,7 +467,7 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
       subject: 'person',
       condition: 'enters',
       durationSec: 3,
-      priority: 'P2',
+      priority: 'P1',
       mode: 'test',
       qavach: 'Observation',
       updatedAt: t(1),

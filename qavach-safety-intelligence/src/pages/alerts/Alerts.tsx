@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { AckDialog, EscalateDialog, NoteDialog, RaiseDialog } from '../../components/AlertDialogs';
 import { Icon } from '../../components/Icon';
+import { SearchActions } from '../../components/ui';
 import { QavachReportsLink } from '../../components/QavachReports';
 import { CameraView, CHANNEL, Choice, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
 import { AREAS } from '../../data/seed';
@@ -81,6 +82,9 @@ export function Alerts() {
           <Icon name="chevron-down" size={16} stroke={2} />
         </button>
         <div className="albar__sort"><Choice id="al-sort" label="Sort By" clearTo="newest" value={sort} onChange={setSort} options={SORTS} /></div>
+        <button type="button" className="albar__gear" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
+          <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
+        </button>
       </div>
       {filtersOpen && (
       <div className="qsearch" id="al-filters">
@@ -104,19 +108,15 @@ export function Alerts() {
           />
           <Choice id="al-level" label="Alert Criticality" clearTo="all" value={prio} onChange={setPrio} options={[{ value: 'all' as Priority | 'all', label: 'All criticalities' }, ...(['P1', 'P2', 'P3', 'P4'] as const).map((p) => ({ value: p as Priority | 'all', label: `${p} ${PRIORITY_NAME[p]}` }))]} />
           <Choice id="al-area" label="Area" clearTo="all" value={area} onChange={setArea} options={[{ value: 'all', label: 'All areas' }, ...AREAS.map((a) => ({ value: a.id, label: a.name }))]} />
+          <SearchActions
+            onClear={() => {
+              setTab('all');
+              setPrio('all');
+              setArea('all');
+              setQ('');
+            }}
+          />
         </div>
-        <button
-          type="button"
-          className="qsearch__clear"
-          onClick={() => {
-            setTab('all');
-            setPrio('all');
-            setArea('all');
-            setQ('');
-          }}
-        >
-          Clear Search
-        </button>
       </div>
       )}
 
@@ -134,9 +134,6 @@ export function Alerts() {
             </button>
           </span>
         )}
-        <button type="button" className="listing-row__gear" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
-          <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
-        </button>
       </div>
 
       {settings && (
@@ -271,34 +268,6 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
             )}
           </div>
         )}
-
-        {policy && (() => {
-          const reviewed = alert.state !== 'new' && alert.state !== 'escalated';
-          const closed = alert.state === 'resolved' || alert.state === 'false-alarm';
-          const needsReport = policy.reportWithinSec > 0 && rule?.qavach !== 'none' && alert.state !== 'false-alarm';
-          const late = (ms: number, target: number) => ms > target * 1000;
-          const reviewMs = reviewed && alert.ackAt ? alert.ackAt - alert.at : now - alert.at;
-          const reportMs = alert.qavach ? alert.qavach.at - alert.at : now - alert.at;
-          return (
-            <ol className="aflow" aria-label="Review, report, close">
-              <li className={reviewed ? 'is-done' : late(reviewMs, policy.reviewWithinSec) ? 'is-late' : 'is-now'}>
-                <span className="aflow__n">1</span>
-                <strong>Review</strong>
-                <span>{reviewed ? `${duration(reviewMs)} · target ${duration(policy.reviewWithinSec * 1000)}` : `Within ${duration(policy.reviewWithinSec * 1000)}`}</span>
-              </li>
-              <li className={alert.qavach ? 'is-done' : !needsReport ? 'is-skip' : !reviewed ? '' : late(reportMs, policy.reportWithinSec) ? 'is-late' : 'is-now'}>
-                <span className="aflow__n">2</span>
-                <strong>Report</strong>
-                <span>{alert.qavach ? `${duration(reportMs)} · target ${duration(policy.reportWithinSec * 1000)}` : needsReport ? `Within ${duration(policy.reportWithinSec * 1000)}` : 'Not required'}</span>
-              </li>
-              <li className={closed ? 'is-done' : reviewed && (alert.qavach || !needsReport) ? 'is-now' : ''}>
-                <span className="aflow__n">3</span>
-                <strong>Close</strong>
-                <span>{closed ? (alert.state === 'false-alarm' ? 'False alarm' : 'Closed') : 'When the work is done'}</span>
-              </li>
-            </ol>
-          );
-        })()}
 
         <div className="adetail__media">
           <CameraView cam={cam} still={!live} alert={live ? undefined : alert} zones={cam.zones} highlightZones={alert.zoneId ? [alert.zoneId] : undefined} showZoneLabels now={live ? now : undefined} />

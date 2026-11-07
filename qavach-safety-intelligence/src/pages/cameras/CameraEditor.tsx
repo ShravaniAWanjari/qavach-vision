@@ -3,8 +3,12 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
 import { CameraView, Choice, Seg, Switch, useConfirm } from '../../components/ui';
-import { AREA_DEPARTMENT, AREAS, camId, DEPARTMENTS } from '../../data/seed';
+import { AREA_DEPARTMENT, AREAS, DEPARTMENTS } from '../../data/seed';
+import { nextCameraId, ruleStore } from '../../state/store';
+
+const PREFIX_OF: Record<string, string> = { quay: 'QUA', deck: 'DCK', yard: 'YRD', reefer: 'RFR', gate: 'GTE', workshop: 'WSH', hazmat: 'HAZ', perimeter: 'PER' };
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
+import { SAMPLE_VIDEOS } from '../../data/samples';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
 import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
 import { useService } from '../../state/bridge';
@@ -40,6 +44,7 @@ export function CameraEditor() {
   const [err, setErr] = useState('');
   const [progress, setProgress] = useState<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const [sample, setSample] = useState<string>(() => SAMPLE_VIDEOS.find((v) => v.id === existing?.source?.uploadId)?.id ?? '');
   const [wallPlan, setWallPlan] = useState<Record<string, 'off' | 'rolls' | 'pinned'>>({});
   const [rulePlan, setRulePlan] = useState<Record<string, boolean>>({});
   const [newRule, setNewRule] = useState(false);
@@ -59,7 +64,8 @@ export function CameraEditor() {
     setRulePlan(Object.fromEntries(rules.map((r) => [r.id, r.cameraIds.includes(cam.id)])));
   }, [cam?.id]);
 
-  const suggested = cam && isNew && !touched ? placementFor(cam, cams, rules, walls) : undefined;
+  const place = cam ? placementFor(cam, cams, rules, walls) : { walls: [] as string[], rules: [] as { id: string; zoneIds: string[] }[] };
+  const suggested = cam && isNew && !touched ? place : undefined;
   const wallMode = (id: string): 'off' | 'rolls' | 'pinned' => (suggested ? (suggested.walls.includes(id) ? 'rolls' : 'off') : (wallPlan[id] ?? 'off'));
   const ruleOn = (id: string) => (suggested ? suggested.rules.some((r) => r.id === id) : (rulePlan[id] ?? false));
   // The first change turns what was suggested into explicit choices.
@@ -86,8 +92,7 @@ export function CameraEditor() {
   const set = (p: Partial<Camera>) => setCam({ ...cam, ...p });
   const setArea = (areaId: string) => {
     const area = AREAS.find((a) => a.id === areaId)!;
-    const n = cams.filter((c) => c.areaId === areaId).length + 1;
-    setCam({ ...cam, areaId, scene: area.scene, id: isNew ? camId(areaId, n) : cam.id, zones: isNew ? [] : cam.zones });
+    setCam({ ...cam, areaId, scene: area.scene, id: isNew ? nextCameraId(PREFIX_OF[areaId], cams) : cam.id, zones: isNew ? [] : cam.zones });
     if (isNew) setTest('idle');
   };
 
@@ -150,11 +155,29 @@ export function CameraEditor() {
     }
   };
 
+  /** A bundled sample video: the service already has the file, so only a frame is read. */
+  const pickSample = async (id: string) => {
+    setSample(id);
+    const video = SAMPLE_VIDEOS.find((v) => v.id === id);
+    if (!video) return;
+    setTest('testing');
+    setErr('');
+    try {
+      const r = await backend.probeUpload(video.id);
+      applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: `${video.label}.mp4` });
+      setCam((c) => (c ? { ...c, make: 'Sample video', name: c.name || video.label } : c));
+    } catch (e) {
+      setTest('fail');
+      setErr((e as Error).message);
+    }
+  };
+
   const usedBy = (zoneId: string) => rules.filter((r) => r.zoneIds.includes(zoneId)).map((r) => r.id);
 
   const save = () => {
     if (isRtsp) rememberPassword(cam.id, pass);
-    saveCamera({ ...cam, addedAt: existing?.addedAt ?? Date.now(), addedBy: existing?.addedBy ?? me.id, status: existing?.status ?? 'online' });
+    // The choices made here are the ones that count, so the store does not add the camera to anything on its own.
+    saveCamera({ ...cam, addedAt: existing?.addedAt ?? Date.now(), addedBy: existing?.addedBy ?? me.id, status: existing?.status ?? 'online' }, { place: false });
     for (const w of walls) {
       const want = wallMode(w.id);
       let pinned = w.pinned.map((p) => (p === cam.id ? null : p));
@@ -172,10 +195,9 @@ export function CameraEditor() {
       if (want !== (w.pinned.includes(cam.id) ? 'pinned' : w.rotation.includes(cam.id) ? 'rolls' : 'off')) saveWall({ ...w, pinned, rotation });
     }
     // Rules: the camera joins the ones ticked and leaves the ones that are not, with the zones that go with it.
-    const place = placementFor(cam, cams, rules, walls);
-    for (const r of rules) {
+    for (const r of ruleStore.get()) {
       const want = ruleOn(r.id);
-      if (want === r.cameraIds.includes(cam.id) && !(want && isNew)) continue;
+      if (want === r.cameraIds.includes(cam.id)) continue;
       saveRule(setCameraOnRule(r, cam, want, place.rules.find((x) => x.id === r.id)?.zoneIds ?? []));
     }
     toast(isNew ? `${cam.id} ${cam.name} added with ${cam.zones.length} zones` : `${cam.id} saved`);
@@ -301,6 +323,17 @@ export function CameraEditor() {
                   )}
                 </>
               ) : (
+                <>
+                <div className="field">
+                  <Choice
+                    id="c-sample"
+                    label="Sample Video"
+                    value={sample}
+                    onChange={(v) => void pickSample(v)}
+                    options={[{ value: '', label: 'Choose a sample video' }, ...SAMPLE_VIDEOS.map((v) => ({ value: v.id as string, label: v.label }))]}
+                  />
+                  <span className="field__hint">Ready-made footage that plays in a loop, or upload your own video below.</span>
+                </div>
                 <div className="field">
                   <span className="field__label">Video file</span>
                   <input ref={picker} type="file" accept="video/*,.mkv" hidden onChange={(e) => { void sendFile(e.target.files?.[0]); e.target.value = ''; }} />
@@ -314,6 +347,7 @@ export function CameraEditor() {
                   </div>
                   <span className="field__hint">mp4, mov, avi, mkv or webm. It plays in real time and starts over when it ends, like a camera that is always on. Use it when the live feed has nothing happening.</span>
                 </div>
+                </>
               )}
               {!service.online && !cam.source && (
                 <Choice id="c-make" label="Make and Model" value={cam.make} onChange={(make) => set({ make })} options={MAKES.map((m) => ({ value: m, label: m }))} />
@@ -412,20 +446,32 @@ export function CameraEditor() {
                 </tr>
               </thead>
               <tbody>
-                {rules.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <strong>{r.name}</strong>
-                      <div className="meta">
-                        <span className="mono">{r.id}</span> · {r.cameraIds.filter((id) => id !== cam.id).length} other cameras
-                      </div>
-                    </td>
-                    <td>{r.priority}</td>
-                    <td>
-                      <Switch checked={ruleOn(r.id)} onChange={(v) => choose({ rule: [r.id, v] })} label={ruleOn(r.id) ? 'Yes' : 'No'} />
-                    </td>
-                  </tr>
-                ))}
+                {rules.map((r) => {
+                  // A rule drawn on zones that this camera does not have yet: it cannot be ticked until the zone is drawn in step 2.
+                  const zoneNames = [...new Set(cams.flatMap((c) => c.zones).filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name))];
+                  const watchesPeers = cams.some((c) => c.id !== cam.id && c.areaId === cam.areaId && r.cameraIds.includes(c.id));
+                  const needsZone = !!zoneNames.length && watchesPeers && !place.rules.some((x) => x.id === r.id);
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <strong>{r.name}</strong>
+                        <div className="meta">
+                          <span className="mono">{r.id}</span> · {r.cameraIds.filter((id) => id !== cam.id).length} other cameras
+                          {needsZone && <> · Needs the zone “{zoneNames.join('”, “')}” drawn in step 2 before it can watch this camera</>}
+                        </div>
+                      </td>
+                      <td>{r.priority}</td>
+                      <td>
+                        <Switch
+                          checked={ruleOn(r.id)}
+                          disabled={needsZone}
+                          onChange={(v) => choose({ rule: [r.id, v] })}
+                          label={needsZone ? 'Draw zone first' : ruleOn(r.id) ? 'Yes' : 'No'}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -504,7 +550,7 @@ export function CameraEditor() {
 function blank(cams: Camera[]): Camera {
   const n = cams.filter((c) => c.areaId === 'deck').length + 1;
   return {
-    id: camId('deck', n),
+    id: nextCameraId('DCK', cams),
     name: '',
     areaId: 'deck',
     scene: 'deck',
