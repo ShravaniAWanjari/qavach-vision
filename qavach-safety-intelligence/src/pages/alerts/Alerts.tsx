@@ -23,7 +23,7 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: 'crit-high', label: 'Criticality: High to low' },
   { value: 'crit-low', label: 'Criticality: Low to high' },
   { value: 'open-first', label: 'Status: Open first' },
-  { value: 'ack-first', label: 'Status: Acknowledged first' },
+  { value: 'ack-first', label: 'Status: Reviewed first' },
   { value: 'closed-first', label: 'Status: Closed first' },
 ];
 const stateRank = (a: Alert) => (a.state === 'acknowledged' ? 1 : a.state === 'resolved' || a.state === 'false-alarm' ? 2 : 0);
@@ -98,11 +98,11 @@ export function Alerts() {
             options={[
               { value: 'all' as Tab, label: 'All' },
               { value: 'open' as Tab, label: `Open${openCount ? ` (${openCount})` : ''}` },
-              { value: 'acknowledged' as Tab, label: 'Acknowledged' },
+              { value: 'acknowledged' as Tab, label: 'Reviewed' },
               { value: 'closed' as Tab, label: 'Closed' },
             ]}
           />
-          <Choice id="al-level" label="Alert Level" clearTo="all" value={prio} onChange={setPrio} options={[{ value: 'all' as Priority | 'all', label: 'All levels' }, ...(['P1', 'P2', 'P3', 'P4'] as const).map((p) => ({ value: p as Priority | 'all', label: `${p} ${PRIORITY_NAME[p]}` }))]} />
+          <Choice id="al-level" label="Alert Criticality" clearTo="all" value={prio} onChange={setPrio} options={[{ value: 'all' as Priority | 'all', label: 'All criticalities' }, ...(['P1', 'P2', 'P3', 'P4'] as const).map((p) => ({ value: p as Priority | 'all', label: `${p} ${PRIORITY_NAME[p]}` }))]} />
           <Choice id="al-area" label="Area" clearTo="all" value={area} onChange={setArea} options={[{ value: 'all', label: 'All areas' }, ...AREAS.map((a) => ({ value: a.id, label: a.name }))]} />
         </div>
         <button
@@ -232,7 +232,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
   const zoneNames = cam.zones.filter((z) => rule?.zoneIds.includes(z.id)).map((z) => z.name);
   const zoneName = cam.zones.find((z) => z.id === alert.zoneId)?.name ?? (zoneNames.length === 1 ? zoneNames[0] : undefined);
   const open = isOpen(alert);
-  const dueAt = policy ? alert.at + policy.ackWithinMin * 60000 : 0;
+  const dueAt = policy ? alert.at + policy.reviewWithinSec * 1000 : 0;
 
   return (
     <section className="card adetail" aria-label={`Alert ${alert.id}`}>
@@ -260,17 +260,45 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
             <Icon name="clock" size={17} />
             {alert.state === 'escalated' ? (
               <span>
-                Not acknowledged in {policy.ackWithinMin}min · escalated to <strong>{userName(alert.escalatedTo)}</strong>
+                Not reviewed in {duration(policy.reviewWithinSec * 1000)} · escalated to <strong>{userName(alert.escalatedTo)}</strong>
               </span>
             ) : policy.escalateTo === 'none' ? (
               <span>Open for {duration(now - alert.at)} · {policy.priority} alerts are not escalated</span>
             ) : (
               <span>
-                Acknowledge within {policy.ackWithinMin}min · escalates to the {roleText(policy.escalateTo)} in <strong className="mono">{duration(Math.max(0, dueAt - now))}</strong>
+                Review within {duration(policy.reviewWithinSec * 1000)} · escalates to the {roleText(policy.escalateTo)} in <strong className="mono">{duration(Math.max(0, dueAt - now))}</strong>
               </span>
             )}
           </div>
         )}
+
+        {policy && (() => {
+          const reviewed = alert.state !== 'new' && alert.state !== 'escalated';
+          const closed = alert.state === 'resolved' || alert.state === 'false-alarm';
+          const needsReport = policy.reportWithinSec > 0 && rule?.qavach !== 'none' && alert.state !== 'false-alarm';
+          const late = (ms: number, target: number) => ms > target * 1000;
+          const reviewMs = reviewed && alert.ackAt ? alert.ackAt - alert.at : now - alert.at;
+          const reportMs = alert.qavach ? alert.qavach.at - alert.at : now - alert.at;
+          return (
+            <ol className="aflow" aria-label="Review, report, close">
+              <li className={reviewed ? 'is-done' : late(reviewMs, policy.reviewWithinSec) ? 'is-late' : 'is-now'}>
+                <span className="aflow__n">1</span>
+                <strong>Review</strong>
+                <span>{reviewed ? `${duration(reviewMs)} · target ${duration(policy.reviewWithinSec * 1000)}` : `Within ${duration(policy.reviewWithinSec * 1000)}`}</span>
+              </li>
+              <li className={alert.qavach ? 'is-done' : !needsReport ? 'is-skip' : !reviewed ? '' : late(reportMs, policy.reportWithinSec) ? 'is-late' : 'is-now'}>
+                <span className="aflow__n">2</span>
+                <strong>Report</strong>
+                <span>{alert.qavach ? `${duration(reportMs)} · target ${duration(policy.reportWithinSec * 1000)}` : needsReport ? `Within ${duration(policy.reportWithinSec * 1000)}` : 'Not required'}</span>
+              </li>
+              <li className={closed ? 'is-done' : reviewed && (alert.qavach || !needsReport) ? 'is-now' : ''}>
+                <span className="aflow__n">3</span>
+                <strong>Close</strong>
+                <span>{closed ? (alert.state === 'false-alarm' ? 'False alarm' : 'Closed') : 'When the work is done'}</span>
+              </li>
+            </ol>
+          );
+        })()}
 
         <div className="adetail__media">
           <CameraView cam={cam} still={!live} alert={live ? undefined : alert} zones={cam.zones} highlightZones={alert.zoneId ? [alert.zoneId] : undefined} showZoneLabels now={live ? now : undefined} />
@@ -292,11 +320,11 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
         </div>
 
         <div className="adetail__actions">
-          {/* In the order they are usually done: acknowledge, escalate if needed, then report to QHSE. */}
+          {/* In the order they are usually done: review, escalate if needed, then report to QHSE. */}
           {open && (
             <button type="button" className="btn btn--act btn--act-ack" onClick={() => setDialog('ack')}>
               <Icon name="check" size={16} />
-              Acknowledge
+              Review
             </button>
           )}
           {open && (
@@ -308,12 +336,12 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
           {!alert.qavach && alert.state !== 'false-alarm' && (
             <button type="button" className="btn btn--act btn--report" onClick={() => setDialog('raise')}>
               <Icon name="send" size={16} />
-              Report to QHSE
+              Report
             </button>
           )}
           {alert.state === 'acknowledged' && (
             <button type="button" className="btn btn--secondary" onClick={() => setDialog('resolve')}>
-              Resolve
+              Close
             </button>
           )}
           {alert.state !== 'resolved' && alert.state !== 'false-alarm' && (
@@ -338,7 +366,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
               <span className="chip">{alert.qavach.classification}</span>
               <span className="spacer" />
               <span className="meta">
-                {alert.qavach.source === 'auto' ? 'Raised on acknowledgement (policy)' : alert.qavach.source === 'mobile' ? 'Raised from the phone' : 'Raised from the console'} by {userName(alert.qavach.createdBy)} · {ago(alert.qavach.at, now)}
+                {alert.qavach.source === 'auto' ? 'Raised on review (policy)' : alert.qavach.source === 'mobile' ? 'Raised from the phone' : 'Raised from the console'} by {userName(alert.qavach.createdBy)} · {ago(alert.qavach.at, now)}
               </span>
             </div>
             <strong>{alert.qavach.title}</strong>

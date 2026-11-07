@@ -17,7 +17,7 @@ type SortDir = 'a' | 'b';
 const SORT_FIELDS: CascadeField<SortField, SortDir>[] = [
   { key: 'id', label: 'Rule ID', options: [{ value: 'a', label: 'Lowest first' }, { value: 'b', label: 'Highest first' }] },
   { key: 'name', label: 'Name', options: [{ value: 'a', label: 'A to Z' }, { value: 'b', label: 'Z to A' }] },
-  { key: 'priority', label: 'Priority Level', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
+  { key: 'priority', label: 'Criticality', options: [{ value: 'a', label: 'Highest first' }, { value: 'b', label: 'Lowest first' }] },
   { key: 'status', label: 'Live / Test', options: [{ value: 'a', label: 'Live first' }, { value: 'b', label: 'Testing first' }] },
 ];
 
@@ -87,7 +87,7 @@ export function Rules() {
   const rows = shown.slice((cur - 1) * pageSize, cur * pageSize);
   const areaIds = [...new Set(rules.flatMap((r) => camsOf(r).map((c) => c.areaId)))];
   const groups: { key: FilterKey; title: string; options: { value: string; label: string }[] }[] = [
-    { key: 'level', title: 'Level', options: LEVELS.map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` })) },
+    { key: 'level', title: 'Criticality', options: LEVELS.map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` })) },
     { key: 'status', title: 'Status', options: [{ value: 'live', label: 'Live' }, { value: 'test', label: 'Testing' }] },
     { key: 'record', title: 'Reported to QHSE', options: RECORDS.map((v) => ({ value: v, label: v === 'none' ? 'None' : v })) },
     { key: 'classification', title: 'Classification', options: (['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v })) },
@@ -165,7 +165,7 @@ export function Rules() {
               <th className="col-id">ID</th>
               <th>Rule</th>
               <th>Cameras</th>
-              <th>Level</th>
+              <th>Criticality</th>
               <th>Live</th>
               <th className="col-act"><span className="sr-only">Edit</span></th>
             </tr>

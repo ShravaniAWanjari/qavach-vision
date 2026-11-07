@@ -220,7 +220,9 @@ export interface Policy {
   channels: Channel[];
   /** Roles told first; the alert goes to the people in that role on the camera's team. */
   notify: Role[];
-  ackWithinMin: number;
+  /** Seconds to review the alert (first look), and seconds to report it to QHSE. 0 reporting time: not reported. */
+  reviewWithinSec: number;
+  reportWithinSec: number;
   escalateTo: Role | 'none';
   remindEveryMin: number;
   /** How many reminders at most: up to 3 for P1, up to 5 for the other levels. Older saved settings have none: 3. */

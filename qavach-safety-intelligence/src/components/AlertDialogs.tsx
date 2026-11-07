@@ -70,13 +70,13 @@ export function AckDialog({ alert, via, onClose }: { alert: Alert; via: 'wall' |
     acknowledge(alert.id, me.id, via, note.trim());
     if (raise && rec) {
       const ref = raiseInQavach(alert.id, { ...rec, createdBy: me.id, source: 'manual' });
-      toast(`${alert.id} acknowledged · ${rec.type} ${ref} reported to QHSE`);
-    } else toast(`${alert.id} acknowledged`);
+      toast(`${alert.id} reviewed · ${rec.type} ${ref} reported to QHSE`);
+    } else toast(`${alert.id} reviewed`);
     onClose();
   };
   return (
     <Modal
-      title={`Acknowledge ${alert.id}`}
+      title={`Review ${alert.id}`}
       onClose={onClose}
       wide={raise}
       footer={
@@ -86,7 +86,7 @@ export function AckDialog({ alert, via, onClose }: { alert: Alert; via: 'wall' |
           </button>
           <button type="button" className="btn" onClick={submit}>
             <Icon name="check" size={17} />
-            {raise && rec ? `Acknowledge and raise ${rec.type.toLowerCase()}` : 'Acknowledge'}
+            {raise && rec ? `Review and report ${rec.type.toLowerCase()}` : 'Review'}
           </button>
         </>
       }
@@ -107,7 +107,7 @@ export function AckDialog({ alert, via, onClose }: { alert: Alert; via: 'wall' |
           <label className="check">
             <input type="checkbox" checked={raise} onChange={(e) => setRaise(e.target.checked)} />
             Raise {article(rec.type)} {rec.type.toLowerCase()} in Qavach
-            {auto && <span className="chip chip--outline">The {alert.priority} policy raises one on acknowledgement</span>}
+            {auto && <span className="chip chip--outline">The {alert.priority} policy raises one on review</span>}
           </label>
         )}
         {raise && rec && (
@@ -179,7 +179,7 @@ export function NoteDialog({ alert, kind, onClose }: { alert: Alert; kind: 'reso
   };
   return (
     <Modal
-      title={kind === 'resolve' ? `Resolve ${alert.id}` : `Mark ${alert.id} as a false alarm`}
+      title={kind === 'resolve' ? `Close ${alert.id}` : `Mark ${alert.id} as a false alarm`}
       onClose={onClose}
       footer={
         <>
@@ -187,7 +187,7 @@ export function NoteDialog({ alert, kind, onClose }: { alert: Alert; kind: 'reso
             Cancel
           </button>
           <button type="button" className="btn" onClick={submit} disabled={kind === 'false' && !text.trim()}>
-            {kind === 'resolve' ? 'Resolve' : 'Mark as false alarm'}
+            {kind === 'resolve' ? 'Close' : 'Mark as false alarm'}
           </button>
         </>
       }

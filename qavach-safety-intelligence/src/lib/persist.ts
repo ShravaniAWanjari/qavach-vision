@@ -15,6 +15,19 @@ export interface Store<T> {
   reset: () => void;
 }
 
+// Bump when the sample data changes shape, so a browser holding the old sample data starts again from the new one.
+const SEED_VERSION = '2026-11-08-flow-v5';
+try {
+  if (window.localStorage.getItem(PREFIX + '__seed') !== SEED_VERSION) {
+    Object.keys(window.localStorage)
+      .filter((k) => k.startsWith(PREFIX))
+      .forEach((k) => window.localStorage.removeItem(k));
+    window.localStorage.setItem(PREFIX + '__seed', SEED_VERSION);
+  }
+} catch {
+  /* private mode: nothing saved anyway */
+}
+
 const registry = new Map<string, Store<unknown>>();
 
 function read<T>(key: string): T | undefined {

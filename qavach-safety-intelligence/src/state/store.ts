@@ -1,4 +1,5 @@
 import { backend, isOnline } from '../lib/backend';
+import { qavachRef } from '../lib/refs';
 import { createStore, uid, useStore } from '../lib/persist';
 import { demoSetup } from '../lib/setup';
 import { seedHistory, seedOpenNow } from '../data/history';
@@ -23,9 +24,9 @@ export const policyStore = createStore<Policy[]>('policies', () => demo?.policie
 export const sessionStore = createStore<{ userId: string; live: boolean }>('session', { userId: 'u-priya', live: true });
 const counters = createStore<{ alert: number; Incident: number; Observation: number; 'Near miss': number }>('counters', {
   alert: 1042,
-  Incident: 413,
-  Observation: 1260,
-  'Near miss': 188,
+  Incident: 1408,
+  Observation: 1586,
+  'Near miss': 413,
 });
 
 /** When this browser last opened the QHSE reports panel; reports raised after it count as new. */
@@ -104,8 +105,7 @@ export function nextQavachRef(type: QavachRecordType) {
     n = c[type];
     return { ...c, [type]: c[type] + 1 };
   });
-  const p = type === 'Incident' ? 'INC' : type === 'Observation' ? 'OBS' : 'NM';
-  return `${p}-26-${String(n).padStart(4, '0')}`;
+  return qavachRef(type, Date.now(), n);
 }
 
 export function addAlert(a: Alert) {
@@ -116,7 +116,7 @@ export function acknowledge(id: string, by: string, via: Alert['ackVia'], text?:
   patch(id, (a) =>
     note(
       { ...a, state: 'acknowledged', ackBy: by, ackAt: Date.now(), ackVia: via },
-      { at: Date.now(), actor: by, text: `Acknowledged ${via === 'mobile' ? 'on the phone' : via === 'wall' ? 'on the video wall' : 'in the console'}${text ? ` · "${text}"` : ''}` },
+      { at: Date.now(), actor: by, text: `Reviewed ${via === 'mobile' ? 'on the phone' : via === 'wall' ? 'on the video wall' : 'in the console'}${text ? ` · "${text}"` : ''}` },
     ),
   );
 }
@@ -148,7 +148,7 @@ export function escalate(id: string, to: string, by: string, reason: string) {
 }
 
 export function resolve(id: string, by: string, text: string) {
-  patch(id, (a) => note({ ...a, state: 'resolved' }, { at: Date.now(), actor: by, text: `Resolved${text ? ` · ${text}` : ''}` }));
+  patch(id, (a) => note({ ...a, state: 'resolved' }, { at: Date.now(), actor: by, text: `Closed${text ? ` · ${text}` : ''}` }));
 }
 
 export function markFalse(id: string, by: string, text: string) {

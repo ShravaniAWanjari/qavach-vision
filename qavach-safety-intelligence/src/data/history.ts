@@ -1,6 +1,8 @@
 import type { Alert, Camera, Delivery, Priority, QavachRecord, QavachRecordType, Rule } from './types';
 import { describeRule, draftRecord } from '../lib/qai';
 import { AREAS, POLICIES } from './seed';
+import { duration } from '../lib/time';
+import { qavachRef } from '../lib/refs';
 
 // Four weeks of believable history for the sample site, so the Overview has something real to work with: the daily rhythm of
 // a port (busy at the shift changes, quiet at night), a few cameras that keep coming up, rules that cry wolf more than others,
@@ -82,7 +84,7 @@ function toldAbout(rule: Rule, cam: Camera, at: number, now: number, r: () => nu
       out.push({ at, to: roleUser(role), channel, status: failed ? 'failed' : channel === 'call' ? 'sent' : seen(0.7), reason: 'alert' });
     }
   }
-  if (escalated && policy.escalateTo !== 'none') out.push({ at: at + policy.ackWithinMin * MIN, to: roleUser(policy.escalateTo), channel: 'push', status: age > policy.ackWithinMin * MIN + 3 * MIN && r() < 0.5 ? 'read' : 'delivered', reason: 'escalation' });
+  if (escalated && policy.escalateTo !== 'none') out.push({ at: at + policy.reviewWithinSec * 1000, to: roleUser(policy.escalateTo), channel: 'push', status: age > policy.reviewWithinSec * 1000 + 3 * MIN && r() < 0.5 ? 'read' : 'delivered', reason: 'escalation' });
   return out;
 }
 
@@ -100,7 +102,7 @@ function build(opts: {
 }): Alert {
   const { rule, cam, at, now, r } = opts;
   const policy = POLICIES.find((p) => p.priority === rule.priority)!;
-  const target = policy.ackWithinMin * MIN;
+  const target = policy.reviewWithinSec * 1000;
   const zone = cam.zones.find((z) => rule.zoneIds.includes(z.id));
   const confidence = 0.74 + r() * 0.24;
   const seconds = rule.durationSec + 1 + Math.floor(r() * 6);
@@ -111,7 +113,7 @@ function build(opts: {
     zoneId: zone?.id,
     priority: rule.priority,
     title: rule.name,
-    detail: `${describeRule(rule, zone ? [zone.name] : [])} · ${seconds}s · ${Math.round(confidence * 100)}% confidence`,
+    detail: `${describeRule(rule, zone ? [zone.name] : [])} · ${seconds}s`,
     at,
     state: 'new',
     box: [20 + Math.floor(r() * 55), 28 + Math.floor(r() * 40), 6 + Math.floor(r() * 6), 14 + Math.floor(r() * 12)],
@@ -126,7 +128,7 @@ function build(opts: {
       deliveries: toldAbout(rule, cam, at, now, r, true),
       state: 'escalated',
       escalatedTo: policy.escalateTo === 'none' ? undefined : policy.escalateTo === 'Terminal manager' ? 'u-daniel' : 'u-vikram',
-      activity: [...base.activity, { at: at + target, text: `Not acknowledged within ${policy.ackWithinMin} min · escalated`, actor: 'system' }],
+      activity: [...base.activity, { at: at + target, text: `Not reviewed within ${duration(target)} · escalated`, actor: 'system' }],
     };
   }
 
@@ -139,30 +141,34 @@ function build(opts: {
   // Not yet acknowledged at this moment: it is still open, as a fresh alert or one past its target.
   if (ackAt > now) return build({ ...opts, state: now - at > target ? 'open-escalated' : 'open-new' });
   const activity = [...base.activity];
-  if (breached) activity.push({ at: at + target, text: `Not acknowledged within ${policy.ackWithinMin} min · escalated`, actor: 'system' });
-  activity.push({ at: ackAt, text: 'Acknowledged in the console', actor: who });
+  if (breached) activity.push({ at: at + target, text: `Not reviewed within ${duration(target)} · escalated`, actor: 'system' });
+  activity.push({ at: ackAt, text: 'Reviewed in the console', actor: who });
 
   const profile = PROFILE[rule.id];
   const isFalse = r() < (profile?.falseRate ?? 0.1);
-  const closedAt = ackAt + (isFalse ? 1 + r() * 6 : 6 + r() * 38) * MIN;
-  activity.push({ at: closedAt, text: isFalse ? 'Marked as a false alarm' : `Resolved · ${ACTION[rule.id] ?? 'Checked and cleared'}`, actor: who });
-  // Acknowledged but still being dealt with.
+  // The flow is review, then report to QHSE, then close. P1 is reviewed within 30 s and reported within 60 s.
+  const reportTarget = policy.reportWithinSec * 1000;
+  const wants = !isFalse && rule.qavach !== 'none' && reportTarget > 0;
+  const recent = now - at < 36 * HOUR;
+  const skip = opts.forceUnreported || r() < (recent ? 0.45 : 0.04);
+  const reports = wants && !skip;
+  const reportLate = r() < 0.15;
+  const reportAt = reports ? Math.max(ackAt + 5000, at + reportTarget * (reportLate ? 1.5 + r() * 3 : 0.45 + r() * 0.5)) : 0;
+  if (reports) activity.push({ at: reportAt, text: `${rule.qavach} reported to QHSE`, actor: who });
+  const closedAt = Math.max(ackAt, reportAt) + (isFalse ? 1 + r() * 6 : 6 + r() * 38) * MIN;
+  activity.push({ at: closedAt, text: isFalse ? 'Marked as a false alarm' : `Closed · ${ACTION[rule.id] ?? 'Checked and cleared'}`, actor: who });
+  // Reviewed but still being dealt with.
   if (closedAt > now) {
     return { ...base, deliveries: toldAbout(rule, cam, at, now, r, breached), state: 'acknowledged', ackBy: who, ackAt, ackVia: 'console', activity, escalatedTo: breached ? 'u-vikram' : undefined };
   }
   const out: Alert = { ...base, state: isFalse ? 'false-alarm' : 'resolved', ackBy: who, ackAt, ackVia: 'console', activity };
   if (breached) out.escalatedTo = 'u-vikram';
 
-  // A QHSE record for most handled P1 and P2 alerts whose rule asks for one. The last day and a half has a few that nobody got to.
-  const wants = !isFalse && (rule.priority === 'P1' || rule.priority === 'P2') && rule.qavach !== 'none';
-  const recent = now - at < 36 * HOUR;
-  const skip = opts.forceUnreported || r() < (recent ? 0.45 : 0.04);
-  if (wants && !skip && closedAt < now) {
+  if (reports && reportAt < now) {
     const type = rule.qavach as QavachRecordType;
     const n = opts.refs[type]--;
-    const prefix = type === 'Incident' ? 'INC' : type === 'Observation' ? 'OBS' : 'NM';
     const draft = draftRecord(out, cam, rule, AREAS.find((a) => a.id === cam.areaId), new Date(at).toTimeString().slice(0, 5));
-    out.qavach = { ...draft, ref: `${prefix}-26-${String(n).padStart(4, '0')}`, createdBy: who, source: r() < 0.3 ? 'auto' : 'manual', at: closedAt + 2 * MIN, severity: SEVERITY[rule.priority], immediateAction: ACTION[rule.id] ?? draft.immediateAction };
+    out.qavach = { ...draft, ref: qavachRef(type, reportAt, n), createdBy: who, source: r() < 0.3 ? 'auto' : 'manual', at: reportAt, severity: SEVERITY[rule.priority], immediateAction: ACTION[rule.id] ?? draft.immediateAction };
   }
   return out;
 }
@@ -198,7 +204,7 @@ export function seedHistory(now: number, cams: Camera[], rules: Rule[]): Alert[]
     }
   }
   planned.sort((a, b) => a.at - b.at);
-  const refs: Record<QavachRecordType, number> = { Incident: 412, Observation: 1259, 'Near miss': 187 };
+  const refs: Record<QavachRecordType, number> = { Incident: 1407, Observation: 1585, 'Near miss': 412 };
   const out: Alert[] = [];
   // Newest first so the QHSE reference numbers count down from the sample counters.
   const newestFirst = [...planned].reverse();
@@ -214,7 +220,7 @@ export function seedOpenNow(now: number, cams: Camera[], rules: Rule[]): Alert[]
   const plan: { id: string; rule: string; cam: string; ago: number; state: 'open-new' | 'open-escalated' }[] = [
     { id: 'ALT-1035', rule: 'R-02', cam: 'DCK-02', ago: 9, state: 'open-escalated' },
     { id: 'ALT-1034', rule: 'R-05', cam: 'YRD-18', ago: 24, state: 'open-escalated' },
-    { id: 'ALT-1033', rule: 'R-03', cam: 'QUA-04', ago: 1.5, state: 'open-new' },
+    { id: 'ALT-1033', rule: 'R-03', cam: 'QUA-04', ago: 0.3, state: 'open-new' },
     { id: 'ALT-1032', rule: 'R-04', cam: 'QUA-08', ago: 11, state: 'open-new' },
     { id: 'ALT-1031', rule: 'R-08', cam: 'GTE-04', ago: 38, state: 'open-new' },
   ];

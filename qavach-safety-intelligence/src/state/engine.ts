@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { detectedText, draftRecord } from '../lib/qai';
-import { hm } from '../lib/time';
+import { duration, hm } from '../lib/time';
 import type { Alert, Camera, Delivery, Policy, Rule, Zone } from '../data/types';
 import type { BackendEvent } from '../lib/backend';
 import {
@@ -218,10 +218,10 @@ function followUp(now: number) {
     const age = now - a.at;
 
     // Escalate when no one acknowledges in time.
-    if (a.state === 'new' && p.escalateTo !== 'none' && age > p.ackWithinMin * 60 * SEC) {
+    if (a.state === 'new' && p.escalateTo !== 'none' && age > p.reviewWithinSec * SEC) {
       const to = peopleFor(p.escalateTo, cam)[0];
       if (to) {
-        escalate(a.id, to.id, 'system', `not acknowledged within ${p.ackWithinMin}min`);
+        escalate(a.id, to.id, 'system', `not reviewed within ${duration(p.reviewWithinSec * SEC)}`);
         toast(`${a.id} escalated to ${to.name} (${to.role})`, { tone: 'alert', link: `/alerts/${a.id}` });
       }
       continue;

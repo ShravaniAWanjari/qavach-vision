@@ -407,7 +407,7 @@ export function CameraEditor() {
               <thead>
                 <tr>
                   <th>Rule</th>
-                  <th>Level</th>
+                  <th>Criticality</th>
                   <th>Watches this camera</th>
                 </tr>
               </thead>

@@ -1,14 +1,15 @@
 import { defaultZones } from '../scenes/zones';
+import { qavachRef } from '../lib/refs';
 import type { Alert, Area, Camera, Policy, Rule, Team, User, Wall } from './types';
 
-// Sample site: a container terminal with 96 cameras. All names are placeholders.
+// Sample site: a container terminal with about 690 cameras. All names are placeholders.
 
 export const SITE = { name: 'North Quay Terminal', short: 'NQT' };
 
 export const AREAS: Area[] = [
-  { id: 'quay', name: 'Quay apron · Berths 1–3', scene: 'quay', highOps: true },
+  { id: 'quay', name: 'Quay apron · Berths 1–8', scene: 'quay', highOps: true },
   { id: 'deck', name: 'Vessel deck and gangway', scene: 'deck', highOps: true },
-  { id: 'yard', name: 'Container yard · Blocks A–F', scene: 'yard', highOps: false },
+  { id: 'yard', name: 'Container yard · Blocks A–P', scene: 'yard', highOps: false },
   { id: 'reefer', name: 'Reefer stacks', scene: 'reefer', highOps: false },
   { id: 'gate', name: 'Gate complex', scene: 'gate', highOps: true },
   { id: 'workshop', name: 'Equipment workshop', scene: 'workshop', highOps: false },
@@ -29,7 +30,7 @@ export const AREA_DEPARTMENT: Record<string, string> = {
   perimeter: 'Security',
 };
 
-const NAMES: Record<string, string[]> = {
+const BASE_NAMES: Record<string, string[]> = {
   quay: ['STS 1 · landside', 'STS 1 · waterside', 'STS 2 · landside', 'STS 2 · waterside', 'STS 3 · landside', 'STS 3 · waterside', 'Berth 1 apron', 'Berth 2 apron', 'Berth 3 apron', 'Lashing cage B1', 'Lashing cage B2', 'Hatch cover store', 'Quay road east', 'Quay road west'],
   deck: ['Berth 1 · deck port side', 'Berth 1 · deck starboard', 'Berth 2 · gangway', 'Berth 2 · deck port side', 'Berth 2 · deck starboard', 'Berth 3 · gangway', 'Berth 3 · deck port side', 'Berth 3 · lashing bridge'],
   yard: Array.from({ length: 30 }, (_, i) => `Block ${'ABCDEF'[Math.floor(i / 5)]} · row ${(i % 5) * 6 + 2}`),
@@ -39,6 +40,81 @@ const NAMES: Record<string, string[]> = {
   hazmat: ['IMDG bay north', 'IMDG bay south', 'IMDG gate', 'IMDG spill kit', 'Class 1 enclosure', 'Class 3 row'],
   perimeter: ['Fence east 1', 'Fence east 2', 'Fence north 1', 'Fence north 2', 'Berth 1 access gate', 'Berth 3 access gate', 'Fence west 1', 'Fence west 2', 'Rail siding gate', 'Main road gate'],
 };
+
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => from + k);
+const BERTHS = range(1, 8);
+const BLOCKS = 'ABCDEFGHIJKLMNOP'.split('');
+
+/** The first cameras keep their names and numbers; a full terminal has hundreds more, named by where they point. */
+const EXTRA_NAMES: Record<string, string[]> = {
+  quay: [
+    ...range(4, 12).flatMap((n) => [`STS ${n} · landside`, `STS ${n} · waterside`]),
+    ...range(4, 8).map((n) => `Berth ${n} apron`),
+    ...range(3, 8).map((n) => `Lashing cage B${n}`),
+    ...BERTHS.flatMap((n) => ['A', 'B', 'C'].map((l) => `Berth ${n} · quay edge ${l}`)),
+    ...BERTHS.map((n) => `Berth ${n} · bollard line`),
+    ...range(1, 12).map((n) => `STS ${n} · spreader view`),
+    ...range(1, 12).map((n) => `Quay road section ${n}`),
+    ...range(1, 8).flatMap((n) => [`Berth ${n} · apron north`, `Berth ${n} · apron south`]),
+    ...range(1, 8).map((n) => `Berth ${n} · fire hydrant point`),
+    ...range(1, 5).map((n) => `Hatch cover store ${n + 1}`),
+    ...range(1, 4).map((n) => `Quay lighting mast ${n}`),
+  ],
+  deck: [
+    'Berth 1 · gangway', 'Berth 1 · lashing bridge', 'Berth 2 · lashing bridge',
+    ...range(4, 8).flatMap((n) => [`Berth ${n} · gangway`, `Berth ${n} · deck port side`, `Berth ${n} · deck starboard`, `Berth ${n} · lashing bridge`]),
+    ...BERTHS.flatMap((n) => [`Berth ${n} · deck forward`, `Berth ${n} · deck aft`, `Berth ${n} · hatch cover`]),
+    ...BERTHS.map((n) => `Berth ${n} · accommodation ladder`),
+    ...BERTHS.map((n) => `Berth ${n} · cargo hold access`),
+    ...BERTHS.map((n) => `Berth ${n} · mooring deck`),
+    'Berth 5 · bunkering point',
+  ],
+  yard: [
+    ...BLOCKS.slice(6).flatMap((b) => [2, 8, 14, 20, 26].map((r) => `Block ${b} · row ${r}`)),
+    ...BLOCKS.flatMap((b) => [5, 11, 17, 23, 29].map((r) => `Block ${b} · row ${r}`)),
+    ...BLOCKS.flatMap((b) => [3, 9, 15, 21, 27].map((r) => `Block ${b} · row ${r}`)),
+  ],
+  reefer: [
+    ...range(4, 8).flatMap((n) => [`Reefer R${n} north`, `Reefer R${n} south`]),
+    ...range(3, 8).map((n) => `Reefer gantry ${n}`),
+    ...range(1, 8).flatMap((n) => range(1, 4).map((k) => `Reefer R${n} · row ${k}`)),
+    ...range(1, 4).map((n) => `Reefer plug room ${n}`),
+  ],
+  gate: [
+    ...range(5, 8).map((n) => `In-gate lane ${n}`),
+    ...range(5, 8).map((n) => `Out-gate lane ${n}`),
+    'Gate canopy east', 'Gate canopy west',
+    ...range(1, 4).flatMap((n) => [`OCR portal in ${n}`, `OCR portal out ${n}`]),
+    ...range(1, 4).map((n) => `Driver registration kiosk ${n}`),
+    'Gate office',
+    ...range(1, 6).map((n) => `Truck holding bay ${n}`),
+    ...range(1, 4).map((n) => `Document check lane ${n}`),
+    ...range(1, 3).map((n) => `Weighbridge ${n}`),
+    ...range(1, 2).map((n) => `Scanner portal ${n}`),
+  ],
+  workshop: [
+    ...range(4, 8).map((n) => `Workshop bay ${n}`),
+    ...range(1, 4).map((n) => `RTG service bay ${n}`),
+    'Battery charging 1', 'Battery charging 2', 'Fuel station 1', 'Fuel station 2', 'Welding shop', 'Paint shop', 'Tool crib', 'Parts store 2',
+    'Generator room', 'Compressor room', 'Crane service pit', 'Lube store',
+  ],
+  hazmat: [
+    'IMDG bay east', 'IMDG bay west', 'Class 1 enclosure 2', 'Class 1 enclosure 3',
+    ...[2, 4, 5, 6, 8, 9].map((c) => `Class ${c} row`),
+    'IMDG gate 2', 'IMDG inspection shed', 'Fire pump house', 'Spill containment bund',
+    ...range(1, 4).map((n) => `Segregation bay ${n}`),
+  ],
+  perimeter: [
+    ...range(3, 10).map((n) => `Fence east ${n}`),
+    ...range(3, 10).map((n) => `Fence north ${n}`),
+    ...range(3, 10).map((n) => `Fence west ${n}`),
+    ...range(1, 10).map((n) => `Fence south ${n}`),
+    ...[2, 4, 5, 6].map((n) => `Berth ${n} access gate`),
+    'Pilot station', 'Rail siding crossing',
+  ],
+};
+
+const NAMES: Record<string, string[]> = Object.fromEntries(Object.keys(BASE_NAMES).map((k) => [k, [...BASE_NAMES[k], ...EXTRA_NAMES[k]]]));
 
 const PREFIX: Record<string, string> = { quay: 'QUA', deck: 'DCK', yard: 'YRD', reefer: 'RFR', gate: 'GTE', workshop: 'WSH', hazmat: 'HAZ', perimeter: 'PER' };
 
@@ -62,12 +138,18 @@ const OFFLINE = new Set(['YRD-27', 'WSH-07']);
 /** How long ago, in minutes, each sample faulty camera became unavailable. */
 export const DOWN_FOR_MIN: Record<string, number> = { 'WSH-07': 220, 'YRD-27': 52, 'RFR-05': 75, 'PER-08': 26, 'YRD-14': 9 };
 
+const RESERVED_IDS = new Set(['DCK-09', 'PER-11']);
+
 export function seedCameras(now: number): Camera[] {
   const out: Camera[] = [];
   let ip = 20;
   for (const a of AREAS) {
+    // The connected demo cameras (DCK-09, PER-11) keep their numbers, so the sample cameras count past them.
+    let num = 0;
     NAMES[a.id].forEach((name, i) => {
-      const id = camId(a.id, i + 1);
+      num++;
+      while (RESERVED_IDS.has(camId(a.id, num))) num++;
+      const id = camId(a.id, num);
       const variant = i;
       out.push({
         id,
@@ -81,7 +163,7 @@ export function seedCameras(now: number): Camera[] {
         make: MAKES[(i + a.id.length) % MAKES.length],
         resolution: i % 3 === 0 ? '3840 × 2160' : '2560 × 1440',
         fps: i % 3 === 0 ? 15 : 20,
-        zones: ZONED.has(id) ? defaultZones(a.scene, variant, id) : [],
+        zones: ZONED.has(id) || (i >= BASE_NAMES[a.id].length && (i * 7 + a.id.length) % 10 < 7) ? defaultZones(a.scene, variant, id) : [],
         addedAt: now - (40 - (i % 10)) * 86400000,
         addedBy: 'u-priya',
       });
@@ -210,15 +292,29 @@ const base: Pick<Rule, 'ppe' | 'crowdOver' | 'schedule' | 'mode' | 'classificati
 export function seedRules(cams: Camera[], now: number): Rule[] {
   const zoneIds = (camIds: string[], name: string) =>
     cams.filter((c) => camIds.includes(c.id)).flatMap((c) => c.zones.filter((z) => z.name === name).map((z) => z.id));
-  const deckCams = ['DCK-01', 'DCK-02', 'DCK-04', 'DCK-05', 'DCK-07'];
-  const gangways = ['DCK-03', 'DCK-06'];
-  const cranes = ['QUA-01', 'QUA-02', 'QUA-03', 'QUA-04', 'QUA-05', 'QUA-06'];
-  const aprons = ['QUA-07', 'QUA-08', 'QUA-09', ...cranes];
-  const yard = ['YRD-03', 'YRD-07', 'YRD-12', 'YRD-18', 'YRD-24'];
-  const haz = ['HAZ-01', 'HAZ-02', 'HAZ-03', 'HAZ-05'];
-  const gate = ['GTE-01', 'GTE-02', 'GTE-03', 'GTE-04', 'GTE-11'];
-  const ws = ['WSH-01', 'WSH-02', 'WSH-04'];
-  const per = ['PER-01', 'PER-03', 'PER-05', 'PER-06'];
+  // The first cameras of each list are the ones the rule was set up on; the later ones are the rest of the terminal that
+  // was added as cameras were drawn. Anything with the right zone is watched.
+  const more = (area: string, have: string[], zone: string, test: (c: Camera) => boolean = () => true) =>
+    cams.filter((c) => c.areaId === area && !have.includes(c.id) && c.zones.some((z) => z.name === zone) && test(c)).map((c) => c.id);
+  const gangways0 = ['DCK-03', 'DCK-06'];
+  const deck0 = ['DCK-01', 'DCK-02', 'DCK-04', 'DCK-05', 'DCK-07'];
+  const isGangway = (c: Camera) => /gangway/i.test(c.name);
+  const gangways = [...gangways0, ...more('deck', gangways0, 'Deck walkway', isGangway)];
+  const deckCams = [...deck0, ...more('deck', [...deck0, ...gangways], 'Deck walkway')];
+  const cranes0 = ['QUA-01', 'QUA-02', 'QUA-03', 'QUA-04', 'QUA-05', 'QUA-06'];
+  const cranes = [...cranes0, ...more('quay', cranes0, 'Crane exclusion zone', (c) => /STS/.test(c.name))];
+  const aprons0 = ['QUA-07', 'QUA-08', 'QUA-09', ...cranes];
+  const aprons = [...aprons0, ...more('quay', aprons0, 'Apron walkway')];
+  const yard0 = ['YRD-03', 'YRD-07', 'YRD-12', 'YRD-18', 'YRD-24'];
+  const yard = [...yard0, ...more('yard', yard0, 'RTG lane')];
+  const haz0 = ['HAZ-01', 'HAZ-02', 'HAZ-03', 'HAZ-05'];
+  const haz = [...haz0, ...more('hazmat', haz0, 'IMDG fenced bay')];
+  const gate0 = ['GTE-01', 'GTE-02', 'GTE-03', 'GTE-04', 'GTE-11'];
+  const gate = [...gate0, ...more('gate', gate0, 'Pedestrian crossing')];
+  const ws0 = ['WSH-01', 'WSH-02', 'WSH-04'];
+  const ws = [...ws0, ...more('workshop', ws0, 'Hot work bay')];
+  const per0 = ['PER-01', 'PER-03', 'PER-05', 'PER-06'];
+  const per = [...per0, ...more('perimeter', per0, 'Fence line')];
   const t = (d: number) => now - d * 86400000;
   return [
     {
@@ -246,7 +342,7 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
       condition: 'no-ppe',
       ppe: ['life jacket'],
       durationSec: 2,
-      priority: 'P1',
+      priority: 'P2',
       qavach: 'Incident',
       updatedAt: t(3),
     },
@@ -267,7 +363,7 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
     {
       ...base,
       id: 'R-04',
-      name: 'No helmet or vest on the quay apron',
+      name: 'No helmet / PPE / safety vest on the quay apron',
       cameraIds: aprons,
       zoneIds: [],
       subject: 'person',
@@ -328,8 +424,8 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
       subject: 'vehicle',
       condition: 'stopped',
       durationSec: 60,
-      priority: 'P4',
-      qavach: 'none',
+      priority: 'P3',
+      qavach: 'Near miss',
       classification: 'Unsafe condition',
       updatedAt: t(15),
     },
@@ -410,10 +506,10 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
 }
 
 export const POLICIES: Policy[] = [
-  { priority: 'P1', label: 'Critical', channels: ['wall', 'push', 'sms', 'call'], notify: ['Shift supervisor', 'HSE manager'], ackWithinMin: 2, escalateTo: 'Terminal manager', remindEveryMin: 1, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: true },
-  { priority: 'P2', label: 'High', channels: ['wall', 'push', 'whatsapp'], notify: ['Shift supervisor'], ackWithinMin: 5, escalateTo: 'HSE manager', remindEveryMin: 2, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: false },
-  { priority: 'P3', label: 'Medium', channels: ['wall', 'push'], notify: ['Shift supervisor'], ackWithinMin: 15, escalateTo: 'HSE manager', remindEveryMin: 5, remindMax: 3, qavach: 'reviewer-decides', wallTakeover: false, sound: false },
-  { priority: 'P4', label: 'Low', channels: ['wall', 'email'], notify: ['Control room operator'], ackWithinMin: 60, escalateTo: 'none', remindEveryMin: 0, remindMax: 3, qavach: 'never', wallTakeover: false, sound: false },
+  { priority: 'P1', label: 'Critical', channels: ['wall', 'push', 'sms', 'call'], notify: ['Shift supervisor', 'HSE manager'], reviewWithinSec: 30, reportWithinSec: 60, escalateTo: 'Terminal manager', remindEveryMin: 1, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: true },
+  { priority: 'P2', label: 'High', channels: ['wall', 'push', 'whatsapp'], notify: ['Shift supervisor'], reviewWithinSec: 120, reportWithinSec: 300, escalateTo: 'HSE manager', remindEveryMin: 2, remindMax: 3, qavach: 'on-acknowledge', wallTakeover: true, sound: false },
+  { priority: 'P3', label: 'Medium', channels: ['wall', 'push'], notify: ['Shift supervisor'], reviewWithinSec: 300, reportWithinSec: 900, escalateTo: 'HSE manager', remindEveryMin: 5, remindMax: 3, qavach: 'reviewer-decides', wallTakeover: false, sound: false },
+  { priority: 'P4', label: 'Low', channels: ['wall', 'email'], notify: ['Control room operator'], reviewWithinSec: 900, reportWithinSec: 0, escalateTo: 'none', remindEveryMin: 0, remindMax: 3, qavach: 'never', wallTakeover: false, sound: false },
 ];
 
 const MIN = 60000;
@@ -434,7 +530,7 @@ export function seedAlerts(now: number): Alert[] {
       priority: 'P2',
       title: 'Person away from the deck walkway',
       detail: 'Outside Deck walkway for 7s (rule: 5s or more)',
-      at: now - 3 * MIN,
+      at: now - 70 * 1000,
       state: 'new',
       box: [36, 50, 7, 22],
       confidence: 0.93,
@@ -449,7 +545,7 @@ export function seedAlerts(now: number): Alert[] {
       ruleId: 'R-04',
       cameraId: 'QUA-08',
       priority: 'P3',
-      title: 'No helmet on the quay apron',
+      title: 'No helmet / PPE / safety vest on the quay apron',
       detail: 'Helmet not seen for 4s (rule: 3s or more)',
       at: now - 11 * MIN,
       state: 'acknowledged',
@@ -464,7 +560,7 @@ export function seedAlerts(now: number): Alert[] {
       ],
       activity: [
         { at: now - 11 * MIN, text: 'Detected by the edge model', actor: 'system' },
-        { at: now - 8 * MIN, text: 'Acknowledged on the phone · "Spoke to the lasher, helmet back on"', actor: 'u-rahul' },
+        { at: now - 8 * MIN, text: 'Reviewed on the phone · "Spoke to the lasher, helmet back on"', actor: 'u-rahul' },
       ],
     }),
     a({
@@ -489,12 +585,12 @@ export function seedAlerts(now: number): Alert[] {
       ],
       activity: [
         { at: now - 26 * MIN, text: 'Detected by the edge model', actor: 'system' },
-        { at: now - 23 * MIN, text: 'Acknowledged on the phone', actor: 'u-sana' },
-        { at: now - 22 * MIN, text: 'Near miss NM-26-0187 reported to QHSE', actor: 'u-sana' },
+        { at: now - 23 * MIN, text: 'Reviewed on the phone', actor: 'u-sana' },
+        { at: now - 22 * MIN, text: 'Near miss reported to QHSE', actor: 'u-sana' },
       ],
       qavach: {
         type: 'Near miss',
-        ref: 'NM-26-0187',
+        ref: qavachRef('Near miss', now - 22 * MIN, 411),
         title: 'Pedestrian entered RTG lane at Block C row 14',
         description: 'A worker walked into the RTG lane at Block C while the RTG was travelling. The RTG driver stopped. Seen on YRD-12 at the time of the alert.',
         classification: 'Unsafe act',
@@ -509,7 +605,7 @@ export function seedAlerts(now: number): Alert[] {
       id: 'ALT-1038',
       ruleId: 'R-08',
       cameraId: 'GTE-02',
-      priority: 'P4',
+      priority: 'P3',
       title: 'Truck stopped on the pedestrian crossing',
       detail: 'Stopped 74s on Pedestrian crossing (rule: 60s or more)',
       at: now - 48 * MIN,
@@ -522,9 +618,22 @@ export function seedAlerts(now: number): Alert[] {
       deliveries: [{ at: now - 48 * MIN, to: 'u-meera', channel: 'wall', status: 'read', reason: 'alert' }],
       activity: [
         { at: now - 48 * MIN, text: 'Detected by the edge model', actor: 'system' },
-        { at: now - 46 * MIN, text: 'Acknowledged on the video wall', actor: 'u-meera' },
-        { at: now - 41 * MIN, text: 'Resolved · truck moved on', actor: 'u-meera' },
+        { at: now - 46 * MIN, text: 'Reviewed on the video wall', actor: 'u-meera' },
+        { at: now - 47 * MIN, text: 'Near miss reported to QHSE', actor: 'u-meera' },
+        { at: now - 41 * MIN, text: 'Closed · truck moved on', actor: 'u-meera' },
       ],
+      qavach: {
+        type: 'Near miss',
+        ref: qavachRef('Near miss', now - 47 * MIN, 410),
+        title: 'Truck stopped on the pedestrian crossing at out-gate lane 2',
+        description: 'A truck stayed stopped on the pedestrian crossing for over a minute while workers were walking to the gate office. Seen on GTE-02.',
+        classification: 'Unsafe condition',
+        severity: 'Medium',
+        immediateAction: 'Driver asked to move on; gate marshal reminded to keep the crossing clear.',
+        createdBy: 'u-meera',
+        at: now - 47 * MIN,
+        source: 'manual',
+      },
     }),
     a({
       id: 'ALT-1037',
@@ -550,13 +659,13 @@ export function seedAlerts(now: number): Alert[] {
       ],
       activity: [
         { at: now - 74 * MIN, text: 'Detected by the edge model', actor: 'system' },
-        { at: now - 73 * MIN, text: 'Acknowledged on the phone · crane stopped by radio', actor: 'u-rahul' },
-        { at: now - 73 * MIN, text: 'Incident INC-26-0412 reported to QHSE (policy: on acknowledge)', actor: 'system' },
-        { at: now - 60 * MIN, text: 'Resolved · lasher removed from under the spreader', actor: 'u-rahul' },
+        { at: now - 73 * MIN, text: 'Reviewed on the phone · crane stopped by radio', actor: 'u-rahul' },
+        { at: now - 73 * MIN, text: 'Incident reported to QHSE (policy: on review)', actor: 'system' },
+        { at: now - 60 * MIN, text: 'Closed · lasher removed from under the spreader', actor: 'u-rahul' },
       ],
       qavach: {
         type: 'Incident',
-        ref: 'INC-26-0412',
+        ref: qavachRef('Incident', now - 73 * MIN, 1406),
         title: 'Person under spreader inside STS 2 exclusion zone',
         description: 'During a discharge lift on STS 2 a lasher walked into the crane exclusion zone under the spreader. The supervisor stopped the crane by radio. Seen on QUA-03.',
         classification: 'Unsafe act',
@@ -572,7 +681,7 @@ export function seedAlerts(now: number): Alert[] {
       ruleId: 'R-04',
       cameraId: 'QUA-07',
       priority: 'P3',
-      title: 'No vest on the quay apron',
+      title: 'No helmet / PPE / safety vest on the quay apron',
       detail: 'Vest not seen for 5s (rule: 3s or more)',
       at: now - 132 * MIN,
       state: 'false-alarm',

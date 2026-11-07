@@ -18,3 +18,15 @@
 .camview__nopic small { color: var(--c-grey); font-size: 11px; }
 .camview__nopic--lost { color: var(--c-red); } .camview__nopic--lost small { color: var(--c-grey); }
 @container (max-width: 260px) { .camview__nopic small, .camview__nopic svg { display: none; } .camview__nopic { font-size: 11px; } }
+
+/* Smoke and flame drawn over a sample photo for smoke and fire alerts */
+.smoke { position: absolute; width: 0; height: 0; pointer-events: none; }
+.smoke__puff { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--c-grey) 70%, var(--c-black)), color-mix(in srgb, var(--c-grey) 70%, transparent) 55%, transparent); filter: blur(5px); transform: translate(-50%, -100%); animation: smoke-rise 6s ease-out infinite; }
+.smoke__puff--1 { width: 46px; height: 46px; left: 0; top: 0; }
+.smoke__puff--2 { width: 70px; height: 70px; left: 6px; top: -34px; animation-delay: -1.5s; }
+.smoke__puff--3 { width: 96px; height: 96px; left: 16px; top: -84px; animation-delay: -3s; opacity: .8; }
+.smoke__puff--4 { width: 130px; height: 120px; left: 30px; top: -150px; animation-delay: -4.5s; opacity: .6; }
+.smoke__flame { position: absolute; width: 22px; height: 30px; left: 0; top: 0; transform: translate(-50%, -85%); border-radius: 50% 50% 40% 40%; background: radial-gradient(closest-side at 50% 70%, color-mix(in srgb, var(--c-orange) 40%, var(--c-white)), var(--c-orange) 55%, transparent); filter: blur(1.5px); animation: smoke-flick .5s ease-in-out infinite alternate; }
+@keyframes smoke-rise { from { transform: translate(-50%, -100%) scale(.92); } to { transform: translate(-46%, -106%) scale(1.06); } }
+@keyframes smoke-flick { from { transform: translate(-50%, -85%) scaleY(.9); } to { transform: translate(-50%, -88%) scaleY(1.12); } }
+@media (prefers-reduced-motion: reduce) { .smoke__puff, .smoke__flame { animation: none; } }

@@ -132,7 +132,7 @@ export function Overview() {
     const d = dialog;
     setDialog(undefined);
     if (d?.kind === 'ack' && alertStore.get().find((a) => a.id === d.alert.id)?.state === 'acknowledged') {
-      for (const id of d.group) if (id !== d.alert.id) acknowledge(id, me.id, 'console', 'Acknowledged with the rest of the issue');
+      for (const id of d.group) if (id !== d.alert.id) acknowledge(id, me.id, 'console', 'Reviewed with the rest of the issue');
     }
   };
 
@@ -177,13 +177,13 @@ export function Overview() {
         ['Not reported to QHSE', unreported.length],
         ['Cameras to fix', faulty.length],
         [],
-        ['Open issue', 'Level', 'Detections', 'Camera', 'Area', 'First seen', 'Last seen', 'Response target'],
+        ['Open issue', 'Criticality', 'Detections', 'Camera', 'Area', 'First seen', 'Last seen', 'Response target'],
         ...issues.map((i): Cell[] => {
           const c = camById.get(i.cameraId);
           return [i.title, i.priority, i.count, c ? `${c.id} ${c.name}` : i.cameraId, AREAS_BY_ID[c?.areaId ?? '']?.name ?? '', new Date(i.first).toLocaleString(), new Date(i.last).toLocaleString(), i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `Due in ${duration(i.left)}`];
         }),
         [],
-        ['Not reported to QHSE', 'Level', 'Camera', 'Raised'],
+        ['Not reported to QHSE', 'Criticality', 'Camera', 'Raised'],
         ...unreported.map((a): Cell[] => [a.title, a.priority, a.cameraId, new Date(a.at).toLocaleString()]),
         [],
         ['Camera to fix', 'Status', 'Down since', 'Reason'],
@@ -198,7 +198,7 @@ export function Overview() {
         [],
         ['Measure', 'Value', 'Previous period'],
         ['Alerts', inRange.length, previous.length],
-        ['Acknowledged within target', sla.pct === null ? '' : `${sla.pct}%`, slaBefore.pct === null ? '' : `${slaBefore.pct}%`],
+        ['Reviewed within target', sla.pct === null ? '' : `${sla.pct}%`, slaBefore.pct === null ? '' : `${slaBefore.pct}%`],
         ['False alarms (share of handled)', falsePct === null ? '' : `${falsePct}%`, falseBefore === null ? '' : `${falseBefore}%`],
         ['Reported to QHSE', raised.length],
         ['Handled P1 and P2 not reported', unreportedInPeriod.length],
@@ -206,7 +206,7 @@ export function Overview() {
         ['Location', 'Alerts', 'Previous', 'Most common'],
         ...hot.slice(0, 15).map((h): Cell[] => [`${h.cameraId} ${camName(h.cameraId)}`, h.count, h.before, h.topRule]),
         [],
-        ['Rule', 'Alerts', 'False alarms', 'Average time to acknowledge', 'Note'],
+        ['Rule', 'Alerts', 'False alarms', 'Average time to review', 'Note'],
         ...health.map((h): Cell[] => [h.rule.name, h.alerts, h.falsePct === null ? '' : `${h.falsePct}%`, h.avgAck === null ? '' : duration(h.avgAck), h.flag?.text ?? '']),
         [],
         ['Hour of day', 'Alerts'],
@@ -262,13 +262,13 @@ export function Overview() {
               {i.count > 1 ? ` · since ${since(i.first, now)}` : ''}
             </span>
           </span>
-          <span className={`ovsla${lateNow ? ' is-late' : ''}`} title={lateNow ? 'Past the response target for this level' : 'Time left to respond'}>
+          <span className={`ovsla${lateNow ? ' is-late' : ''}`} title={lateNow ? 'Past the response target for this criticality' : 'Time left to respond'}>
             {lateNow ? `Overdue ${since(now - i.overdue, now) === '0s' ? '' : duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}
           </span>
         </Link>
         <button type="button" className="lvact" onClick={() => setDialog({ kind: 'ack', alert: i.lead, group: openAlerts.filter((a) => a.ruleId === i.ruleId && a.cameraId === i.cameraId).map((a) => a.id) })}>
           <Icon name="check" size={13} />
-          Acknowledge
+          Review
         </button>
       </li>
     );
@@ -384,7 +384,7 @@ export function Overview() {
               </div>
               <div className="card__head">
                 <h2>
-                  Needs attention <span className="ovsub">· {plural(issues.length, 'issue')}</span>
+                  Watch board <span className="ovsub">· {plural(issues.length, 'issue')}</span>
                 </h2>
                 <span className="spacer" />
                 <Link to="/alerts?tab=open" className="ovlink">
@@ -594,7 +594,7 @@ export function Overview() {
                     .slice(0, 12)
                     .map((a) => {
                       const cam = camById.get(a.cameraId);
-                      const target = (policies.find((p) => p.priority === a.priority)?.ackWithinMin ?? 15) * MIN;
+                      const target = (policies.find((p) => p.priority === a.priority)?.reviewWithinSec ?? 900) * 1000;
                       const answered = a.ackAt ? a.ackAt - a.at : null;
                       const waiting = isOpenAlert(a) ? now - a.at : null;
                       const lateRow = (answered ?? waiting ?? 0) > target;
@@ -613,7 +613,7 @@ export function Overview() {
                               </span>
                             </span>
                             <span className={`ovfeed__resp${lateRow ? ' is-late' : ''}`}>
-                              {answered !== null ? `Acknowledged in ${duration(answered)}` : waiting !== null ? `Waiting ${duration(waiting)}` : ''}
+                              {answered !== null ? `Reviewed in ${duration(answered)}` : waiting !== null ? `Waiting ${duration(waiting)}` : ''}
                             </span>
                             <StateChip state={a.state} />
                           </Link>
@@ -722,7 +722,7 @@ export function Overview() {
 
             <div className="kpis">
               <div className="kpi">
-                <KpiHead label="Acknowledged within target" icon="clock" tone="info" />
+                <KpiHead label="Reviewed within target" icon="clock" tone="info" />
                 <div className="kpi__value">
                   <span className="kpi__n">{sla.pct === null ? '–' : `${sla.pct}%`}</span>
                   <span className={`kdelta kdelta--${slaChange.tone}`}>{slaChange.text}</span>
@@ -765,7 +765,7 @@ export function Overview() {
             <div className="ovgrid">
               <section className="card ovgrid__12">
                 <div className="card__head">
-                  <h2>Alerts by level</h2>
+                  <h2>Alerts by criticality</h2>
                   <span className="ovsub">· over time</span>
                   <span className="spacer" />
                   <span className="ovmeta">{period.label}</span>

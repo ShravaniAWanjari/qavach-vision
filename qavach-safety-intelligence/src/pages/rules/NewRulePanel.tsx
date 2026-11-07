@@ -215,10 +215,10 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
         </div>
 
         <div className="field">
-          <span className="field__label">Alert Level</span>
-          <Seg label="Alert level" value={rule.priority} onChange={(priority) => set({ priority })} options={(['P1', 'P2', 'P3', 'P4'] as Priority[]).map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` }))} />
+          <span className="field__label">Alert Criticality</span>
+          <Seg label="Alert criticality" value={rule.priority} onChange={(priority) => set({ priority })} options={(['P1', 'P2', 'P3', 'P4'] as Priority[]).map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` }))} />
           <span className="field__hint">
-            The level decides who is alerted and how. <Link to="/configuration/alerts" onClick={onClose}>See alert configuration</Link>
+            The criticality decides who is alerted and how. <Link to="/configuration/alerts" onClick={onClose}>See alert configuration</Link>
           </span>
         </div>
 

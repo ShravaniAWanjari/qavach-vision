@@ -11,7 +11,7 @@ export const LEVELS: Priority[] = ['P1', 'P2', 'P3', 'P4'];
 
 export const isOpenAlert = (a: Alert) => a.state === 'new' || a.state === 'escalated';
 const isHandled = (a: Alert) => a.state === 'acknowledged' || a.state === 'resolved' || a.state === 'false-alarm';
-const targetMs = (policies: Policy[], p: Priority) => (policies.find((x) => x.priority === p)?.ackWithinMin ?? 15) * MIN;
+const targetMs = (policies: Policy[], p: Priority) => (policies.find((x) => x.priority === p)?.reviewWithinSec ?? 900) * 1000;
 export const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
 export const pct = (n: number, of: number) => (of ? Math.round((n / of) * 100) : null);
 
@@ -238,7 +238,7 @@ export function findings(input: {
     const w = sla.worst;
     out.push({
       tone: sla.pct < 75 ? 'bad' : 'warn',
-      text: `${sla.missed} of ${sla.met + sla.missed} alerts were not acknowledged within their target (${sla.pct}% on time).${w ? ` The worst was ${Math.round(w.late / MIN)} min late: ${w.alert.title} on ${w.alert.cameraId}.` : ''}`,
+      text: `${sla.missed} of ${sla.met + sla.missed} alerts were not reviewed within their target (${sla.pct}% on time).${w ? ` The worst was ${Math.round(w.late / MIN)} min late: ${w.alert.title} on ${w.alert.cameraId}.` : ''}`,
       to: w ? `/alerts/${w.alert.id}` : '/alerts',
       label: 'Review the worst',
     });

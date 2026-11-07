@@ -64,10 +64,22 @@
 
 /* Search & Filter button with Sort beside it; the filters open below on demand */
 .albar { display: flex; align-items: stretch; gap: 12px; margin-top: 2px; }
-.albar__btn { display: inline-flex; align-items: center; gap: 8px; height: 56px; padding: 0 18px; border: 1px solid var(--c-line, #e5e9f0); border-radius: 4px; background: var(--c-white); color: var(--q-ink); font: inherit; font-weight: 600; cursor: pointer; }
+.albar__btn { display: inline-flex; align-items: center; gap: 8px; height: 56px; padding: 0 18px; border: 1px solid var(--q-border); border-radius: 4px; background: var(--c-white); color: var(--q-ink); font: inherit; font-weight: 600; cursor: pointer; }
 .albar__btn:hover, .albar__btn.is-open { border-color: var(--q-ink); }
 .albar__count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--q-ink); color: var(--c-white); font-size: 12px; line-height: 20px; text-align: center; }
 .albar__sort { width: 280px; max-width: 100%; }
 .albar + .qsearch { margin-top: 12px; }
 @media (max-width: 600px) { .albar { flex-wrap: wrap; } .albar__sort { width: 100%; } }
 .albar__btn.is-open > svg:last-child { transform: rotate(180deg); }
+
+/* Review, report, close */
+.aflow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.aflow li { display: grid; grid-template-columns: 24px 1fr; column-gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--q-border); border-radius: 4px; color: var(--q-muted); font-size: 13px; }
+.aflow li > span:last-child { grid-column: 2; font-size: 12px; }
+.aflow li strong { color: inherit; }
+.aflow__n { grid-row: 1 / span 2; width: 22px; height: 22px; border-radius: 50%; background: var(--q-border); color: var(--q-ink); font-size: 12px; line-height: 22px; text-align: center; }
+.aflow li.is-done { color: var(--q-ink); } .aflow li.is-done .aflow__n { background: var(--q-good); color: var(--c-white); }
+.aflow li.is-now { color: var(--q-ink); border-color: var(--q-ink); } .aflow li.is-now .aflow__n { background: var(--q-ink); color: var(--c-white); }
+.aflow li.is-late { color: var(--q-danger); border-color: var(--q-danger); } .aflow li.is-late .aflow__n { background: var(--q-danger); color: var(--c-white); }
+.aflow li.is-skip { opacity: .6; }
+@media (max-width: 600px) { .aflow { grid-template-columns: 1fr; } }

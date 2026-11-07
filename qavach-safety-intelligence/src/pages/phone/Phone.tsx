@@ -160,8 +160,11 @@ function AlertCard({ a }: { a: Alert }) {
 }
 
 function PhoneHome({ as, list, go }: { as: (typeof USERS)[number]; list: Alert[]; go: (p: Page) => void }) {
+  const rules = useRules();
+  const everyone = useAlerts().filter(isOpen).length;
   const open = list.filter(isOpen);
-  const needs = list.filter((a) => isOpen(a) || (a.state === 'acknowledged' && !a.qavach));
+  // Open means not yet reviewed. Reviewed alerts whose rule asks for a QHSE record wait for the report, then they can be closed.
+  const toReport = list.filter((a) => a.state === 'acknowledged' && !a.qavach && rules.find((r) => r.id === a.ruleId)?.qavach !== 'none');
   return (
     <div className="phone__scroll">
       <div className="phone__tiles">
@@ -174,7 +177,7 @@ function PhoneHome({ as, list, go }: { as: (typeof USERS)[number]; list: Alert[]
         <button type="button" className="pcard ptile ptile--btn" onClick={() => go('alerts')}>
           <span className="ptile__label">Open alerts</span>
           <span className="ptile__big">{open.length}</span>
-          <span className="ptile__sub">{needs.length} need you</span>
+          <span className="ptile__sub">{toReport.length ? `${toReport.length} more to report · ` : ''}{everyone} open across the terminal</span>
         </button>
       </div>
       <div className="pcard plevels">
@@ -202,12 +205,13 @@ function PhoneHome({ as, list, go }: { as: (typeof USERS)[number]; list: Alert[]
 
 function PhoneList({ list }: { list: Alert[] }) {
   const [tab, setTab] = useState<'open' | 'all'>('open');
-  const shown = list.filter((a) => (tab === 'open' ? isOpen(a) || (a.state === 'acknowledged' && !a.qavach) : true));
+  const rules = useRules();
+  const shown = list.filter((a) => (tab === 'open' ? isOpen(a) || (a.state === 'acknowledged' && !a.qavach && rules.find((r) => r.id === a.ruleId)?.qavach !== 'none') : true));
   return (
     <>
       <div className="phone__tabs">
         <button type="button" aria-pressed={tab === 'open'} onClick={() => setTab('open')}>
-          Needs you
+          Open and to report
         </button>
         <button type="button" aria-pressed={tab === 'all'} onClick={() => setTab('all')}>
           All
@@ -288,7 +292,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
     );
 
   const open = isOpen(alert);
-  const due = policy ? alert.at + policy.ackWithinMin * 60000 - now : 0;
+  const due = policy ? alert.at + policy.reviewWithinSec * 1000 - now : 0;
 
   return (
     <>
@@ -302,7 +306,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
             {cam.name} · {ago(alert.at, now)}
           </span>
           {open && policy && policy.escalateTo !== 'none' && alert.state === 'new' && <span className="pbanner__due">Escalates to the {roleText(policy.escalateTo)} in {duration(Math.max(0, due))}</span>}
-          {alert.state === 'escalated' && <span className="pbanner__due">Escalated: not acknowledged in time</span>}
+          {alert.state === 'escalated' && <span className="pbanner__due">Escalated: not reviewed in time</span>}
         </div>
         <CameraView cam={cam} still alert={alert} zones={cam.zones.filter((z) => z.id === alert.zoneId)} />
         <dl className="pfacts">
@@ -327,7 +331,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
               }}
             >
               <Icon name="check" size={20} stroke={2.2} />
-              Acknowledge
+              Review
             </button>
             <a className="pbtn" href="tel:+910000000000">
               <Icon name="phone" size={18} />
@@ -342,7 +346,7 @@ function PhoneAlert({ id, userId }: { id: string; userId: string }) {
         {!open && alert.ackBy && (
           <p className="pnote">
             <Icon name="check" size={16} />
-            Acknowledged by {USERS.find((u) => u.id === alert.ackBy)?.name ?? alert.ackBy} {alert.ackVia === 'mobile' ? 'on the phone' : alert.ackVia === 'wall' ? 'on the wall' : 'in the console'} at {hm(alert.ackAt!)}
+            Reviewed by {USERS.find((u) => u.id === alert.ackBy)?.name ?? alert.ackBy} {alert.ackVia === 'mobile' ? 'on the phone' : alert.ackVia === 'wall' ? 'on the wall' : 'in the console'} at {hm(alert.ackAt!)}
           </p>
         )}
 

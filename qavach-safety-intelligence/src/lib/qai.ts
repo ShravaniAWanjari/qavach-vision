@@ -195,14 +195,16 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   else if (/\blow\b|just log|only log|record only/.test(t)) priority = 'P4';
   else {
     priority =
-      condition === 'smoke' || (condition === 'no-ppe' && ppe.includes('life jacket')) || /exclusion|imdg|hazard/.test(t)
+      condition === 'smoke' || /exclusion|imdg|hazard/.test(t)
         ? 'P1'
-        : condition === 'no-ppe' || condition === 'crowd'
+        : condition === 'no-ppe' && ppe.includes('life jacket')
+          ? 'P2'
+          : condition === 'no-ppe' || condition === 'crowd'
           ? 'P3'
           : condition === 'stopped'
             ? 'P4'
             : 'P2';
-    assumed.push(`Alert level ${priority} suggested from what the rule watches for`);
+    assumed.push(`Alert criticality ${priority} suggested from what the rule watches for`);
   }
 
   const qavach: QavachRecordType | 'none' = priority === 'P1' ? 'Incident' : priority === 'P4' ? 'none' : subject === 'vehicle' || /lane/.test(t) ? 'Near miss' : 'Observation';

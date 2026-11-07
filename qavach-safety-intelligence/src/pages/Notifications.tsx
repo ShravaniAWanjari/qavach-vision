@@ -29,7 +29,7 @@ export function AlertConfigPanel({ onClose, inline }: { onClose: () => void; inl
   return (
     <Drawer
       title="Alert Configuration"
-      sub="Who is notified, how, and what happens if nobody responds, for each alert level"
+      sub="Who is notified, how, and what happens if nobody responds, for each alert criticality"
       onClose={onClose}
       inline={inline}
       footer={
@@ -87,7 +87,8 @@ export function AlertConfigPanel({ onClose, inline }: { onClose: () => void; inl
                   value={p.notify}
                   onChange={(notify) => set(p, { notify })}
                 />
-                <Choice id={id('ack')} label="Respond Within" value={p.ackWithinMin} onChange={(ackWithinMin) => set(p, { ackWithinMin })} options={[1, 2, 5, 10, 15, 30, 60].map((m) => ({ value: m, label: `${m}min` }))} />
+                <Choice id={id('rev')} label="Review Within" value={p.reviewWithinSec} onChange={(reviewWithinSec) => set(p, { reviewWithinSec })} options={[30, 60, 120, 300, 600, 900].map((s) => ({ value: s, label: s < 60 ? `${s}s` : `${s / 60}min` }))} />
+                <Choice id={id('rep')} label="Report Within" value={p.reportWithinSec} onChange={(reportWithinSec) => set(p, { reportWithinSec })} options={[{ value: 0, label: 'Not reported' }, ...[60, 120, 300, 900, 1800, 3600].map((s) => ({ value: s, label: s < 60 ? `${s}s` : `${s / 60}min` }))]} />
                 <Choice
                   id={id('esc')}
                   label="Then Escalate To"
@@ -120,7 +121,7 @@ export function AlertConfigPanel({ onClose, inline }: { onClose: () => void; inl
                   value={p.qavach}
                   onChange={(qavach) => set(p, { qavach })}
                   options={[
-                    { value: 'on-acknowledge' as Policy['qavach'], label: 'On acknowledgement' },
+                    { value: 'on-acknowledge' as Policy['qavach'], label: 'On review' },
                     { value: 'reviewer-decides' as Policy['qavach'], label: 'A reviewer decides' },
                     { value: 'never' as Policy['qavach'], label: 'Never raised' },
                   ]}

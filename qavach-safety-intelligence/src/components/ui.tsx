@@ -24,8 +24,8 @@ export function PriorityBadge({ p, short }: { p: Priority; short?: boolean }) {
 const STATE: Record<AlertState, [string, string]> = {
   new: ['New', 'chip--danger'],
   escalated: ['Escalated', 'chip--rising'],
-  acknowledged: ['Acknowledged', 'chip--warn'],
-  resolved: ['Resolved', 'chip--good'],
+  acknowledged: ['Reviewed', 'chip--warn'],
+  resolved: ['Closed', 'chip--good'],
   'false-alarm': ['False alarm', ''],
 };
 export function StateChip({ state }: { state: AlertState }) {
@@ -731,6 +731,20 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
   return <img className="camview__img" src={src} alt="" onError={onError} draggable={false} />;
 }
 
+/** A smoke plume (and a flame glow for fire) drawn over a sample photo where a smoke or fire alert was raised, so the snapshot shows what the alert says. */
+function SmokePlume({ box, fire }: { box: Alert['box']; fire: boolean }) {
+  const [x, y, w, h] = box;
+  return (
+    <div className="smoke" style={{ left: `${x + w / 2}%`, top: `${y + h}%` }} aria-hidden>
+      <i className="smoke__puff smoke__puff--1" />
+      <i className="smoke__puff smoke__puff--2" />
+      <i className="smoke__puff smoke__puff--3" />
+      <i className="smoke__puff smoke__puff--4" />
+      {fire && <i className="smoke__flame" />}
+    </div>
+  );
+}
+
 /** A camera picture with its caption, and optionally zones and an alert's detection box. */
 export function CameraView({
   cam,
@@ -784,6 +798,7 @@ export function CameraView({
           subject={alert && subjType ? { box: alert.box, type: subjType, noPpe: /helmet|vest|life jacket|ppe/i.test(alert.title + alert.detail) } : undefined}
         />
       )}
+      {photo && alert && /smoke|fire|flame/i.test(alert.title) && <SmokePlume box={alert.box} fire={/fire|flame/i.test(alert.title)} />}
       {!photo && ((zones && zones.length > 0) || alert) && <ZoneOverlay zones={zones ?? []} highlight={highlightZones} box={liveReal || (cam.source && noPicture) ? undefined : alert} aspect={aspect} />}
       {!photo && zones && showZoneLabels && <ZoneLabels zones={zones} highlight={highlightZones} />}
       {caption && (

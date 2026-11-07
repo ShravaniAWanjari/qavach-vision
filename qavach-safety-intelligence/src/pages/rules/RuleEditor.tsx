@@ -7,7 +7,7 @@ import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
 import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
 import { apiUrl } from '../../lib/backend';
-import { hm } from '../../lib/time';
+import { duration, hm } from '../../lib/time';
 import { useMatches } from '../../state/bridge';
 import { previewFor } from '../../state/engine';
 import { deleteRule, isAdmin, nextRuleId, roleText, saveRule, toast, useCameras, useMe, usePolicies, useRules, userName } from '../../state/store';
@@ -368,9 +368,9 @@ export function RuleEditor() {
             )}
 
             <div className="field">
-              <span className="field__label">Alert level</span>
+              <span className="field__label">Alert criticality</span>
               <Seg
-                label="Alert level"
+                label="Alert criticality"
                 value={rule.priority}
                 onChange={(v) => set({ priority: v }, 'priority')}
                 options={(['P1', 'P2', 'P3', 'P4'] as Priority[]).map((p) => ({ value: p, label: `${p} ${PRIORITY_NAME[p]}` }))}
@@ -378,7 +378,7 @@ export function RuleEditor() {
               {policy && (
                 <span className="field__hint">
                   {policy.channels.map((c) => CHANNEL[c].label).join(', ')} to the {policy.notify.map(roleText).join(' and ')}
-                  {policy.escalateTo !== 'none' ? `; escalates to the ${roleText(policy.escalateTo)} if not acknowledged in ${policy.ackWithinMin}min` : ''}.{' '}
+                  {policy.escalateTo !== 'none' ? `; escalates to the ${roleText(policy.escalateTo)} if not reviewed in ${duration(policy.reviewWithinSec * 1000)}` : ''}.{' '}
                   <Link to="/configuration/alerts">Open alert configuration</Link>
                 </span>
               )}
@@ -638,7 +638,7 @@ function AlertPreview({ alert, onClose }: { alert: Alert; onClose: () => void })
         </div>
         <div className="apreview__who">
           <span className="apreview__label">Who would be told</span>
-          {people.length === 0 && <span className="meta">No one: this level has no one to notify.</span>}
+          {people.length === 0 && <span className="meta">No one: this criticality has no one to notify.</span>}
           {people.map((p) => (
             <span key={p.to} className="apreview__person">
               <strong>{userName(p.to)}</strong>
@@ -648,7 +648,7 @@ function AlertPreview({ alert, onClose }: { alert: Alert; onClose: () => void })
         </div>
         {policy && (
           <span className="meta">
-            Acknowledge within {policy.ackWithinMin}min{policy.escalateTo !== 'none' ? `, then it escalates to the ${roleText(policy.escalateTo)}` : ''}.
+            Review within {duration(policy.reviewWithinSec * 1000)}{policy.reportWithinSec ? `, report within ${duration(policy.reportWithinSec * 1000)}` : ''}{policy.escalateTo !== 'none' ? `, then it escalates to the ${roleText(policy.escalateTo)}` : ''}.
           </span>
         )}
       </div>

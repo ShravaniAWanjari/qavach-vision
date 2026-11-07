@@ -462,7 +462,7 @@ function FocusModal({ cam, wall, onClose, onPinToggle, onAck }: { cam: Camera; w
                   onAck(open);
                 }}
               >
-                Acknowledge {open.id}
+                Review {open.id}
               </button>
             )}
           </div>
