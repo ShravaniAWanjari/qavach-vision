@@ -64,6 +64,15 @@ def test_a_sync_never_removes_what_another_console_added(registry):
     assert registry.runner('PER-11') is not None and not registry.runner('PER-11').stopped
 
 
+def test_a_replacing_sync_makes_the_service_match_the_console(registry):
+    other = dict(CAM, id='PER-11', source=dict(kind='link', url='https://example.com/stream.m3u8'))
+    registry.put_camera(other)
+    registry.put_rule(dict(RULE, id='R-9', cameraIds=['PER-11']))
+    assert registry.sync([CAM], [RULE], replace=True) == []
+    assert set(registry.cameras) == {'CAM-1'} and set(registry.rules) == {'R-1'}
+    assert registry.runner('PER-11') is None
+
+
 def test_changing_a_rule_restarts_the_camera_and_removing_it_stops_detection(registry):
     registry.put_camera(CAM)
     registry.put_rule(RULE)

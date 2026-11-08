@@ -138,13 +138,15 @@ const OFFLINE = new Set(['YRD-27', 'WSH-07']);
 /** How long ago, in minutes, each sample faulty camera became unavailable. */
 export const DOWN_FOR_MIN: Record<string, number> = { 'WSH-07': 220, 'YRD-27': 52, 'RFR-05': 75, 'PER-08': 26, 'YRD-14': 9 };
 
+// Numbers the sample cameras never take: PER-11 is the connected ferry camera, and DCK-09 belonged to a camera that was removed, so no
+// sample camera comes back under that name.
 const RESERVED_IDS = new Set(['DCK-09', 'PER-11']);
 
 export function seedCameras(now: number): Camera[] {
   const out: Camera[] = [];
   let ip = 20;
   for (const a of AREAS) {
-    // The connected demo cameras (DCK-09, PER-11) keep their numbers, so the sample cameras count past them.
+    // Reserved numbers are skipped, so the sample cameras count past them.
     let num = 0;
     NAMES[a.id].forEach((name, i) => {
       num++;
@@ -173,22 +175,12 @@ export function seedCameras(now: number): Camera[] {
   return out;
 }
 
-/** The deck 4 clip, shipped with the detection service (backend/samples), and the ferry's public live stream. They are
- *  connected cameras: the service reads them for real. If a feed cannot be opened the console shows it as interrupted. */
-export const DECK4_UPLOAD_ID = '5a3b1e000004';
+/** The ferry's public live stream, a connected camera: the service reads it for real. If the feed cannot be opened the
+ *  console shows it as interrupted. (The bundled sample videos are picked in camera set-up; none is a camera by default.) */
 export const FERRY_LINK = 'https://www.youtube.com/watch?v=QO-hO_kwwmY';
 function liveCameras(now: number): Camera[] {
   const real = { scene: 'deck', variant: 0, status: 'online', make: 'Demo feed', resolution: '1920 × 1080', fps: 25, addedAt: now - 2 * 86400000, addedBy: 'u-priya' } as const;
   return [
-    {
-      ...real,
-      id: 'DCK-09',
-      name: 'Deck 4 · fire and smoke (video clip)',
-      areaId: 'deck',
-      stream: 'file://deck-4.mp4',
-      zones: [],
-      source: { kind: 'upload', uploadId: DECK4_UPLOAD_ID, fileName: 'Deck-4.mp4', title: 'Deck 4' },
-    },
     {
       ...real,
       scene: 'perimeter',
@@ -470,22 +462,6 @@ export function seedRules(cams: Camera[], now: number): Rule[] {
       priority: 'P1',
       mode: 'test',
       qavach: 'Observation',
-      updatedAt: t(1),
-    },
-    {
-      ...base,
-      id: 'R-12',
-      name: 'Smoke or flame on deck 4',
-      cameraIds: ['DCK-09'],
-      zoneIds: [],
-      subject: 'any',
-      condition: 'smoke',
-      durationSec: 0,
-      minFrames: 4,
-      fireClasses: 'both',
-      priority: 'P1',
-      qavach: 'Incident',
-      classification: 'Unsafe condition',
       updatedAt: t(1),
     },
     {

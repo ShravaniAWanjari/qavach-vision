@@ -36,6 +36,7 @@ WORKDIR /app/backend
 COPY backend/qavach ./qavach
 COPY backend/weights ./weights
 COPY backend/samples ./samples
+COPY backend/seed ./seed
 COPY --from=web /web/dist /app/dist
 
 ENV QAVACH_HOST=0.0.0.0 \

@@ -139,10 +139,12 @@ class Registry:
             self.reconcile(set((old or {}).get('cameraIds') or []))
             self.save()
 
-    def sync(self, cameras, rules):
-        """Add or update the cameras and rules a console sends. It never removes any: a console deletes its own
-        cameras and rules explicitly, and two consoles (another browser, another address) can share one service
-        without wiping each other. Unchanged cameras keep running."""
+    def sync(self, cameras, rules, replace=False):
+        """Add or update the cameras and rules a console sends. Unchanged cameras keep running.
+
+        With `replace` (what the console sends) the console is the source of truth: a camera or rule the console does
+        not have is removed, so the service never keeps running something the console cannot show. Without it nothing
+        is ever removed."""
         problems = []
         with self.lock:
             for rule in rules:
@@ -155,6 +157,16 @@ class Registry:
                     self.put_camera(camera, persist=False)
                 except Invalid as error:
                     problems.append(f'{camera.get("id")}: {error}')
+            if replace:
+                keep_rules = {str(r.get('id')) for r in rules}
+                keep_cameras = {str(c.get('id')) for c in cameras}
+                touched = set()
+                for rule_id in [r for r in self.rules if r not in keep_rules]:
+                    touched |= set((self.rules.pop(rule_id) or {}).get('cameraIds') or [])
+                for cam_id in [c for c in self.cameras if c not in keep_cameras]:
+                    self.cameras.pop(cam_id)
+                    touched.add(cam_id)
+                self.reconcile(touched)
             self.save()
             return problems
 

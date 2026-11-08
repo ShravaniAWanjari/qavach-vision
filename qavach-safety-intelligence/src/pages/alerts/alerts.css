@@ -90,3 +90,8 @@
 .alerts .table.table--grid .col-id { width: 74px; }
 .alerts .table.table--grid td:nth-child(2) { width: 100%; }
 .alerts .table.table--grid td:nth-child(5) .chip, .alerts .table.table--grid td:nth-child(6) { white-space: nowrap; }
+
+/* The settings gear on its own: no box, no border, no grey fill, level with Search & Filter and Sort By */
+.albar__gear { flex: 0 0 auto; width: 44px; height: 56px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: none; cursor: pointer; }
+.albar__gear:hover { background: var(--c-wash); }
+.albar__gear:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }

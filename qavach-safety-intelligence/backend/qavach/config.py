@@ -10,6 +10,7 @@ HERE = Path(__file__).resolve().parent.parent          # backend/
 DATA = Path(os.environ.get('QAVACH_DATA', HERE / 'data'))
 FRAMES = DATA / 'frames'            # one still per "test connection", shown while the zones are drawn
 UPLOADS = DATA / 'uploads'
+SEED = HERE / 'seed'                # the cameras, rules and alert pictures the site ships with (state.json, snapshots/); see server startup
 SAMPLES = HERE / 'samples'          # demo videos shipped with the service; copied into UPLOADS at start so cameras can name them by id
 SNAPSHOTS = DATA / 'snapshots'      # the frame each alert was raised on
 STATE_FILE = DATA / 'state.json'    # cameras and rules, so a restart does not forget them

@@ -4,7 +4,9 @@
 /* ── Sidebar ─────────────────────────────────────────────────── */
 .side { position: fixed; top: 0; left: 0; bottom: 0; width: var(--q-side-w); z-index: 1000; background: var(--q-dock); display: flex; flex-direction: column; transition: width .2s ease-in-out; }
 .side.is-open { width: var(--q-side-open-w); box-shadow: 0 0 24px color-mix(in srgb, var(--c-black) 33%, transparent); }
-.side__scrim { position: fixed; inset: 0; z-index: 900; background: color-mix(in srgb, var(--c-menu-ink) 95%, transparent); }
+.side__scrim { position: fixed; inset: 0; z-index: 900; background: color-mix(in srgb, var(--c-menu-ink) 70%, transparent); transition: background .2s ease, opacity .2s ease; }
+.side__scrim.is-menu { background: color-mix(in srgb, var(--c-menu-ink) 95%, transparent); }
+.side__scrim.is-away { opacity: .8; }
 /* Logo as in Q-HSE: collapsed, the mark (60px, on its blue halo) above the wordmark; open, the mark (48px) beside it. */
 .side__logo { overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 17px; height: 108px; padding-top: 19px; flex: 0 0 auto; }
 .side__mark { width: 33px; height: 35px; padding: 0; object-fit: contain; border-radius: 75%; background: var(--c-logo-halo); box-shadow: 0 0 16px var(--c-logo-glow); }   /* Q-HSE collapsed: 33 × 35 */

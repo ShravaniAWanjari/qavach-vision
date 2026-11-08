@@ -64,10 +64,11 @@ export function CameraEditor() {
     setRulePlan(Object.fromEntries(rules.map((r) => [r.id, r.cameraIds.includes(cam.id)])));
   }, [cam?.id]);
 
-  const place = cam ? placementFor(cam, cams, rules, walls) : { walls: [] as string[], rules: [] as { id: string; zoneIds: string[] }[] };
+  const place = cam ? placementFor(cam, walls) : { walls: [] as string[] };
   const suggested = cam && isNew && !touched ? place : undefined;
   const wallMode = (id: string): 'off' | 'rolls' | 'pinned' => (suggested ? (suggested.walls.includes(id) ? 'rolls' : 'off') : (wallPlan[id] ?? 'off'));
-  const ruleOn = (id: string) => (suggested ? suggested.rules.some((r) => r.id === id) : (rulePlan[id] ?? false));
+  // Rules are the admin's choice: nothing is ticked for a new camera.
+  const ruleOn = (id: string) => rulePlan[id] ?? false;
   // The first change turns what was suggested into explicit choices.
   const choose = (patch: { wall?: [string, 'off' | 'rolls' | 'pinned']; rule?: [string, boolean] }) => {
     const wp = Object.fromEntries(walls.map((w) => [w.id, wallMode(w.id)])) as Record<string, 'off' | 'rolls' | 'pinned'>;
@@ -165,7 +166,8 @@ export function CameraEditor() {
     try {
       const r = await backend.probeUpload(video.id);
       applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: `${video.label}.mp4` });
-      setCam((c) => (c ? { ...c, make: 'Sample video', name: c.name || video.label } : c));
+      // The location takes the sample's name unless the admin typed their own (a name left by another sample is replaced).
+      setCam((c) => (c ? { ...c, make: 'Sample video', name: !c.name || SAMPLE_VIDEOS.some((v) => v.label === c.name) ? video.label : c.name } : c));
     } catch (e) {
       setTest('fail');
       setErr((e as Error).message);
@@ -198,7 +200,7 @@ export function CameraEditor() {
     for (const r of ruleStore.get()) {
       const want = ruleOn(r.id);
       if (want === r.cameraIds.includes(cam.id)) continue;
-      saveRule(setCameraOnRule(r, cam, want, place.rules.find((x) => x.id === r.id)?.zoneIds ?? []));
+      saveRule(setCameraOnRule(r, cam, want, []));
     }
     toast(isNew ? `${cam.id} ${cam.name} added with ${cam.zones.length} zones` : `${cam.id} saved`);
     nav(isNew ? `/cameras/${cam.id}` : '/cameras');
@@ -428,7 +430,7 @@ export function CameraEditor() {
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card__head">
               <h2>Apply rules</h2>
-              <span className="meta">Rules already watching other cameras of this work area are ticked.</span>
+              <span className="meta">Tick the rules that should watch this camera, or make a new rule.</span>
               <span className="spacer" />
               {canEdit && (
                 <button type="button" className="qact__btn" onClick={() => setNewRule(true)}>
@@ -446,32 +448,20 @@ export function CameraEditor() {
                 </tr>
               </thead>
               <tbody>
-                {rules.map((r) => {
-                  // A rule drawn on zones that this camera does not have yet: it cannot be ticked until the zone is drawn in step 2.
-                  const zoneNames = [...new Set(cams.flatMap((c) => c.zones).filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name))];
-                  const watchesPeers = cams.some((c) => c.id !== cam.id && c.areaId === cam.areaId && r.cameraIds.includes(c.id));
-                  const needsZone = !!zoneNames.length && watchesPeers && !place.rules.some((x) => x.id === r.id);
-                  return (
-                    <tr key={r.id}>
-                      <td>
-                        <strong>{r.name}</strong>
-                        <div className="meta">
-                          <span className="mono">{r.id}</span> · {r.cameraIds.filter((id) => id !== cam.id).length} other cameras
-                          {needsZone && <> · Needs the zone “{zoneNames.join('”, “')}” drawn in step 2 before it can watch this camera</>}
-                        </div>
-                      </td>
-                      <td>{r.priority}</td>
-                      <td>
-                        <Switch
-                          checked={ruleOn(r.id)}
-                          disabled={needsZone}
-                          onChange={(v) => choose({ rule: [r.id, v] })}
-                          label={needsZone ? 'Draw zone first' : ruleOn(r.id) ? 'Yes' : 'No'}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {rules.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.name}</strong>
+                      <div className="meta">
+                        <span className="mono">{r.id}</span> · {r.cameraIds.filter((id) => id !== cam.id).length} other cameras
+                      </div>
+                    </td>
+                    <td>{r.priority}</td>
+                    <td>
+                      <Switch checked={ruleOn(r.id)} onChange={(v) => choose({ rule: [r.id, v] })} label={ruleOn(r.id) ? 'Yes' : 'No'} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

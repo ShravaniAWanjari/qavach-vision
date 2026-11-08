@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useService } from '../state/bridge';
+import { resyncService, useService } from '../state/bridge';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { SITE, USERS } from '../data/seed';
 import { resetAll } from '../lib/persist';
@@ -121,6 +121,19 @@ function flyTopFor(menu: 'auto' | 'cv', tab: DOMRect): number {
 function SideMenu() {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  // The dim layer behind the sidebar: lighter while the sidebar is only hovered, darker once a menu tab is open, and about 20%
+  // more see-through whenever the mouse is outside the window.
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const out = () => setAway(true);
+    const back = () => setAway(false);
+    document.documentElement.addEventListener('mouseleave', out);
+    document.documentElement.addEventListener('mouseenter', back);
+    return () => {
+      document.documentElement.removeEventListener('mouseleave', out);
+      document.documentElement.removeEventListener('mouseenter', back);
+    };
+  }, []);
   const [fly, setFly] = useState<'auto' | 'cv' | null>(null);
   const [sub, setSub] = useState<string | null>(null);
   const { pathname } = useLocation();
@@ -156,7 +169,7 @@ function SideMenu() {
   }, []);
   return (
     <>
-      {open && <div className="side__scrim" onClick={close} />}
+      {open && <div className={`side__scrim${fly ? ' is-menu' : ''}${away ? ' is-away' : ''}`} onClick={close} />}
       <aside className={`side${open ? ' is-open' : ''}`} aria-label="Qavach" onMouseEnter={keep} onMouseMove={keep} onMouseLeave={later} onFocus={keep}>
         <Link to="/" className="side__logo" aria-label="Qavach">
           <img className="side__mark" src={assetUrl('brand/qhse-logo-mark.svg')} alt="" />
@@ -426,6 +439,7 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
               () => {
                 const keepUser = me.id;
                 resetAll();
+                resyncService();
                 sessionStore.set((s) => ({ ...s, userId: keepUser }));
                 onClose();
                 nav('/');

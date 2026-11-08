@@ -18,9 +18,12 @@ Volume /data: state.json, uploads/, frames/, snapshots/
 - Console: React 19 SPA. Cameras, rules, walls, alerts and users are stored in browser localStorage. No database.
 - Service: detects on connected cameras. The console polls `/api/events` and creates alerts.
 - Demo cameras connected by default:
-  - DCK-09: `backend/samples/5a3b1e000004.mp4` (copied to `/data/uploads` at start), rule R-12 live.
   - PER-11: public YouTube live stream, rule R-13 test mode. Needs outbound internet.
-- Sample video for camera set-up: `backend/samples/5a3b1e000005.mp4` ("Fire and Smoke Detection Sample"). It ships in the image (`COPY backend/samples`) and is copied to `/data/uploads` at start, so the "Sample Video" dropdown (Camera set-up, Upload a video) works on the live link with no upload. It plays in a loop. To add another sample, put a file named with a 12-character hex id in `backend/samples/` and list it in `src/data/samples.ts`.
+- Sample videos for camera set-up: the files in `backend/samples/` (Fire and Smoke Detection Sample, Sample 2 and Sample 3, and Intrusion Detection Sample), listed in `src/data/samples.ts`. They ship in the image (`COPY backend/samples`) and are copied to `/data/uploads` at start (again when a file's size changes), so the "Sample Video" dropdown (Camera set-up, Upload a video) works on the live link with no upload. Each plays in a loop. To add another, put a file named with a 12-character hex id in `backend/samples/` and list it in `src/data/samples.ts`.
+- The site ships with its set-up, so a deployment comes up the same as the one it was built from:
+  - `src/data/demo-state.json`: the cameras, rules, video walls and alerts a browser starts from on its first visit (a browser that already has saved data keeps it, until the saved-data version in `src/lib/persist.ts` changes). Made with *Save set-up* on the Cameras page.
+  - `backend/seed/state.json`: the cameras and rules the detection service starts with, so they are already running before anyone opens the console. The service applies it once per version of the file. `backend/seed/snapshots/` holds the pictures of the sample alerts.
+  - Cameras on the sample videos refer to them by id only (`backend/samples/<id>.mp4`); there are no file paths anywhere in the set-up.
 - Detection runs from first start. A feed that cannot be opened shows "Camera feed interrupted" in the console; the service retries.
 
 ## 2. Components
@@ -103,10 +106,10 @@ Image defaults: `QAVACH_HOST=0.0.0.0`, `QAVACH_DATA=/data`, `QAVACH_WEB=/app/dis
 | YOLO11s person | 960 px | 0.96 s | 1.0 |
 | D-Fire YOLOv8n fire/smoke | 960 px | 0.48 s | 2.1 |
 
-- Whole service in the container, two demo cameras running (DCK-09 fire/smoke at 24 fps source, PER-11 intrusion at 30 fps source):
+- Whole service in the container, two cameras running (a fire/smoke video clip at 24 fps source, PER-11 intrusion at 30 fps source):
   - Idle (no cameras): 53 MiB, about 0% CPU
   - Running: 270 to 370% CPU (about 3.3 of 10 cores), 1.28 to 1.37 GiB RAM, about 58 processes/threads
-  - Analysed frames/s: DCK-09 2.1 to 2.6, PER-11 0.5 to 0.6
+  - Analysed frames/s: fire/smoke clip 2.1 to 2.6, PER-11 0.5 to 0.6
   - Same load with or without a browser open
 - Container start to healthy: under 15 s. Image: 4.98 GB.
 - x86 not measured.

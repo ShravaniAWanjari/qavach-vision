@@ -656,45 +656,66 @@ export function Overview() {
                   <span className="ovsub">· open issues, most urgent first</span>
                 </div>
                 {issues.length === 0 && <p className="card__body meta">Nothing is open.</p>}
-                <ul className="ovwho">
-                  {issues.slice(0, 4).map((i) => {
-                    const told = peopleTold(i.lead);
-                    const cam = camById.get(i.cameraId);
-                    const suggest = cam ? draftRecord(i.lead, cam, ruleById.get(i.ruleId), AREAS_BY_ID[cam.areaId], hm(i.lead.at)).immediateAction : '';
-                    const nobodyRead = told.length > 0 && !told.some((t) => t.status === 'read');
-                    return (
-                      <li key={i.key} className="ovwho__item">
-                        <div className="ovwho__head">
-                          <PriorityBadge p={i.priority} short />
-                          <Link to={`/alerts/${i.lead.id}`} className="ovwho__title ellipsis">
-                            {i.title} · {i.cameraId}
-                          </Link>
-                          <span className={`ovsla${i.overdue > 0 ? ' is-late' : ''}`}>{i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}</span>
-                        </div>
-                        <div className="ovwho__told">
-                          {told.length === 0 ? (
-                            <span className="ovwho__warn">No one has been notified</span>
-                          ) : (
-                            told.map((t) => (
-                              <span key={t.to} className={`ovwho__person ovwho__person--${t.status}`} title={`${[...t.channels].join(', ')}${t.escalation ? ' · escalation' : ''}`}>
-                                {t.escalation ? 'Escalated to ' : ''}
-                                {userName(t.to)}
-                                <i>{t.status === 'read' ? 'read' : t.status === 'delivered' ? 'not read' : t.status === 'sent' ? 'calling' : 'not reached'}</i>
-                              </span>
-                            ))
-                          )}
-                          {nobodyRead && <span className="ovwho__warn">No one has read it yet</span>}
-                        </div>
-                        {suggest && (
-                          <div className="ovwho__do">
-                            <Icon name="arrow-right" size={14} />
-                            <span>{suggest}</span>
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                {issues.length > 0 && (
+                  <div className="ovwho__wrap">
+                    <table className="table table--grid ovwho">
+                      <thead>
+                        <tr>
+                          <th>Criticality</th>
+                          <th>Issue</th>
+                          <th>Response</th>
+                          <th>Told</th>
+                          <th>First action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {issues.slice(0, 4).map((i) => {
+                          const told = peopleTold(i.lead);
+                          const cam = camById.get(i.cameraId);
+                          const suggest = cam ? draftRecord(i.lead, cam, ruleById.get(i.ruleId), AREAS_BY_ID[cam.areaId], hm(i.lead.at)).immediateAction : '';
+                          const read = told.filter((t) => t.status === 'read').length;
+                          return (
+                            <tr key={i.key}>
+                              <td>
+                                <PriorityBadge p={i.priority} short />
+                              </td>
+                              <td>
+                                <Link to={`/alerts/${i.lead.id}`} className="ovwho__title">
+                                  {i.title}
+                                </Link>
+                                <div className="meta">{i.cameraId}</div>
+                              </td>
+                              <td>
+                                <span className={`ovsla${i.overdue > 0 ? ' is-late' : ''}`}>{i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}</span>
+                              </td>
+                              <td>
+                                {told.length === 0 ? (
+                                  <span className="ovwho__warn">No one notified</span>
+                                ) : (
+                                  <>
+                                    <div className={read === 0 ? 'ovwho__warn' : 'meta'}>{read === 0 ? 'No one has read it yet' : `${read} of ${told.length} read`}</div>
+                                    <ul className="ovwho__people">
+                                      {told.map((t) => (
+                                        <li key={t.to} className={`ovwho__person ovwho__person--${t.status}`} title={`${[...t.channels].join(', ')}${t.escalation ? ' · escalation' : ''}`}>
+                                          <span>
+                                            {t.escalation && <em>Escalated · </em>}
+                                            {userName(t.to)}
+                                          </span>
+                                          <i>{t.status === 'read' ? 'Read' : t.status === 'delivered' ? 'Not read' : t.status === 'sent' ? 'Calling' : 'Not reached'}</i>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                              </td>
+                              <td className="ovwho__do">{suggest || <span className="meta">–</span>}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
             </div>
           </>

@@ -45,7 +45,6 @@ export function Alerts() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<Sort>('newest');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [settings, setSettings] = useState(false);
   // Opened from a camera (its badge on the video wall): only that camera's alerts, kept while you click through them.
   const onlyCam = params.get('camera') ?? '';
   const keep = onlyCam ? `?camera=${encodeURIComponent(onlyCam)}` : '';
@@ -82,7 +81,7 @@ export function Alerts() {
           <Icon name="chevron-down" size={16} stroke={2} />
         </button>
         <div className="albar__sort"><Choice id="al-sort" label="Sort By" clearTo="newest" value={sort} onChange={setSort} options={SORTS} /></div>
-        <button type="button" className="albar__gear" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
+        <button type="button" className="albar__gear" onClick={() => nav('/configuration/alerts')} aria-label="Alert configuration" title="Alert configuration">
           <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
         </button>
       </div>
@@ -135,30 +134,6 @@ export function Alerts() {
           </span>
         )}
       </div>
-
-      {settings && (
-        <>
-          <div className="qset-scrim" onClick={() => setSettings(false)} />
-          <aside className="qset" role="dialog" aria-modal="true" aria-label="Settings">
-            <strong className="qset__title">Settings</strong>
-            <div className="qset__body">
-              <div className="qset__sub">Alerts</div>
-              <button type="button" className="qset__item" onClick={() => {
-                setSettings(false);
-                nav('/configuration/alerts');
-              }}>
-                Configure alerts
-                <Icon name="chevron-right" size={16} stroke={2} />
-              </button>
-            </div>
-            <div className="qset__foot">
-              <button type="button" className="btn qset__cancel" onClick={() => setSettings(false)}>
-                Cancel
-              </button>
-            </div>
-          </aside>
-        </>
-      )}
 
       <div className={`alerts${selected ? ' alerts--detail' : ''}`}>
         <section className="alerts__list">

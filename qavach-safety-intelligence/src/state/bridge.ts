@@ -60,6 +60,10 @@ function applyStatus(statuses: Record<string, CameraStatus>) {
 /** Whether this window has sent its cameras and rules to the service since it came up. A window that was a follower
  *  when it loaded (another window held the lead for a few seconds) has not, so it syncs the moment it takes the lead. */
 let synced = false;
+/** Send the console's cameras and rules to the service again at the next tick, so the service matches it exactly (after a reset). */
+export const resyncService = () => {
+  synced = false;
+};
 
 async function connect() {
   const { epoch } = await backend.health();

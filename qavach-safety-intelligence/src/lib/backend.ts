@@ -139,8 +139,10 @@ export const backend = {
   deleteCamera: (id: string) => request<{ ok: boolean }>(`/api/cameras/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   putRule: (rule: Rule) => request<{ ok: boolean }>(`/api/rules/${encodeURIComponent(rule.id)}`, json('PUT', ruleBody(rule))),
   deleteRule: (id: string) => request<{ ok: boolean }>(`/api/rules/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // A built console makes the service match it exactly. The dev server's console (npm run dev) only adds and updates, so a
+  // developer opening it can never wipe what a real console set up.
   sync: (cameras: Camera[], rules: Rule[]) =>
-    request<{ ok: boolean; problems: string[] }>('/api/sync', json('POST', { cameras: cameras.filter((c) => c.source).map((c) => ({ id: c.id, ...cameraBody(c) })), rules: rules.map(ruleBody) })),
+    request<{ ok: boolean; problems: string[] }>('/api/sync', json('POST', { replace: !import.meta.env.DEV, cameras: cameras.filter((c) => c.source).map((c) => ({ id: c.id, ...cameraBody(c) })), rules: rules.map(ruleBody) })),
   poll: (since: number) => request<PollResult>(`/api/events?since=${since}`),
 };
 

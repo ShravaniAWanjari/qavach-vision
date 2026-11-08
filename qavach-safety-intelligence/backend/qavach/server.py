@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import os
 import re
+import hashlib
 import shutil
 import uuid
 from pathlib import Path
@@ -31,14 +32,38 @@ app = FastAPI(title='Qavach safety intelligence · detection service')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
 
+def _apply_seed():
+    """The site ships with its cameras and rules (seed/state.json) and the pictures of its sample alerts (seed/snapshots),
+    so a fresh deployment comes up with the same cameras running. The shipped state replaces the saved one once per
+    version of that file (a new version is a new deployment of the set-up), and the pictures are copied when missing."""
+    state = config.SEED / 'state.json'
+    if state.exists():
+        digest = hashlib.sha1(state.read_bytes()).hexdigest()
+        marker = config.DATA / '.seed-version'
+        if not marker.exists() or marker.read_text().strip() != digest:
+            shutil.copyfile(state, config.STATE_FILE)
+            marker.write_text(digest)
+    pictures = config.SEED / 'snapshots'
+    for picture in pictures.glob('*.jpg') if pictures.exists() else []:
+        target = config.SNAPSHOTS / picture.name
+        if not target.exists():
+            shutil.copyfile(picture, target)
+
+
 @app.on_event('startup')
 def _startup():
     for folder in (config.FRAMES, config.UPLOADS, config.SNAPSHOTS):
         folder.mkdir(parents=True, exist_ok=True)
     # Demo videos are named <12 hex id>.<ext>, so the console's sample cameras can point at them like any upload.
     for video in config.SAMPLES.glob('*') if config.SAMPLES.exists() else []:
-        if video.suffix.lower() in config.VIDEO_SUFFIXES and HEX12.match(video.stem) and not (config.UPLOADS / video.name).exists():
-            shutil.copyfile(video, config.UPLOADS / video.name)
+        if video.suffix.lower() not in config.VIDEO_SUFFIXES or not HEX12.match(video.stem):
+            continue
+        target = config.UPLOADS / video.name
+        # Copied when missing, and again when a sample was replaced under the same id (a different size), so cameras
+        # already pointing at it play the new video instead of a stale copy kept on the data volume.
+        if not target.exists() or target.stat().st_size != video.stat().st_size:
+            shutil.copyfile(video, target)
+    _apply_seed()
     registry.load()
 
 
@@ -167,9 +192,10 @@ async def delete_rule(rule_id: str):
 
 @app.post('/api/sync')
 async def sync(request: Request):
-    """The console sends every camera and rule when it opens, so the service matches it after a restart."""
+    """The console sends every camera and rule when it opens, so the service matches it exactly (after a restart, a reset, or
+    cameras removed on another machine): anything the console does not have is removed from the service."""
     body = await request.json()
-    problems = await asyncio.to_thread(registry.sync, body.get('cameras') or [], body.get('rules') or [])
+    problems = await asyncio.to_thread(registry.sync, body.get('cameras') or [], body.get('rules') or [], bool(body.get('replace')))
     return dict(ok=True, problems=problems)
 
 

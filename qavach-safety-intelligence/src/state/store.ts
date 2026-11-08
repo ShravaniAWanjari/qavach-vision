@@ -29,6 +29,25 @@ const counters = createStore<{ alert: number; Incident: number; Observation: num
   'Near miss': 413,
 });
 
+/** Every alert has its own number. Saved data can hold two alerts with one number (a counter that was reset or another window
+ *  counted past this one): the oldest keeps it and the later ones are renumbered, so each row opens its own alert and snapshot.
+ *  The counter is also moved past the highest number in use. Runs once when the console loads. */
+function repairAlertIds() {
+  const list = alertStore.get();
+  const seen = new Set<string>();
+  let top = counters.get().alert - 1;
+  for (const a of list) top = Math.max(top, Number(a.id.replace(/\D/g, '')) || 0);
+  const oldestFirst = [...list].sort((a, b) => a.at - b.at);
+  const rename = new Map<Alert, string>();
+  for (const a of oldestFirst) {
+    if (seen.has(a.id)) rename.set(a, `ALT-${++top}`);
+    seen.add(rename.get(a) ?? a.id);
+  }
+  if (rename.size) alertStore.set((l) => l.map((a) => (rename.has(a) ? { ...a, id: rename.get(a)! } : a)));
+  if (top >= counters.get().alert) counters.set((c) => ({ ...c, alert: top + 1 }));
+}
+repairAlertIds();
+
 /** When this browser last opened the QHSE reports panel; reports raised after it count as new. */
 export const reportsSeenStore = createStore<number>('reportsSeen', 0);
 
@@ -186,35 +205,15 @@ function pushToService(what: string, call: () => Promise<unknown>) {
   call().catch((e: Error) => toast(`Detection service did not accept ${what}: ${e.message}`, { tone: 'alert' }));
 }
 
-/** Where a camera belongs without anyone ticking boxes: the walls of the teams that cover its work area, and the rules
- *  that already watch other cameras of that work area (taking its zones of the same names as the rule's zones). */
-export function placementFor(cam: Camera, cams: Camera[], rules: Rule[], walls: Wall[]) {
-  const peers = cams.filter((c) => c.id !== cam.id && c.areaId === cam.areaId);
-  const ruleZones = (r: Rule) => {
-    const names = new Set(cams.filter((c) => c.id !== cam.id).flatMap((c) => c.zones.filter((z) => r.zoneIds.includes(z.id)).map((z) => z.name)));
-    return cam.zones.filter((z) => names.has(z.name)).map((z) => z.id);
-  };
-  return {
-    walls: walls.filter((w) => TEAMS_BY_ID[w.teamId]?.areaIds.includes(cam.areaId)).map((w) => w.id),
-    // A rule drawn on zones only takes a camera that has a zone of the same name; a whole-view rule takes any camera of the area.
-    rules: rules.filter((r) => peers.some((p) => r.cameraIds.includes(p.id)) && (r.zoneIds.length === 0 || ruleZones(r).length > 0)).map((r) => ({ id: r.id, zoneIds: ruleZones(r) })),
-  };
-}
-
-/** Puts a camera on or off a rule, with the zones that go with it. */
-export function setCameraOnRule(rule: Rule, cam: Camera, on: boolean, zoneIds: string[]): Rule {
-  const rest = rule.cameraIds.filter((id) => id !== cam.id);
-  const zones = rule.zoneIds.filter((z) => !cam.zones.some((cz) => cz.id === z));
-  return on ? { ...rule, cameraIds: [...rest, cam.id], zoneIds: [...zones, ...zoneIds] } : { ...rule, cameraIds: rest, zoneIds: zones };
-}
-
+export { placementFor, setCameraOnRule } from './placement';
+import { placementFor } from './placement';
 /** The next free camera number in an area: one past the highest in use, so a removed camera's number is never reused over another. */
 export function nextCameraId(areaPrefix: string, cams: Camera[]) {
   const nums = cams.filter((c) => c.id.startsWith(`${areaPrefix}-`)).map((c) => Number(c.id.slice(areaPrefix.length + 1))).filter((n) => Number.isFinite(n));
   return `${areaPrefix}-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
 }
 
-/** Saves a camera. A new one joins the walls and rules that cover its area unless `place` is false, which the camera editor
+/** Saves a camera. A new one joins the walls that cover its area unless `place` is false, which the camera editor
  *  uses because it already applied what the admin ticked. */
 export function saveCamera(cam: Camera, opts: { place?: boolean } = {}) {
   const isNew = !cameraStore.get().some((c) => c.id === cam.id);
@@ -231,15 +230,9 @@ export function saveCamera(cam: Camera, opts: { place?: boolean } = {}) {
     return;
   }
   if (opts.place === false) return;
-  // A new camera joins the walls and rules that already cover its work area, so it shows up everywhere at once.
-  // A connected camera (one with a real stream) is left off rules until someone chooses, since a rule starts real detection on it.
-  const place = placementFor(cam, cameraStore.get(), ruleStore.get(), wallStore.get());
-  const onWalls = new Set(place.walls);
+  // A new camera joins the walls that cover its work area, so it shows up at once. Rules are never added for it: someone picks them.
+  const onWalls = new Set(placementFor(cam, wallStore.get()).walls);
   wallStore.set((list) => list.map((w) => (onWalls.has(w.id) && !w.rotation.includes(cam.id) ? { ...w, rotation: [...w.rotation, cam.id] } : w)));
-  if (!cam.source) {
-    const byRule = new Map(place.rules.map((r) => [r.id, r.zoneIds]));
-    ruleStore.set((list) => list.map((r) => (byRule.has(r.id) ? setCameraOnRule(r, cam, true, byRule.get(r.id)!) : r)));
-  }
 }
 export function removeCamera(id: string) {
   const real = cameraStore.get().find((c) => c.id === id)?.source;
