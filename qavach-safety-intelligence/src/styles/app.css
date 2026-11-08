@@ -413,8 +413,9 @@ button.drcal__arrow:hover { background: var(--q-canvas); }
 .btn--report { background: var(--c-red-wash); border-color: var(--c-red); color: var(--c-red); }
 .btn--report:hover { background: color-mix(in srgb, var(--c-red) 16%, var(--c-white)); border-color: var(--c-red); color: var(--c-red); }
 .listbar:has(.sact) { flex-wrap: wrap; row-gap: 8px; }
-.listbar__sortcol { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.listbar__sortcol > .msel { width: 100%; }
+.listbar__sortcol { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 300px; width: 300px; }
+/* The sort box keeps its own height inside the column (its 300px flex-basis is its width in a row, not its height here). */
+.listbar__sortcol > .msel { flex: 0 0 auto; width: 100%; }
 
 /* The search buttons sit level with the fields they search; New rule goes to the right end of its line. */
 .qsearch__fields > .sact, .camsearch__fields > .sact { align-self: center; }

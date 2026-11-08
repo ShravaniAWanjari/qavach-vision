@@ -3,6 +3,8 @@ import { Scene, SCENE_H, SCENE_W } from '../scenes/Scene';
 import { demoPhoto } from '../scenes/photos';
 import { ZONE_COLORS } from '../scenes/zones';
 import type { Alert, AlertState, Camera, Channel, Priority, Zone } from '../data/types';
+import { FALLBACK_FRAMES, hasFallbackFrames } from '../data/samples';
+import { assetUrl } from '../lib/assets';
 import { apiUrl, streamUrl, stillUrl } from '../lib/backend';
 import { hms } from '../lib/time';
 import { useService } from '../state/bridge';
@@ -702,9 +704,14 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
     return () => window.clearInterval(t);
   }, [refreshing]);
   const fallback = stillUrl(cam);
+  // With the detection service not running, a camera on a sample video shows pictures taken from that video (shipped with the
+  // site), and an alert's snapshot comes from the copies shipped for the sample alerts, so nothing is blank.
+  const offlineFrames = !serviceUp && cam.source?.kind === 'upload' && hasFallbackFrames(cam.source.uploadId) ? cam.source.uploadId : undefined;
+  const snapFile = snapshot?.split('/').pop();
+  const offlineSnap = !serviceUp && snapFile && offlineFrames ? assetUrl(`fallback/snapshots/${snapFile}`) : undefined;
   const latest = refreshing && badBump !== bump ? `${apiUrl(`/api/cameras/${encodeURIComponent(cam.id)}/frame.jpg`)}?t=${bump}` : undefined;
-  const src = snapshot ? apiUrl(snapshot) : !still && !frozen && serviceUp && !broken ? streamUrl(cam) : (latest ?? fallback);
-  const missing = !src || failed === src;
+  const src = snapshot ? (offlineSnap ?? apiUrl(snapshot)) : !still && !frozen && serviceUp && !broken ? streamUrl(cam) : (latest ?? fallback);
+  const missing = (!offlineFrames || !!snapshot) && (!src || failed === src);
   useEffect(() => onMissing(missing), [missing, onMissing]);
   // The service is up but cannot read this camera (stream down, address wrong, file missing): say so, not "no picture".
   if (serviceUp && cam.status === 'offline')
@@ -715,6 +722,7 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
         <small>The detection service cannot read this camera. It keeps trying.</small>
       </div>
     );
+  if (offlineFrames && !snapshot) return <FallbackFrames uploadId={offlineFrames} seed={cam.id} still={!!still} />;
   if (missing)
     return (
       <div className="camview__nopic">
@@ -724,11 +732,23 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
       </div>
     );
   const onError = () => {
-    if (src === fallback || src === (snapshot ? apiUrl(snapshot) : '')) setFailed(src);
+    if (src && (src === fallback || src === offlineSnap || src === (snapshot ? apiUrl(snapshot) : ''))) setFailed(src);
     else if (src === latest) setBadBump(bump);
     else setBroken(true);
   };
   return <img className="camview__img" src={src} alt="" onError={onError} draggable={false} />;
+}
+
+/** The pictures shipped for a sample video, one after another, as a stand-in for the live picture. A still (a thumbnail) shows one. */
+function FallbackFrames({ uploadId, seed, still }: { uploadId: string; seed: string; still: boolean }) {
+  const start = [...seed].reduce((n, ch) => n + ch.charCodeAt(0), 0) % FALLBACK_FRAMES;
+  const [i, setI] = useState(start);
+  useEffect(() => {
+    if (still) return;
+    const t = window.setInterval(() => setI((n) => (n + 1) % FALLBACK_FRAMES), 2500);
+    return () => window.clearInterval(t);
+  }, [still]);
+  return <img className="camview__img" src={assetUrl(`fallback/${uploadId}/${i + 1}.jpg`)} alt="" draggable={false} />;
 }
 
 /** A smoke plume (and a flame glow for fire) drawn over a sample photo where a smoke or fire alert was raised, so the snapshot shows what the alert says. */

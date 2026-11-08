@@ -8,9 +8,9 @@
 .side__scrim.is-menu { background: color-mix(in srgb, var(--c-menu-ink) 95%, transparent); }
 .side__scrim.is-away { opacity: .8; }
 /* Logo as in Q-HSE: collapsed, the mark (60px, on its blue halo) above the wordmark; open, the mark (48px) beside it. */
-.side__logo { overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 17px; height: 108px; padding-top: 19px; flex: 0 0 auto; }
-.side__mark { width: 33px; height: 35px; padding: 0; object-fit: contain; border-radius: 75%; background: var(--c-logo-halo); box-shadow: 0 0 16px var(--c-logo-glow); }   /* Q-HSE collapsed: 33 × 35 */
-.side__wordmark { display: block; width: 18px; height: auto; }
+.side__logo { overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 17px; height: 108px; padding-top: 17px; flex: 0 0 auto; }
+.side__mark { width: 46px; height: 48px; padding: 0; object-fit: contain; border-radius: 75%; background: var(--c-logo-halo); box-shadow: 0 0 16px var(--c-logo-glow); }   /* collapsed: sized to sit with the 45px menu icons */
+.side__wordmark { display: block; width: 46px; height: auto; }
 .side.is-open .side__logo { flex-direction: row; justify-content: center; align-items: center; gap: 8px; padding-top: 0; }
 .side.is-open .side__mark { width: 48px; height: 48px; padding: 0; background: none; box-shadow: none; }
 .side.is-open .side__wordmark { width: 68px; }
