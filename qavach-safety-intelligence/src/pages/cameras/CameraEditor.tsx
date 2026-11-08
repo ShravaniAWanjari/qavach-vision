@@ -165,9 +165,9 @@ export function CameraEditor() {
     setErr('');
     try {
       const r = await backend.probeUpload(video.id);
-      applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: `${video.label}.mp4` });
-      // The location takes the sample's name unless the admin typed their own (a name left by another sample is replaced).
-      setCam((c) => (c ? { ...c, make: 'Sample video', name: !c.name || SAMPLE_VIDEOS.some((v) => v.label === c.name) ? video.label : c.name } : c));
+      applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: video.fileName });
+      // The location takes the name a port would give that camera unless the admin typed their own (a name left by another sample is replaced).
+      setCam((c) => (c ? { ...c, make: MAKES[0], name: !c.name || SAMPLE_VIDEOS.some((v) => v.label === c.name || v.cameraName === c.name) ? video.cameraName : c.name } : c));
     } catch (e) {
       setTest('fail');
       setErr((e as Error).message);

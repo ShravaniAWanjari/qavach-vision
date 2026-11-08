@@ -16,7 +16,7 @@ export interface Store<T> {
 }
 
 // Bump when the sample data changes shape, so a browser holding the old sample data starts again from the new one.
-const SEED_VERSION = '2026-11-08-setup-v8';
+const SEED_VERSION = '2026-11-08-setup-v9';
 try {
   if (window.localStorage.getItem(PREFIX + '__seed') !== SEED_VERSION) {
     Object.keys(window.localStorage)

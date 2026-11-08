@@ -2,7 +2,7 @@
  "cameras": [
   {
    "id": "PER-52",
-   "name": "Intrusion Detection Sample",
+   "name": "Berth 3 · access gate",
    "zones": [
     {
      "id": "PER-52-Z-mw7v4k562",
@@ -55,7 +55,7 @@
   },
   {
    "id": "DCK-82",
-   "name": "Fire and Smoke Detection Sample",
+   "name": "Berth 4 · deck fire watch",
    "zones": [
     {
      "id": "DCK-82-Z-mw7zmnse2",
