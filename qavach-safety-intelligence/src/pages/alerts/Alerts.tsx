@@ -251,9 +251,39 @@ function ClipDialog({ alert, cam, onClose }: { alert: Alert; cam: Camera; onClos
   const file = alert.clip!.split('/').pop()!;
   const src = service.online ? apiUrl(alert.clip!) : assetUrl(`fallback/clips/${file}`);
   return (
-    <Modal title={`${alert.title} · ${cam.id} ${cam.name}`} onClose={onClose}>
-      <video className="aclip__video" src={src} controls autoPlay loop muted playsInline />
-      <p className="meta">Clip of the incident · {dayTime(alert.at)}</p>
+    <Modal
+      title="Incident clip"
+      onClose={onClose}
+      footer={
+        <button type="button" className="btn btn--secondary" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="aclip__what">
+        <PriorityBadge p={alert.priority} short />
+        <strong>{alert.title}</strong>
+        <span className="mono aclip__id">{alert.id}</span>
+      </div>
+      <div className="aclip__frame">
+        <video className="aclip__video" src={src} controls autoPlay loop muted playsInline />
+      </div>
+      <dl className="aclip__meta">
+        <div>
+          <dt>Camera</dt>
+          <dd>
+            {cam.id} · {cam.name}
+          </dd>
+        </div>
+        <div>
+          <dt>Area</dt>
+          <dd>{AREAS_BY_ID[cam.areaId]?.name}</dd>
+        </div>
+        <div>
+          <dt>Raised</dt>
+          <dd>{dayTime(alert.at)}</dd>
+        </div>
+      </dl>
     </Modal>
   );
 }

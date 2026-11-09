@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Scene, SCENE_H, SCENE_W } from '../scenes/Scene';
 import { demoPhoto } from '../scenes/photos';
@@ -498,7 +499,8 @@ function useEscape(onClose: () => void) {
 
 export function Modal({ title, onClose, children, footer, wide, icon }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; icon?: ReactNode }) {
   useEscape(onClose);
-  return (
+  // Drawn on the page itself, not inside whatever opened it, so no table header or card can sit above it.
+  return createPortal(
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal${wide ? ' modal--wide' : ''}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
         <div className="modal__head">
@@ -516,6 +518,8 @@ export function Modal({ title, onClose, children, footer, wide, icon }: { title:
         {footer && <div className="modal__foot">{footer}</div>}
       </div>
     </div>
+  ,
+    document.body,
   );
 }
 
