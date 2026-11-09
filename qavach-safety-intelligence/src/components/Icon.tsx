@@ -34,6 +34,8 @@ const ICONS = {
   'chevron-left': '<path d="m14 7-5 5 5 5"/>',
   'arrow-right': '<path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5"/>',
   'arrow-left': '<path d="M19 12H5M10.5 6.5 5 12l5.5 5.5"/>',
+  replay: '<path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v3.2h3.2"/><path d="M10 8.8v6.4l5.2-3.2z" fill="currentColor"/>',
+  shrink: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   plus: '<path d="M12 5.5v13M5.5 12h13"/>',
   'add-circle': '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7v10M7 12h10" stroke="var(--c-white)" stroke-width="2"/>',
   close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',

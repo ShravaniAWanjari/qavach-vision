@@ -227,15 +227,17 @@ export function Rules() {
                     />
                   </td>
                   <td className="col-act">
+                    {admin && (
                     <button
-                      type="button"
-                      className="btn btn--ghost btn--icon btn--sm rule-edit"
-                      onClick={() => nav(`/configuration/rules/${r.id}`)}
-                      title={admin ? `Edit ${r.id}` : `View ${r.id}`}
-                      aria-label={admin ? `Edit rule ${r.id}` : `View rule ${r.id}`}
-                    >
-                      <Icon name={admin ? 'edit' : 'eye'} size={18} />
-                    </button>
+                        type="button"
+                        className="btn btn--ghost btn--icon btn--sm rule-edit"
+                        onClick={() => nav(`/configuration/rules/${r.id}`)}
+                        title={admin ? `Edit ${r.id}` : `View ${r.id}`}
+                        aria-label={admin ? `Edit rule ${r.id}` : `View rule ${r.id}`}
+                      >
+                        <Icon name={admin ? 'edit' : 'eye'} size={18} />
+                      </button>
+    )}
                   </td>
                 </tr>
               );

@@ -205,6 +205,7 @@ function Chips({ c, ruleCount }: { c: Camera; ruleCount: (id: string) => number 
 
 /** Thumbnails, grouped by work area like folders. */
 function ThumbView({ list, ruleCount }: ViewProps) {
+  const admin = isAdmin(useMe());
   return (
     <>
       {AREAS.map((a) => {
@@ -221,7 +222,7 @@ function ThumbView({ list, ruleCount }: ViewProps) {
             </h2>
             <div className="camgrid">
               {items.map((c) => (
-                <Link key={c.id} to={`/configuration/cameras/${c.id}`} className="camcard">
+                <Link key={c.id} to={admin ? `/configuration/cameras/${c.id}` : `/alerts?camera=${encodeURIComponent(c.id)}`} className="camcard">
                   <CameraView cam={c} still zones={c.zones} caption={false} />
                   <div className="camcard__body">
                     <div className="row">
@@ -245,6 +246,7 @@ type SortKey = 'id' | 'name' | 'area' | 'dept' | 'status' | 'zones' | 'rules';
 
 /** One row per camera, every column sortable. */
 function ListView({ list, ruleCount }: ViewProps) {
+  const admin = isAdmin(useMe());
   const nav = useNavigate();
   const [sort, setSort] = useState<{ key: SortKey; up: boolean }>({ key: 'id', up: true });
   const value = (c: Camera): string | number =>
@@ -280,7 +282,7 @@ function ListView({ list, ruleCount }: ViewProps) {
         </thead>
         <tbody>
           {rows.map((c) => (
-            <tr key={c.id} className="is-clickable" onClick={() => nav(`/configuration/cameras/${c.id}`)}>
+            <tr key={c.id} className="is-clickable" onClick={() => nav(admin ? `/configuration/cameras/${c.id}` : `/alerts?camera=${encodeURIComponent(c.id)}`)}>
               <td className="mono">{c.id}</td>
               <td>
                 <strong>{c.name}</strong>
@@ -308,6 +310,7 @@ function ListView({ list, ruleCount }: ViewProps) {
 
 /** Finder-style columns: department, then work area, then camera, with a preview of the chosen camera. */
 function ColumnView({ list, ruleCount }: ViewProps) {
+  const admin = isAdmin(useMe());
   const nav = useNavigate();
   const depts = departmentsIn(list);
   const [deptSel, setDept] = useState<string>();
@@ -390,9 +393,15 @@ function ColumnView({ list, ruleCount }: ViewProps) {
               <dt>Rules</dt>
               <dd>{rulesOn ? `${rulesOn} ${rulesOn === 1 ? 'rule watches it' : 'rules watch it'}` : 'None'}</dd>
             </dl>
-            <button type="button" className="btn" onClick={() => nav(`/configuration/cameras/${cam.id}`)}>
-              Open camera set-up
-            </button>
+            {admin ? (
+              <button type="button" className="btn" onClick={() => nav(`/configuration/cameras/${cam.id}`)}>
+                Open camera set-up
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => nav(`/alerts?camera=${encodeURIComponent(cam.id)}`)}>
+                See alerts on this camera
+              </button>
+            )}
           </>
         )}
       </div>

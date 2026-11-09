@@ -12,7 +12,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from qavach import config, sources
+from qavach import clips, config, sources
 from qavach.detector import TrackerClient
 from qavach.fire import FireEngine, FireRule
 from qavach.intrusion import IntrusionRule, Rule, zones_to_pixels
@@ -134,6 +134,8 @@ class CameraRunner:
         self.jpeg = None
         self.seq = 0
         self.full = None                 # latest full-size frame
+        self.file_pos = 0.0              # seconds into the video file for the frame being analysed
+        self.recent = deque(maxlen=24)   # the last pictures of the preview, for the clip of a live camera
         self.stop_flag = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -221,6 +223,7 @@ class CameraRunner:
             for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines))):
                 tick = time.time()
                 last_seconds = seconds
+                self.file_pos = seconds
                 rows, fires = self._process(frame, seconds, engines, tracker, detector, region, width, height, fire_engines, fire_detector)
                 done += 1
                 busy += time.time() - tick
@@ -325,14 +328,28 @@ class CameraRunner:
                     self._fire_alert(frame, rule, event, width, height)
         return [(name, conf, box, 'counted' if ok else 'ignored') for (name, conf, box), ok in zip(detections, counted)]
 
+    def _clip(self, event_id):
+        """Save a short clip of this moment; returns its address, or None when it could not be made."""
+        source = self.camera['source']
+        try:
+            if source.kind == 'upload':
+                made = clips.from_file(sources.upload_path(source.upload_id), self.file_pos, event_id)
+            else:
+                made = clips.from_frames(list(self.recent), event_id, fps=max(2, min(6, round(self.stats.get('fps') or 3))))
+        except Exception as error:      # a clip is a bonus: the alert goes out without one
+            print(f'clip {event_id}: {error}', flush=True)
+            made = False
+        return f'/api/clips/{event_id}.mp4' if made else None
+
     def _fire_alert(self, frame, rule, event, width, height):
         x1, y1, x2, y2 = event['box']
         event_id = f'EV-{uuid.uuid4().hex[:8]}'
         config.SNAPSHOTS.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(config.SNAPSHOTS / f'{event_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
         self.stats['alerts'] += 1
+        clip = self._clip(event_id)
         self.emit(dict(
-            id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
+            clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
             zoneId=event['zone_id'], zoneName=event['zone_name'] or WHOLE_VIEW['name'], hazard=event['hazard'],
             trackId=0, confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
             reentry=event['repeat'], moved=0.0, mode=rule.get('mode', 'test'),
@@ -348,8 +365,9 @@ class CameraRunner:
         config.SNAPSHOTS.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(config.SNAPSHOTS / f'{event_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
         self.stats['alerts'] += 1
+        clip = self._clip(event_id)
         self.emit(dict(
-            id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
+            clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
             zoneId=None if event['zone_id'] == WHOLE_VIEW['id'] else event['zone_id'], zoneName=event['zone_name'],
             trackId=event['id'], confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
             reentry=event['reentry'], moved=event['moved'], mode=rule.get('mode', 'test'),
@@ -389,6 +407,7 @@ class CameraRunner:
             self._label(view, f'{name.upper()} {int(conf * 100)}%', p1, colour)
         ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
         self.jpeg = buffer.tobytes()
+        self.recent.append(self.jpeg)
         self.seq += 1
 
     def snapshot(self):

@@ -1,3 +1,4 @@
+import { useEffect, type ReactNode } from 'react';
 import { createHashRouter, Navigate, Outlet, RouterProvider, useParams } from 'react-router';
 import { Shell } from './components/Shell';
 import { Overview } from './pages/Overview';
@@ -8,6 +9,7 @@ import { Rules } from './pages/rules/Rules';
 import { Phone } from './pages/phone/Phone';
 import { AlertsSection, CameraSection, Configuration, NewRuleSection, RuleSection, WallSection } from './pages/configuration/Configuration';
 import { useBackendBridge } from './state/bridge';
+import { canConfigure, toast, useMe } from './state/store';
 import { useEngine } from './state/engine';
 
 // The old addresses still work and land in Configuration.
@@ -15,6 +17,16 @@ const To = ({ base }: { base: string }) => {
   const p = useParams();
   return <Navigate to={`${base}${p.cameraId ?? p.ruleId ?? ''}`} replace />;
 };
+
+/** Configuration is for the safety admin; anyone else who lands there (a link, or after switching profile) goes back to the Overview. */
+function RequireConfigure({ children }: { children: ReactNode }) {
+  const me = useMe();
+  const allowed = canConfigure(me);
+  useEffect(() => {
+    if (!allowed) toast('Configuration is for the safety admin', { tone: 'alert' });
+  }, [allowed]);
+  return allowed ? <>{children}</> : <Navigate to="/" replace />;
+}
 
 // Hash routes so the built prototype also works opened straight from disk.
 function Root() {
@@ -41,10 +53,16 @@ const router = createHashRouter([
           { path: '/rules', element: <Rules /> },
           { path: '/rules/new', element: <Navigate to="/configuration/rules" replace /> },
           { path: '/rules/:ruleId', element: <To base="/configuration/rules/" /> },
+          { path: '/m', element: <Phone /> },
+          { path: '/m/:alertId', element: <Phone /> },
           { path: '/notifications', element: <Navigate to="/configuration/alerts" replace /> },
           {
             path: '/configuration',
-            element: <Configuration />,
+            element: (
+              <RequireConfigure>
+                <Configuration />
+              </RequireConfigure>
+            ),
             children: [
               { index: true, element: <Navigate to="alerts" replace /> },
               { path: 'alerts', element: <AlertsSection /> },
@@ -58,8 +76,6 @@ const router = createHashRouter([
         ],
       },
       { path: '/screen/:wallId', element: <WallScreen /> },
-      { path: '/m', element: <Phone /> },
-      { path: '/m/:alertId', element: <Phone /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

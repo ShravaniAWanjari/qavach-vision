@@ -12,6 +12,7 @@ FRAMES = DATA / 'frames'            # one still per "test connection", shown whi
 UPLOADS = DATA / 'uploads'
 SEED = HERE / 'seed'                # the cameras, rules and alert pictures the site ships with (state.json, snapshots/); see server startup
 SAMPLES = HERE / 'samples'          # demo videos shipped with the service; copied into UPLOADS at start so cameras can name them by id
+CLIPS = DATA / 'clips'              # a short clip of each incident, saved when its alert is raised
 SNAPSHOTS = DATA / 'snapshots'      # the frame each alert was raised on
 STATE_FILE = DATA / 'state.json'    # cameras and rules, so a restart does not forget them
 

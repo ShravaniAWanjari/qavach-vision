@@ -212,63 +212,19 @@ export const USERS: User[] = [
 
 const areaCams = (cams: Camera[], ...areaIds: string[]) => cams.filter((c) => areaIds.includes(c.areaId)).map((c) => c.id);
 
+/** Every wall starts as equal-sized thumbnails: nothing pinned big, every camera of its area rolling through one even grid
+ *  (the pinned cameras come first, so they show on the first page). The wall settings change that. */
 export function seedWalls(cams: Camera[]): Wall[] {
+  const first = (pinned: string[], rest: string[]) => [...pinned, ...rest.filter((id) => !pinned.includes(id))];
   const quayPinned = ['QUA-03', 'DCK-03', 'QUA-08', 'DCK-04'];
   const yardPinned = ['GTE-01', 'GTE-02', 'YRD-07', 'RFR-07'];
   const hsePinned = ['HAZ-01', 'DCK-03', 'QUA-03', 'WSH-04', 'GTE-01', 'HAZ-03'];
+  const even = { pinnedShare: 0 as const, pinnedLayout: '2x2' as const, pinned: [] as (string | null)[], rollingTiles: 9 as const };
   return [
-    {
-      id: 'w-quay',
-      name: 'Quay And Deck',
-      teamId: 't-quay',
-      pinnedShare: 70,
-      pinnedLayout: '2x2',
-      pinned: quayPinned,
-      rollingTiles: 3,
-      rotation: areaCams(cams, 'quay', 'deck', 'perimeter').filter((id) => !quayPinned.includes(id)),
-      rotateSec: 10,
-      autoPinBusy: false,
-      alertTakeover: true,
-    },
-    {
-      id: 'w-yard',
-      name: 'Yard And Gate',
-      teamId: 't-yard',
-      pinnedShare: 70,
-      pinnedLayout: '2x2',
-      pinned: yardPinned,
-      rollingTiles: 3,
-      rotation: areaCams(cams, 'yard', 'reefer', 'gate').filter((id) => !yardPinned.includes(id)),
-      rotateSec: 10,
-      autoPinBusy: true,
-      alertTakeover: true,
-    },
-    {
-      id: 'w-hse',
-      name: 'Critical Areas',
-      teamId: 't-hse',
-      pinnedShare: 70,
-      pinnedLayout: '1+5',
-      pinned: hsePinned,
-      rollingTiles: 4,
-      rotation: cams.map((c) => c.id).filter((id) => !hsePinned.includes(id)),
-      rotateSec: 15,
-      autoPinBusy: false,
-      alertTakeover: true,
-    },
-    {
-      id: 'w-tour',
-      name: 'All Cameras Tour',
-      teamId: 't-hse',
-      pinnedShare: 0,
-      pinnedLayout: '2x2',
-      pinned: [],
-      rollingTiles: 16,
-      rotation: cams.map((c) => c.id),
-      rotateSec: 15,
-      autoPinBusy: false,
-      alertTakeover: false,
-    },
+    { id: 'w-quay', name: 'Quay And Deck', teamId: 't-quay', ...even, rotation: first(quayPinned, areaCams(cams, 'quay', 'deck', 'perimeter')), rotateSec: 10, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-yard', name: 'Yard And Gate', teamId: 't-yard', ...even, rotation: first(yardPinned, areaCams(cams, 'yard', 'reefer', 'gate')), rotateSec: 10, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-hse', name: 'Critical Areas', teamId: 't-hse', ...even, rotation: first(hsePinned, cams.map((c) => c.id)), rotateSec: 15, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-tour', name: 'All Cameras Tour', teamId: 't-hse', ...even, rollingTiles: 16, rotation: cams.map((c) => c.id), rotateSec: 15, autoPinBusy: false, alertTakeover: false },
   ];
 }
 

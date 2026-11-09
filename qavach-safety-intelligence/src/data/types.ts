@@ -163,6 +163,8 @@ export interface Alert {
   confidence: number;
   /** The frame the alert was raised on (real cameras), relative to the detection service. */
   snapshot?: string;
+  /** A short clip of the incident saved with the alert (real cameras), relative to the detection service. */
+  clip?: string;
   /** The detection service's id for the event, so an alert is never created twice. */
   eventId?: string;
   /** Detections of the same rule on the same camera while this alert was still open; they add to it, not to the list. */

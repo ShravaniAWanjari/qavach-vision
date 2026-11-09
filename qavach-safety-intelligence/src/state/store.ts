@@ -76,6 +76,17 @@ export function useMe(): User {
 
 export const isAdmin = (u: User) => u.role === 'Safety admin';
 
+/** Who can do what, by role.
+ *  - Configuration (alert levels, rules, camera set-up, new walls): the safety admin only.
+ *  - Alerts: the safety admin, HSE manager and terminal manager see every alert; an operator or supervisor sees the alerts of the
+ *    work areas their team covers.
+ *  - Reporting an alert to QHSE: everyone except the control room operator, who reviews and escalates. */
+export const canConfigure = (u: User) => isAdmin(u);
+export const seesAllAlerts = (u: User) => isAdmin(u) || u.role === 'HSE manager' || u.role === 'Terminal manager';
+export const canReportToQhse = (u: User) => u.role !== 'Control room operator';
+/** The areas an operator or supervisor can see alerts for: those of their team. */
+export const alertAreasFor = (u: User): string[] | 'all' => (seesAllAlerts(u) ? 'all' : (TEAMS_BY_ID[u.teamId]?.areaIds ?? []));
+
 /** A role name inside a sentence: lower case, but HSE stays HSE. */
 export const roleText = (r: string) => r.toLowerCase().replace('hse', 'HSE');
 

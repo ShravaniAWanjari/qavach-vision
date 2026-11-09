@@ -43,6 +43,11 @@ def _apply_seed():
         if not marker.exists() or marker.read_text().strip() != digest:
             shutil.copyfile(state, config.STATE_FILE)
             marker.write_text(digest)
+    shipped = config.SEED / 'clips'
+    for clip in shipped.glob('*.mp4') if shipped.exists() else []:
+        target = config.CLIPS / clip.name
+        if not target.exists():
+            shutil.copyfile(clip, target)
     pictures = config.SEED / 'snapshots'
     for picture in pictures.glob('*.jpg') if pictures.exists() else []:
         target = config.SNAPSHOTS / picture.name
@@ -52,7 +57,7 @@ def _apply_seed():
 
 @app.on_event('startup')
 def _startup():
-    for folder in (config.FRAMES, config.UPLOADS, config.SNAPSHOTS):
+    for folder in (config.FRAMES, config.UPLOADS, config.SNAPSHOTS, config.CLIPS):
         folder.mkdir(parents=True, exist_ok=True)
     # Demo videos are named <12 hex id>.<ext>, so the console's sample cameras can point at them like any upload.
     for video in config.SAMPLES.glob('*') if config.SAMPLES.exists() else []:
@@ -147,6 +152,16 @@ def serve_jpeg(folder, name, pattern):
 @app.get('/api/frames/{frame_id}.jpg')
 def frame_file(frame_id: str):
     return serve_jpeg(config.FRAMES, frame_id, HEX12)
+
+
+@app.get('/api/clips/{event_id}.mp4')
+def clip_file(event_id: str):
+    if not EVENT_ID.match(event_id):
+        raise HTTPException(404)
+    path = config.CLIPS / f'{event_id}.mp4'
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type='video/mp4', headers={'Cache-Control': 'max-age=3600'})
 
 
 @app.get('/api/snapshots/{event_id}.jpg')

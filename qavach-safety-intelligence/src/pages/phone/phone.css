@@ -1,5 +1,5 @@
 /* The supervisor's phone: Qavach's dark mobile look. Black page, dark grey header and rounded cards, Exo 2, a bottom bar. */
-.phonepage { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 64px; padding: 32px; background: var(--q-canvas); color: var(--q-ink); }
+.phonepage { display: flex; align-items: flex-start; justify-content: center; gap: 64px; padding: 16px 0 24px; color: var(--q-ink); }
 .phonepage__side { max-width: 320px; display: flex; flex-direction: column; gap: 16px; }
 .phonepage__side h1 { font-size: 32px; font-weight: 300; color: var(--q-ink); }
 .phonepage__side p { color: var(--q-muted); font-size: 14px; }
@@ -8,13 +8,10 @@
 .phone {
   --pk-bg: var(--c-black); --pk-bar: var(--c-black); --pk-card-a: var(--c-black); --pk-card-b: var(--c-black); --pk-line: color-mix(in srgb, var(--c-white) 10%, transparent);
   --pk-text: var(--c-white); --pk-dim: var(--c-grey); --pk-faint: var(--c-grey); --pk-blue: var(--c-blue);
-  position: relative; width: 390px; height: 820px; max-height: calc(100vh - 40px); border-radius: 44px; background: var(--pk-bg); color: var(--pk-text);
+  position: relative; width: 390px; height: 820px; border-radius: 44px; background: var(--pk-bg); color: var(--pk-text);
   border: 10px solid var(--c-black); box-shadow: var(--q-shadow-pop); overflow: hidden; display: flex; flex-direction: column; font-family: 'Exo 2', sans-serif;
 }
-@media (max-width: 760px) {
-  .phonepage { padding: 0; display: block; background: var(--c-black); }
-  .phonepage__side { display: none; }
-  .phone { width: 100%; height: 100vh; max-height: none; border-radius: 0; border: 0; box-shadow: none; }
+@media (max-width: 760px) { .phonepage__side { display: none; } }
 }
 .phone a { color: inherit; }
 .phone__status { display: flex; align-items: center; gap: 6px; padding: 10px 24px 4px; font-size: 13px; font-weight: 600; background: var(--pk-bar); color: var(--c-white); }

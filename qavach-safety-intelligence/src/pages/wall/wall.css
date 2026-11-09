@@ -111,3 +111,14 @@
 .wtile__top { flex-wrap: wrap; row-gap: 4px; }
 .wtile__actions { margin-left: auto; }
 .wtile--open { cursor: pointer; }
+
+/* Full screen for the camera window on the wall: the button sits in the picture's top right corner and shows on hover */
+.fsbox { position: relative; }
+.fsbox__btn { position: absolute; top: 10px; right: 10px; z-index: 5; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--c-black) 55%, transparent); color: var(--c-white); cursor: pointer; opacity: 0; transition: opacity .15s ease; }
+.fsbox:hover .fsbox__btn, .fsbox__btn:focus-visible, .fsbox:fullscreen .fsbox__btn, .fsbox--filled .fsbox__btn { opacity: 1; }
+.fsbox__btn:hover { background: color-mix(in srgb, var(--c-black) 75%, transparent); }
+@media (hover: none) { .fsbox__btn { opacity: 1; } }
+.fsbox:fullscreen { display: flex; align-items: center; justify-content: center; background: var(--c-black); }
+.fsbox:fullscreen .camview { width: min(100vw, calc(100vh * var(--ar, 1.7778))); border-radius: 0; }
+.fsbox--filled { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; background: var(--c-black); }
+.fsbox--filled .camview { width: min(100vw, calc(100vh * var(--ar, 1.7778))); border-radius: 0; }

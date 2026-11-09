@@ -68,6 +68,7 @@ export interface BackendEvent {
   mode: 'live' | 'test';
   box: [number, number, number, number];
   snapshot: string;
+  clip?: string;
 }
 export interface CameraStatus {
   state: 'starting' | 'running' | 'reconnecting' | 'error' | 'stopped';

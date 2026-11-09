@@ -4,12 +4,14 @@ import { AckDialog, EscalateDialog, NoteDialog, RaiseDialog } from '../../compon
 import { Icon } from '../../components/Icon';
 import { SearchActions } from '../../components/ui';
 import { QavachReportsLink } from '../../components/QavachReports';
-import { CameraView, CHANNEL, Choice, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
+import { CameraView, CHANNEL, Choice, Modal, PRIORITY_NAME, Empty, PriorityBadge, Seg, StateChip } from '../../components/ui';
 import { AREAS } from '../../data/seed';
-import type { Alert, Priority } from '../../data/types';
+import type { Alert, Camera, Priority } from '../../data/types';
+import { apiUrl } from '../../lib/backend';
 import { activityText, describeRule } from '../../lib/qai';
 import { ago, dayTime, duration, hms, useNow } from '../../lib/time';
-import { AREAS_BY_ID, isOpen, roleText, useAlerts, useCameras, usePolicies, useRules, userName, USERS_BY_ID } from '../../state/store';
+import { useService } from '../../state/bridge';
+import { alertAreasFor, AREAS_BY_ID, canConfigure, canReportToQhse, isOpen, roleText, TEAMS_BY_ID, useAlerts, useCameras, useMe, usePolicies, useRules, userName, USERS_BY_ID } from '../../state/store';
 import './alerts.css';
 import { assetUrl } from '../../lib/assets';
 
@@ -32,8 +34,16 @@ const stateRank = (a: Alert) => (a.state === 'acknowledged' ? 1 : a.state === 'r
 export function Alerts() {
   const { alertId } = useParams();
   const nav = useNavigate();
-  const alerts = useAlerts();
+  const me = useMe();
+  const everyAlert = useAlerts();
   const cams = useCameras();
+  // The list follows who is signed in: managers and the safety admin see every alert, a supervisor or operator sees the alerts of their team's work areas.
+  const areas = alertAreasFor(me);
+  const alerts = useMemo(() => {
+    if (areas === 'all') return everyAlert;
+    const areaOf = new Map(cams.map((c) => [c.id, c.areaId]));
+    return everyAlert.filter((a) => areas.includes(areaOf.get(a.cameraId) ?? ''));
+  }, [everyAlert, cams, areas]);
   const now = useNow(1000);
   // Links from the Overview can open the list already narrowed: ?level=P1&tab=open
   const [params] = useSearchParams();
@@ -81,9 +91,11 @@ export function Alerts() {
           <Icon name="chevron-down" size={16} stroke={2} />
         </button>
         <div className="albar__sort"><Choice id="al-sort" label="Sort By" clearTo="newest" value={sort} onChange={setSort} options={SORTS} /></div>
-        <button type="button" className="albar__gear" onClick={() => nav('/configuration/alerts')} aria-label="Alert configuration" title="Alert configuration">
-          <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
-        </button>
+        {canConfigure(me) && (
+          <button type="button" className="albar__gear" onClick={() => nav('/configuration/alerts')} aria-label="Alert configuration" title="Alert configuration">
+            <img src={assetUrl('qv/hdr/gear.png')} width={24} height={24} alt="" />
+          </button>
+        )}
       </div>
       {filtersOpen && (
       <div className="qsearch" id="al-filters">
@@ -122,6 +134,7 @@ export function Alerts() {
       <div className="listing-row">
         <span className="listing-tag">
           Listing 1 - {filtered.length} Of {alerts.length} · {openCount} open · <QavachReportsLink />
+          {areas !== 'all' && <span className="alscope"> · Alerts for {TEAMS_BY_ID[me.teamId]?.name}</span>}
         </span>
         {onlyCam && (
           <span className="camfilter">
@@ -220,13 +233,40 @@ export function Alerts() {
   );
 }
 
+/** A link to the rule for someone who can configure; plain text for everyone else. */
+function Wrapper({ to, children }: { to?: string; children: React.ReactNode }) {
+  return to ? (
+    <Link to={to} className="rulecard">
+      {children}
+    </Link>
+  ) : (
+    <div className="rulecard">{children}</div>
+  );
+}
+
+/** The short clip saved with the alert, in a window. It plays from the detection service; with the service not running, the copy
+ *  shipped for the sample alerts plays instead. */
+function ClipDialog({ alert, cam, onClose }: { alert: Alert; cam: Camera; onClose: () => void }) {
+  const service = useService();
+  const file = alert.clip!.split('/').pop()!;
+  const src = service.online ? apiUrl(alert.clip!) : assetUrl(`fallback/clips/${file}`);
+  return (
+    <Modal title={`${alert.title} · ${cam.id} ${cam.name}`} onClose={onClose}>
+      <video className="aclip__video" src={src} controls autoPlay loop muted playsInline />
+      <p className="meta">Clip of the incident · {dayTime(alert.at)}</p>
+    </Modal>
+  );
+}
+
 function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) {
+  const me = useMe();
   const cams = useCameras();
   const rules = useRules();
   const policies = usePolicies();
   const now = useNow(1000);
   const [dialog, setDialog] = useState<'ack' | 'raise' | 'resolve' | 'false' | 'escalate'>();
   const [live, setLive] = useState(false);
+  const [clipOpen, setClipOpen] = useState(false);
   const cam = cams.find((c) => c.id === alert.cameraId);
   const rule = rules.find((r) => r.id === alert.ruleId);
   const policy = policies.find((p) => p.priority === alert.priority);
@@ -249,10 +289,10 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
         <span className="mono">{alert.id}</span>
         <StateChip state={alert.state} />
         <span className="spacer" />
-        <a href={`#/m/${alert.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm" title="What The Supervisor Sees On The Phone">
+        <Link to={`/m/${alert.id}`} className="btn btn--ghost btn--sm" title="What The Supervisor Sees On The Phone">
           <Icon name="mobile" size={15} />
           Phone view
-        </a>
+        </Link>
         <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Close">
           <Icon name="close" size={17} />
         </button>
@@ -260,7 +300,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
       <div className="adetail__body">
         <h2 className="adetail__title">{alert.title}</h2>
         <p className="muted">
-          {alert.detail} · {Math.round(alert.confidence * 100)}% confidence · {dayTime(alert.at)}
+          {cam.id} {cam.name} · {AREAS_BY_ID[cam.areaId]?.name} · {dayTime(alert.at)}
         </p>
 
         {open && policy && (
@@ -293,11 +333,15 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
                 { value: 'live', label: 'Live now' },
               ]}
             />
-            <span className="meta">
-              {cam.id} {cam.name} · {AREAS_BY_ID[cam.areaId]?.name}
-            </span>
+            {alert.clip && (
+              <button type="button" className="btn btn--secondary btn--sm aclip__btn" onClick={() => setClipOpen(true)}>
+                <Icon name="replay" size={18} stroke={2} />
+                View Clip
+              </button>
+            )}
           </div>
         </div>
+        {clipOpen && alert.clip && <ClipDialog alert={alert} cam={cam} onClose={() => setClipOpen(false)} />}
 
         <div className="adetail__actions">
           {/* In the order they are usually done: review, escalate if needed, then report to QHSE. */}
@@ -313,7 +357,7 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
               Escalate
             </button>
           )}
-          {!alert.qavach && alert.state !== 'false-alarm' && (
+          {!alert.qavach && alert.state !== 'false-alarm' && canReportToQhse(me) && (
             <button type="button" className="btn btn--act btn--report" onClick={() => setDialog('raise')}>
               <Icon name="send" size={16} />
               Report
@@ -360,14 +404,14 @@ function AlertDetail({ alert, onClose }: { alert: Alert; onClose: () => void }) 
           <div className="stack">
             <h3>Rule that fired</h3>
             {rule ? (
-              <Link to={`/configuration/rules/${rule.id}`} className="rulecard">
+              <Wrapper to={canConfigure(me) ? `/configuration/rules/${rule.id}` : undefined}>
                 <span className="mono">{rule.id}</span>
                 <strong>{rule.name}</strong>
                 <span className="meta">{describeRule(rule, zoneNames)}</span>
                 <span className="meta">
                   {rule.cameraIds.length} cameras · {rule.mode === 'live' ? 'Live' : 'Test'} · creates {rule.qavach === 'none' ? 'no QHSE report' : `a QHSE ${rule.qavach.toLowerCase()}`}
                 </span>
-              </Link>
+              </Wrapper>
             ) : (
               <span className="meta">The rule has been deleted.</span>
             )}

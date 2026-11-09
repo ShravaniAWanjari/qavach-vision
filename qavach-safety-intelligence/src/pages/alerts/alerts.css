@@ -95,3 +95,7 @@
 .albar__gear { flex: 0 0 auto; width: 44px; height: 56px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: none; cursor: pointer; }
 .albar__gear:hover { background: var(--c-wash); }
 .albar__gear:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+
+/* Clip of the incident: the button sits beside the Snapshot / Live now toggle */
+.aclip__btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.aclip__video { display: block; width: 100%; max-height: 70vh; border-radius: var(--q-r); background: var(--c-black); }

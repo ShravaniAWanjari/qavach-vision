@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { AckDialog } from '../../components/AlertDialogs';
 import { Icon, Logo } from '../../components/Icon';
@@ -7,21 +7,21 @@ import { AREAS, TEAMS } from '../../data/seed';
 import type { Alert, Camera, PinnedLayout, Wall } from '../../data/types';
 import { uid } from '../../lib/persist';
 import { ago, hms, useNow } from '../../lib/time';
-import { AREAS_BY_ID, deleteWall, isAdmin, isOpen, saveWall, TEAMS_BY_ID, toast, useActivity, useAlerts, useCameras, useMe, useWalls } from '../../state/store';
+import { AREAS_BY_ID, canConfigure, deleteWall, isAdmin, isOpen, saveWall, TEAMS_BY_ID, toast, useActivity, useAlerts, useCameras, useMe, useWalls } from '../../state/store';
 import { CastDialog } from './CastDialog';
 import { LAYOUT_SLOTS, useWallModel, WallBody } from './WallBody';
 
 export const NEW_WALL = '__new_wall__';
 
-/** A new wall starts empty: no name, no cameras, empty tiles. Nothing is saved until Save wall. */
+/** A new wall starts empty: no name, no cameras, equal-sized thumbnails. Nothing is saved until Save wall. */
 export const newWall = (teamId: string): Wall => ({
   id: uid('w'),
   name: '',
   teamId,
-  pinnedShare: 70,
+  pinnedShare: 0,
   pinnedLayout: '2x2',
   pinned: [],
-  rollingTiles: 3,
+  rollingTiles: 9,
   rotation: [],
   rotateSec: 10,
   autoPinBusy: false,
@@ -197,7 +197,7 @@ function cameraAlerts(alerts: Alert[], cameraId: string) {
   return `/alerts${latest ? `/${latest.id}` : ''}?camera=${encodeURIComponent(cameraId)}`;
 }
 
-const EMPTY_WALL: Wall = { id: '-', name: '', teamId: 't-hse', pinnedShare: 70, pinnedLayout: '2x2', pinned: [], rollingTiles: 3, rotation: [], rotateSec: 10, autoPinBusy: false, alertTakeover: false };
+const EMPTY_WALL: Wall = { id: '-', name: '', teamId: 't-hse', pinnedShare: 0, pinnedLayout: '2x2', pinned: [], rollingTiles: 9, rotation: [], rotateSec: 10, autoPinBusy: false, alertTakeover: false };
 
 export function SettingsPanel({ wall, update, model, onClose, onDelete }: { wall: Wall; update: (patch: Partial<Wall>) => void; model?: ReturnType<typeof useWallModel>; onClose?: () => void; onDelete?: () => void }) {
   const solo = wall.pinnedShare === 0;
@@ -430,7 +430,50 @@ export function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; set
   );
 }
 
+/** The camera picture with a full screen button in its top right corner (shown on hover). In full screen the same corner has the
+ *  exit button, which returns to the camera window on the wall. Where the browser does not allow full screen (for example a page
+ *  embedded in another site) the picture fills the browser window instead. */
+function FullScreenBox({ children }: { children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [native, setNative] = useState(false);
+  const [filled, setFilled] = useState(false);
+  const full = native || filled;
+  useEffect(() => {
+    const change = () => setNative(document.fullscreenElement === box.current);
+    document.addEventListener('fullscreenchange', change);
+    return () => document.removeEventListener('fullscreenchange', change);
+  }, []);
+  useEffect(() => {
+    if (!filled) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setFilled(false);
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [filled]);
+  const toggle = async () => {
+    if (full) {
+      if (native) await document.exitFullscreen().catch(() => undefined);
+      setFilled(false);
+      return;
+    }
+    try {
+      if (!box.current?.requestFullscreen) throw new Error('no full screen');
+      await box.current.requestFullscreen();
+    } catch {
+      setFilled(true);
+    }
+  };
+  return (
+    <div ref={box} className={`fsbox${filled ? ' fsbox--filled' : ''}`}>
+      {children}
+      <button type="button" className="fsbox__btn" onClick={() => void toggle()} aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen'}>
+        <Icon name={full ? 'shrink' : 'expand'} size={20} stroke={2} />
+      </button>
+    </div>
+  );
+}
+
 function FocusModal({ cam, wall, onClose, onPinToggle, onAck }: { cam: Camera; wall: Wall; onClose: () => void; onPinToggle: (c: Camera, pinned: boolean) => void; onAck: (a: Alert) => void }) {
+  const me = useMe();
   const alerts = useAlerts().filter((a) => a.cameraId === cam.id);
   const activity = useActivity();
   const now = useNow(1000);
@@ -441,7 +484,9 @@ function FocusModal({ cam, wall, onClose, onPinToggle, onAck }: { cam: Camera; w
     <Modal title={`${cam.id} · ${cam.name}`} wide onClose={onClose}>
       <div className="focus">
         <div className="stack">
-          <CameraView cam={cam} alert={open} zones={zones ? cam.zones : undefined} showZoneLabels={zones} now={now} />
+          <FullScreenBox>
+            <CameraView cam={cam} alert={open} zones={zones ? cam.zones : undefined} showZoneLabels={zones} now={now} />
+          </FullScreenBox>
           <div className="row-wrap">
             <Switch checked={zones} onChange={setZones} label={`Show zones (${cam.zones.length})`} />
             <span className="spacer" />
@@ -449,10 +494,12 @@ function FocusModal({ cam, wall, onClose, onPinToggle, onAck }: { cam: Camera; w
               <Icon name={pinned ? 'unpin' : 'pin'} size={15} />
               {pinned ? 'Unpin from this wall' : 'Pin to this wall'}
             </button>
-            <Link to={`/configuration/cameras/${cam.id}`} className="btn btn--secondary btn--sm">
+            {canConfigure(me) && (
+              <Link to={`/configuration/cameras/${cam.id}`} className="btn btn--secondary btn--sm">
               <Icon name="camera" size={15} />
               Camera set-up
             </Link>
+            )}
             {open && (
               <button
                 type="button"

@@ -8,7 +8,6 @@ import { draftRecord } from '../../lib/qai';
 import { ago, duration, hm, useNow } from '../../lib/time';
 import { acknowledge, AREAS_BY_ID, isOpen, markFalse, raiseInQavach, roleText, TEAMS_BY_ID, useAlerts, useCameras, usePolicies, useRules, useSession } from '../../state/store';
 import './phone.css';
-import { assetUrl } from '../../lib/assets';
 
 // What a shift supervisor sees on the phone: the alert arrives as a push,
 // they open it, acknowledge it, and report it into Qavach from the same page.
@@ -19,7 +18,21 @@ const PAGES: Page[] = ['home', 'alerts', 'reports', 'menu'];
 const TITLE: Record<Page, string> = { home: 'Dashboard', alerts: 'Alerts', reports: 'Reported to QHSE', menu: 'Features' };
 const initials = (name: string) => name.split(' ').map((w) => w[0]).join('').slice(0, 2);
 
+/** The phone keeps its real proportions (about 9 : 19): when the window is shorter than the phone, the whole phone shrinks to fit
+ *  instead of being squashed. */
+function usePhoneScale() {
+  const fit = () => Math.min(1, Math.max(0.55, (window.innerHeight - 140) / 830));
+  const [scale, setScale] = useState(fit);
+  useEffect(() => {
+    const on = () => setScale(fit());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return scale;
+}
+
 export function Phone() {
+  const scale = usePhoneScale();
   const { alertId } = useParams();
   const nav = useNavigate();
   const { userId } = useSession();
@@ -33,6 +46,8 @@ export function Phone() {
   }, []);
   const open = list.filter(isOpen).length;
   const go = (p: Page) => nav(p === 'home' ? '/m' : `/m/${p}`);
+  // Back goes up one level: an alert to the alert list, a page to the home screen, and the home screen to where the phone view was opened from.
+  const back = () => (!page ? nav('/m/alerts') : page !== 'home' ? nav('/m') : window.history.length > 1 ? nav(-1) : nav('/alerts'));
   const switchTo = (id: string) => {
     setAsId(id);
     setWho(false);
@@ -45,7 +60,7 @@ export function Phone() {
         <p>This is what a shift supervisor gets on the Qavach app when an alert is sent to them. It stays in step with the console and the wall.</p>
         <Choice id="phone-as" label="Viewing As" value={asId} onChange={setAsId} options={SUPERVISORS.map((u) => ({ value: u.id, label: `${u.name} · ${TEAMS_BY_ID[u.teamId]?.name}` }))} />
       </div>
-      <div className="phone" role="region" aria-label="Phone">
+      <div className="phone" role="region" aria-label="Phone" style={{ zoom: scale }}>
         <div className="phone__status">
           <span>{hm(Date.now())}</span>
           <span className="spacer" />
@@ -53,13 +68,9 @@ export function Phone() {
           <span>5G</span>
         </div>
         <header className="phone__head">
-          {page ? (
-            <img src={assetUrl('brand/logo-mark.png')} alt="" className="phone__logo" />
-          ) : (
-            <button type="button" className="phone__icon" onClick={() => nav('/m/alerts')} aria-label="Back to alerts">
-              <Icon name="chevron-left" size={26} stroke={2} />
-            </button>
-          )}
+          <button type="button" className="phone__icon" onClick={back} aria-label="Go back">
+            <Icon name="arrow-left" size={26} stroke={2} />
+          </button>
           <h1>{page ? TITLE[page] : alertId}</h1>
           <button type="button" className="phone__icon phone__bell" onClick={() => go('alerts')} aria-label={`${open} open alerts`}>
             <Icon name="bell" size={28} stroke={1.6} />

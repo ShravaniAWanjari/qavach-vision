@@ -4,7 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { SITE, USERS } from '../data/seed';
 import { resetAll } from '../lib/persist';
 import { AlertPopups } from './AlertPopups';
-import { isAdmin, isOpen, sessionStore, toast, useAlerts, useMe, useSession } from '../state/store';
+import { canConfigure, isAdmin, isOpen, sessionStore, toast, useAlerts, useMe, useSession } from '../state/store';
 import { Icon, type IconName } from './Icon';
 import { useConfirm } from './ui';
 import './Shell.css';
@@ -21,6 +21,7 @@ const PAGE_NAMES: [string, string][] = [
   ['/rules/', 'Rule'],
   ['/rules', 'Rules'],
   ['/configuration', 'Configuration'],
+  ['/m', 'Phone View'],
 ];
 
 const PARENTS: [string, string, string][] = [
@@ -50,7 +51,7 @@ const CV_TILES: { to: string; label: string; end?: boolean; external?: boolean; 
   { to: '/cameras', label: 'Cameras', icon: 'cctv' },
   { to: '/rules', label: 'Rules', icon: 'rule' },
   { to: '/configuration', label: 'Configuration', img: 'configuration' },
-  { to: '#/m', label: 'Phone View', external: true, icon: 'mobile' },
+  { to: '/m', label: 'Phone View', icon: 'mobile' },
 ];
 
 /** Autonomous Safety's tiles, in Qavach's order. CCTV is this module, so it has no Qavach icon and keeps the drawn one. */
@@ -120,6 +121,7 @@ function flyTopFor(menu: 'auto' | 'cv', tab: DOMRect): number {
 
 function SideMenu() {
   const nav = useNavigate();
+  const me = useMe();
   const [open, setOpen] = useState(false);
   // The dim layer behind the sidebar: lighter while the sidebar is only hovered, darker once a menu tab is open, and about 20%
   // more see-through whenever the mouse is outside the window.
@@ -207,7 +209,7 @@ function SideMenu() {
         {open && fly === 'cv' && (
           <div className="fly" style={{ top: flyTop }} role="menu" aria-label="Computer Vision Safety">
             <div className="fly__grid">
-              {CV_TILES.map((t) => (
+              {CV_TILES.filter((t) => t.to !== '/configuration' || canConfigure(me)).map((t) => (
                 <button
                   key={t.to}
                   type="button"

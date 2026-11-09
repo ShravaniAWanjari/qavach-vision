@@ -182,6 +182,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     box: ev.box,
     confidence: ev.confidence,
     snapshot: ev.snapshot,
+    clip: ev.clip,
     deliveries: deliveriesFor(policy, cam, ev.at),
     activity: [{ at: ev.at, text: detectedText(rule, ev.zoneName || undefined, ev.hazard || undefined), actor: 'system' }],
   };
