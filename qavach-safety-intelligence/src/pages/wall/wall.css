@@ -97,6 +97,7 @@
 
 .wset__delete { color: var(--c-red); }
 .wset__delete:hover { background: var(--c-red-wash); color: var(--c-red); }
+.wedit__pin { border: 1px solid var(--q-border-strong); color: var(--q-ink); opacity: 1; }
 .wedit__pin.is-on { color: var(--c-blue); background: var(--c-blue-wash); }
 .wedit__pin.is-on:hover { background: var(--c-blue-wash); color: var(--c-blue); }
 .wallscreen__alerts { border: 0; cursor: pointer; font: inherit; }

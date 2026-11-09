@@ -86,7 +86,8 @@ export function VideoWall() {
       toast(`${cam.id} ${cam.name} unpinned; it rolls with the others now`);
       return;
     }
-    if (wall.pinnedShare === 0) update({ pinnedShare: 70 });
+    // From the all-rolling layout, the first pin switches the wall to the pinned layout.
+    const fromSolo = wall.pinnedShare === 0;
     let i = pinned.slice(0, slots).findIndex((p) => !p);
     if (i < 0 && pinned.length < slots) i = pinned.length;
     let replaced: string | null = null;
@@ -96,7 +97,7 @@ export function VideoWall() {
     }
     while (pinned.length <= i) pinned.push(null);
     pinned[i] = cam.id;
-    update({ pinned });
+    update(fromSolo ? { pinned, pinnedShare: 70, rollingTiles: wall.rollingTiles > 6 ? 6 : wall.rollingTiles } : { pinned });
     toast(replaced ? `${cam.id} pinned in place of ${replaced}` : `${cam.id} ${cam.name} pinned to ${wall.name}`);
   };
 
@@ -116,11 +117,9 @@ export function VideoWall() {
         />
         <div className="page__actions">
           <CastMenu wallId={saved.id} />
-          {!draft && (
-            <button type="button" className="btn btn--secondary btn--icon" onClick={() => { setSettings(false); setDraft(saved); }} title="Choose Cameras" aria-label="Choose cameras">
-              <Icon name="camera-plus" size={22} />
-            </button>
-          )}
+          <button type="button" className={`btn btn--secondary btn--icon${draft ? ' is-on' : ''}`} onClick={() => (draft ? setDraft(null) : (setSettings(false), setDraft(saved)))} title="Choose Cameras" aria-label="Choose cameras" aria-pressed={!!draft}>
+            <Icon name="camera-plus" size={22} />
+          </button>
           <button type="button" className={`btn btn--secondary btn--icon${settings && !draft ? ' is-on' : ''}`}
             // With the camera panel open, this closes it as Cancel does and opens the settings in its place.
             onClick={() => (draft ? (setDraft(null), setSettings(true)) : setSettings((v) => !v))}
@@ -292,9 +291,12 @@ export function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; set
   const rot = new Set(draft.rotation);
 
   const pin = (id: string) => {
+    // On an all-rolling wall the first pin switches it to the pinned layout.
+    const fromSolo = draft.pinnedShare === 0;
+    const have = fromSolo ? LAYOUT_SLOTS[draft.pinnedLayout] : slots;
     const pinned = [...draft.pinned];
-    let i = pinned.slice(0, slots).findIndex((p) => !p);
-    if (i < 0 && pinned.length < slots) i = pinned.length;
+    let i = pinned.slice(0, have).findIndex((p) => !p);
+    if (i < 0 && pinned.length < have) i = pinned.length;
     if (i < 0) {
       toast('All pinned slots are in use. Remove one, or pick a bigger grid.');
       return;
@@ -302,7 +304,7 @@ export function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; set
     while (pinned.length <= i) pinned.push(null);
     pinned[i] = id;
     // A camera is pinned or it rolls, not both.
-    setDraft({ ...draft, pinned, rotation: draft.rotation.filter((x) => x !== id) });
+    setDraft({ ...draft, pinned, rotation: draft.rotation.filter((x) => x !== id), ...(fromSolo ? { pinnedShare: 70, rollingTiles: draft.rollingTiles > 6 ? (6 as Wall['rollingTiles']) : draft.rollingTiles } : {}) });
   };
   // Unpinning puts the camera back in the rolling section; untick Rolls to take it off the wall.
   const unpin = (id: string) => setDraft({ ...draft, pinned: draft.pinned.map((p) => (p === id ? null : p)), rotation: draft.rotation.includes(id) ? draft.rotation : [...draft.rotation, id] });
@@ -375,7 +377,6 @@ export function EditPanel({ draft, setDraft, saved, onDone }: { draft: Wall; set
                     aria-pressed={pinnedSet.has(c.id)}
                     title={pinnedSet.has(c.id) ? 'Pinned: click to unpin' : 'Pin to a slot'}
                     onClick={() => (pinnedSet.has(c.id) ? unpin(c.id) : pin(c.id))}
-                    disabled={!slots && !pinnedSet.has(c.id)}
                   >
                     <Icon name="pin" size={14} />
                     Pin
