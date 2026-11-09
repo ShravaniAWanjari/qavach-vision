@@ -161,7 +161,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
   const title = ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name;
   // Only within the rule's "don't repeat for" time: when the video loops round and the same thing is seen again after
   // that, it is a new alert and notifies again.
-  const window = (rule.repeatSec ?? 120) * 1000;
+  const window = (rule.repeatSec ?? 120) * 900; // a little under the rule's time, as frame times and clocks jitter
   const open = alertStore.get().find((a) => (a.state === 'new' || a.state === 'escalated') && ev.at - (a.lastAt ?? a.at) < window && a.ruleId === rule.id && a.cameraId === cam.id && (a.zoneId ?? '') === (ev.zoneId ?? '') && a.title === title);
   if (open) {
     alertStore.set((list) => list.map((a) => (a.id === open.id ? { ...a, repeats: (a.repeats ?? 0) + 1, lastAt: ev.at } : a)));

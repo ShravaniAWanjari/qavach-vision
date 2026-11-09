@@ -120,3 +120,10 @@ def test_a_restarted_clock_does_not_defeat_repeat_suppression():
             events += engine.update(offset + i / 10.0, [FIRE] if i < 10 else [])[1]
         offset += 2.0
     assert len(alerts(events)) == 1
+
+
+def test_a_fire_that_keeps_burning_alerts_again_after_the_repeat_time():
+    engine = FireEngine(FireRule(repeat_seconds=20.0), [], [])
+    events = run(engine, [[FIRE]] * 700)          # 70 s of unbroken fire at 10 fps
+    got = [e['seconds'] for e in alerts(events)]
+    assert len(got) == 4 and got[1] - got[0] >= 20 and got[2] - got[1] >= 20, got
