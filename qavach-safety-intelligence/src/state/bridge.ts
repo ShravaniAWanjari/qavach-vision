@@ -67,7 +67,13 @@ export const resyncService = () => {
 
 async function connect() {
   const { epoch } = await backend.health();
-  if (cursorStore.get().epoch !== epoch) cursorStore.set(() => ({ epoch, seq: 0 }));
+  const cursor = cursorStore.get();
+  if (cursor.epoch === '') {
+    // A browser opening the site for the first time (or after a reset) starts from the shipped demo: the alerts the service caught
+    // before it arrived are not poured in. Only what the cameras detect from now on shows up.
+    const now = await backend.poll(Number.MAX_SAFE_INTEGER);
+    cursorStore.set(() => ({ epoch, seq: now.next }));
+  } else if (cursor.epoch !== epoch) cursorStore.set(() => ({ epoch, seq: 0 }));
   // Things removed while the service was away go first, then everything else is added or updated (never removed).
   const gone = removalStore.get();
   for (const id of gone.cameras) await backend.deleteCamera(id).catch(() => undefined);
