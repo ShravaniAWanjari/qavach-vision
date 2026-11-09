@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { AckDialog, RaiseDialog } from '../components/AlertDialogs';
 import { Icon, type IconName } from '../components/Icon';
 import { QavachReportsDrawer } from '../components/QavachReports';
-import { Choice, PillTabs, PriorityBadge, StateChip, useConfirm } from '../components/ui';
+import { Choice, Modal, PillTabs, PriorityBadge, StateChip, useConfirm } from '../components/ui';
 import { SITE } from '../data/seed';
 import type { Alert, Priority, QavachRecordType } from '../data/types';
 import { healthReason } from '../lib/health';
@@ -66,6 +66,8 @@ export function Overview() {
   const [picking, setPicking] = useState(false); // whether the date and time panel is open
   const [reports, setReports] = useState(false);
   const [dialog, setDialog] = useState<Dialog>();
+  // Which of the four small KPI cards is open as a list of its issues.
+  const [kpi, setKpi] = useState<'open' | 'late' | 'escalated' | 'unread' | null>(null);
   const sheet = useRef<HTMLDivElement>(null);
 
   const [params, setParams] = useSearchParams();
@@ -94,6 +96,9 @@ export function Overview() {
   const issues = openIssues(alerts, policies, now);
   const openAlerts = alerts.filter(isOpenAlert);
   const late = issues.filter((i) => i.overdue > 0);
+  // Issues a manager has been pulled into, and issues nobody has read yet: the two gaps an admin has to close by phone.
+  const escalated = issues.filter((i) => i.state === 'escalated');
+  const unread = issues.filter((i) => !peopleTold(i.lead).some((t) => t.status === 'read'));
   const unreported = unreportedAlerts(alerts, rules);
   const faulty = cams.filter((c) => c.status !== 'online').sort((a, b) => (a.status === b.status ? a.id.localeCompare(b.id) : a.status === 'offline' ? -1 : 1));
   const live = cams.length - faulty.length;
@@ -363,7 +368,7 @@ export function Overview() {
           <div className="ovgrid">
             <section className="card ovgrid__6 ovcol">
               <div className="ovcol__kpi ovcol__pair">
-                <button type="button" className="ovcol__stat" onClick={() => nav('/alerts?tab=open')}>
+                <button type="button" className="ovcol__stat" onClick={() => setKpi('open')}>
                   <KpiHead label="Open issues" icon="warning" tone="bad" />
                   <div className="kpi__value">
                     <span className="kpi__n">{issues.length}</span>
@@ -372,7 +377,7 @@ export function Overview() {
                   <SegBar parts={LEVELS.map((p) => ({ n: issues.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
                   <span className="kpi__foot">{issues.length ? `Oldest open ${since(Math.min(...issues.map((i) => i.first)), now)}` : 'Nothing open'}</span>
                 </button>
-                <button type="button" className="ovcol__stat" onClick={() => nav('/alerts?tab=open')}>
+                <button type="button" className="ovcol__stat" onClick={() => setKpi('late')}>
                   <KpiHead label="Past response target" icon="clock" tone="bad" />
                   <div className="kpi__value">
                     <span className="kpi__n">{late.length}</span>
@@ -380,6 +385,24 @@ export function Overview() {
                   </div>
                   <SegBar parts={LEVELS.map((p) => ({ n: late.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
                   <span className="kpi__foot">{late.length ? `Longest overdue ${duration(Math.max(...late.map((i) => i.overdue)))}` : 'Everything is inside its target'}</span>
+                </button>
+                <button type="button" className="ovcol__stat" onClick={() => setKpi('escalated')}>
+                  <KpiHead label="Escalated to a manager" icon="arrow-right" tone="bad" />
+                  <div className="kpi__value">
+                    <span className="kpi__n">{escalated.length}</span>
+                    {escalated.length > 0 && <span className="kdelta kdelta--neutral">{pct(escalated.length, issues.length)}% of open</span>}
+                  </div>
+                  <SegBar parts={LEVELS.map((p) => ({ n: escalated.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                  <span className="kpi__foot">{escalated.length ? `Oldest ${since(Math.min(...escalated.map((i) => i.first)), now)} · with ${[...new Set(escalated.map((i) => userName(i.lead.escalatedTo ?? '')).filter(Boolean))].join(', ') || 'a manager'}` : 'Nothing has needed a manager'}</span>
+                </button>
+                <button type="button" className="ovcol__stat" onClick={() => setKpi('unread')}>
+                  <KpiHead label="No one has read it" icon="eye" tone="bad" />
+                  <div className="kpi__value">
+                    <span className="kpi__n">{unread.length}</span>
+                    {unread.length > 0 && <span className="kdelta kdelta--bad">{pct(unread.length, issues.length)}% of open</span>}
+                  </div>
+                  <SegBar parts={LEVELS.map((p) => ({ n: unread.filter((i) => i.priority === p).length, color: LEVEL_COLOR[p], label: p }))} />
+                  <span className="kpi__foot">{unread.length ? `${unread.filter((i) => i.priority === 'P1').length} critical · call them, the push was not read` : 'Someone has read every open issue'}</span>
                 </button>
               </div>
               <div className="card__head">
@@ -578,7 +601,7 @@ export function Overview() {
             </div>
 
             <div className="ovgrid">
-              <section className="card ovgrid__12">
+              <section className="card ovgrid__8">
                 <div className="card__head">
                   <h2>What happened</h2>
                   <span className="ovsub">· {period.label}, newest first</span>
@@ -623,7 +646,7 @@ export function Overview() {
                 </ul>
               </section>
 
-              <section className="card ovgrid__6">
+              <section className="card ovgrid__4 ovgrid__top">
                 <div className="card__head">
                   <h2>Against a normal day</h2>
                   <span className="ovsub">· same {minutes} min on the last {normal.days || 0} days</span>
@@ -650,7 +673,7 @@ export function Overview() {
                 <p className="meta ovhours__note">Coloured bar: now. Grey bar: what this time of day usually has.</p>
               </section>
 
-              <section className="card ovgrid__6">
+              <section className="card ovgrid__12">
                 <div className="card__head">
                   <h2>Who knows, and what to do</h2>
                   <span className="ovsub">· open issues, most urgent first</span>
@@ -890,6 +913,79 @@ export function Overview() {
         )}
       </div>
 
+      {kpi && (() => {
+        const list = kpi === 'open' ? issues : kpi === 'late' ? [...late].sort((a, b) => b.overdue - a.overdue) : kpi === 'escalated' ? escalated : unread;
+        const title = { open: 'Open issues', late: 'Past response target', escalated: 'Escalated to a manager', unread: 'No one has read it' }[kpi];
+        const extra = { open: 'Status', late: 'Detections', escalated: 'Escalated to', unread: 'Told, not read' }[kpi];
+        const go = (id: string) => {
+          setKpi(null);
+          nav(`/alerts/${id}`);
+        };
+        return (
+          <Modal
+            title={`${title} · ${list.length}`}
+            wide
+            onClose={() => setKpi(null)}
+            footer={
+              <>
+                <Link to="/alerts?tab=open" className="btn btn--ghost" onClick={() => setKpi(null)}>
+                  Open the alerts page
+                </Link>
+                <button type="button" className="btn btn--secondary" onClick={() => setKpi(null)}>
+                  Close
+                </button>
+              </>
+            }
+          >
+            {list.length === 0 ? (
+              <p className="meta">Nothing here right now.</p>
+            ) : (
+              <div className="ovkpi__wrap">
+                <table className="table table--grid ovkpi">
+                  <thead>
+                    <tr>
+                      <th>Criticality</th>
+                      <th>Issue</th>
+                      <th>Open for</th>
+                      <th>Response</th>
+                      <th>{extra}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((i) => {
+                      const cam = camById.get(i.cameraId);
+                      const told = peopleTold(i.lead);
+                      return (
+                        <tr key={i.key} tabIndex={0} className="ovkpi__row" onClick={() => go(i.lead.id)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), go(i.lead.id))}>
+                          <td>
+                            <PriorityBadge p={i.priority} short />
+                          </td>
+                          <td>
+                            <strong>{i.title}</strong>
+                            <div className="meta">
+                              {i.cameraId} · {cam?.name} · {AREAS_BY_ID[cam?.areaId ?? '']?.name}
+                            </div>
+                          </td>
+                          <td>{since(i.first, now)}</td>
+                          <td>
+                            <span className={`ovsla${i.overdue > 0 ? ' is-late' : ''}`}>{i.overdue > 0 ? `Overdue ${duration(i.overdue)}` : `${duration(Math.max(0, i.left))} left`}</span>
+                          </td>
+                          <td>
+                            {kpi === 'open' && <StateChip state={i.lead.state} />}
+                            {kpi === 'late' && (i.count > 1 ? `${i.count} detections` : '1 detection')}
+                            {kpi === 'escalated' && (i.lead.escalatedTo ? userName(i.lead.escalatedTo) : '–')}
+                            {kpi === 'unread' && (told.length ? told.filter((t) => t.status !== 'read').map((t) => userName(t.to)).join(', ') : <span className="ovwho__warn">No one notified</span>)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
       {dialog?.kind === 'ack' && <AckDialog alert={dialog.alert} via="console" onClose={closeDialog} />}
       {dialog?.kind === 'raise' && <RaiseDialog alert={dialog.alert} onClose={closeDialog} />}
       {confirm.dialog}
