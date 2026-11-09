@@ -287,7 +287,7 @@ button.chip[aria-pressed='true'] { background: var(--q-ai); color: var(--c-white
 
 
 /* ── Overlays ───────────────────────────────────────────────── */
-.scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--c-black) 52%, transparent); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--c-black) 52%, transparent); z-index: 1300; display: flex; align-items: center; justify-content: center; padding: 24px; }
 /* Pop-ups, as Qavach's own (its "Upload File" dialog): a plain white box with a thin border and 16px inside,
    a 16px bold title with no divider, a transparent Cancel and a blue primary button, over a dimmed page */
 .modal { background: var(--q-surface); border: 1px solid color-mix(in srgb, var(--c-black) 20%, transparent); border-radius: 4px; box-shadow: none; padding: 16px; width: min(640px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }

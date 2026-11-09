@@ -13,14 +13,19 @@ const startedAt = createStore<number>('startedAt', () => Date.now());
 const T0 = startedAt.get();
 /** When a camera became offline or degraded. Saved data from before this was recorded falls back to the sample times. */
 export const unavailableSince = (c: Camera) => c.statusSince ?? T0 - (DOWN_FOR_MIN[c.id] ?? 30) * 60000;
-/** A set-up saved from this console (src/data/demo-state.json), when there is one; a first visit starts from it. */
-const demo = demoSetup(T0);
+/** A set-up saved from this console (src/data/demo-state.json), when there is one; a first visit starts from it. It is built at the
+ *  moment a store is seeded, not when the page loaded, so Reset sample data puts the alerts back at their fresh ages even when
+ *  the page has been open for hours. */
+const setup = () => demoSetup(Date.now());
 
-export const cameraStore = createStore<Camera[]>('cameras', () => demo?.cameras ?? seedCameras(T0));
-export const ruleStore = createStore<Rule[]>('rules', () => demo?.rules ?? seedRules(cameraStore.get(), T0));
-export const alertStore = createStore<Alert[]>('alerts', () => demo?.alerts ?? [...seedHistory(T0, cameraStore.get(), ruleStore.get()), ...seedAlerts(T0), ...seedOpenNow(T0, cameraStore.get(), ruleStore.get())]);
-export const wallStore = createStore<Wall[]>('walls', () => demo?.walls ?? seedWalls(cameraStore.get()));
-export const policyStore = createStore<Policy[]>('policies', () => demo?.policies ?? POLICIES);
+export const cameraStore = createStore<Camera[]>('cameras', () => setup()?.cameras ?? seedCameras(Date.now()));
+export const ruleStore = createStore<Rule[]>('rules', () => setup()?.rules ?? seedRules(cameraStore.get(), Date.now()));
+export const alertStore = createStore<Alert[]>('alerts', () => {
+  const now = Date.now();
+  return setup()?.alerts ?? [...seedHistory(now, cameraStore.get(), ruleStore.get()), ...seedAlerts(now), ...seedOpenNow(now, cameraStore.get(), ruleStore.get())];
+});
+export const wallStore = createStore<Wall[]>('walls', () => setup()?.walls ?? seedWalls(cameraStore.get()));
+export const policyStore = createStore<Policy[]>('policies', () => setup()?.policies ?? POLICIES);
 export const sessionStore = createStore<{ userId: string; live: boolean }>('session', { userId: 'u-priya', live: true });
 const counters = createStore<{ alert: number; Incident: number; Observation: number; 'Near miss': number }>('counters', {
   alert: 1042,
