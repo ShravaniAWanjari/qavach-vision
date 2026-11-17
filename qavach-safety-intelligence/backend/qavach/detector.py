@@ -1,4 +1,4 @@
-"""People detection (YOLO11s, this process) and tracking (BoxMOT BoT-SORT with OSNet ReID, a worker process).
+"""People and vehicle detection (YOLO11s, this process) and tracking (BoxMOT BoT-SORT with OSNet ReID, a worker process).
 
 The settings are the ones the port-safety project settled on for small, distant pedestrians (docs/FINAL_APPROACH.md in
 barge-intrusion): person class only, a very low confidence floor so nobody is lost, and the rule decides what is
@@ -26,17 +26,19 @@ class Detector:
         self.lock = threading.Lock()
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
 
-    def detect(self, frame, size):
-        """Person boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class."""
+    def detect(self, frame, size, classes=(0,)):
+        """Boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class. `classes` are COCO ids: 0 is a person,
+        2, 3, 5 and 7 are the vehicles. One pass finds all of them, so a camera that watches people and vehicles pays once."""
         with self.lock:
             result = self.model.predict(frame, conf=0.05, iou=0.45, imgsz=size, device=self.device, half=self.half,
-                                        classes=[0], verbose=False)[0]
+                                        classes=list(classes), verbose=False)[0]
         boxes = result.boxes
         if len(boxes) == 0:
             return np.zeros((0, 6), dtype=np.float32)
         xyxy = boxes.xyxy.cpu().numpy()
         conf = boxes.conf.cpu().numpy()[:, None]
-        return np.concatenate([xyxy, conf, np.zeros_like(conf)], axis=1).astype(np.float32)
+        cls = boxes.cls.cpu().numpy()[:, None]
+        return np.concatenate([xyxy, conf, cls], axis=1).astype(np.float32)
 
 
 class FireDetector:
@@ -66,6 +68,31 @@ class FireDetector:
             return []
         rows = zip(boxes.xyxy.cpu().numpy().tolist(), boxes.conf.cpu().numpy().tolist(), boxes.cls.cpu().numpy().astype(int).tolist())
         return [(self.NAMES[cls], float(conf), tuple(float(v) for v in box)) for box, conf, cls in rows if cls in self.NAMES]
+
+
+class PoseDetector:
+    """YOLO11s-pose: the 17 body keypoints of every person in a frame, for the person-down rule. It runs only for cameras that
+    have such a rule, on the people the tracker already found (the runner matches each pose to a track by box overlap)."""
+
+    def __init__(self):
+        from ultralytics import YOLO
+        if not config.POSE_WEIGHTS.exists():
+            raise FileNotFoundError(f'{config.POSE_WEIGHTS} is missing; set QAVACH_POSE_WEIGHTS or see README.md')
+        self.device = pick_device(allow_mps=False)       # Ultralytics: pose models misread keypoints on Apple's GPU backend
+        self.half = half_precision(self.device)
+        self.model = YOLO(str(config.POSE_WEIGHTS))
+        self.lock = threading.Lock()
+        self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)
+
+    def detect(self, frame, size):
+        """[(box (x1, y1, x2, y2), keypoints 17x3 as x, y, confidence)] for the people in `frame`."""
+        with self.lock:
+            result = self.model.predict(frame, conf=0.25, imgsz=size, device=self.device, half=self.half, verbose=False)[0]
+        if result.keypoints is None or len(result.boxes) == 0:
+            return []
+        boxes = result.boxes.xyxy.cpu().numpy()
+        kps = np.concatenate([result.keypoints.xy.cpu().numpy(), result.keypoints.conf.cpu().numpy()[..., None]], axis=2)
+        return [(tuple(float(v) for v in b), k.astype(float)) for b, k in zip(boxes, kps)]
 
 
 class TrackerClient:

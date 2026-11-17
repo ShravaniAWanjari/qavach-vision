@@ -1,13 +1,14 @@
 import pytest
 
 from qavach import config, registry as reg
+from qavach.sources import Source
 
 
 class FakeRunner:
     """Stands in for CameraRunner so no stream or model is touched."""
     instances = []
 
-    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None):
+    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None, get_pose_detector=None):
         self.camera, self.rules, self.emit = camera, rules, emit
         self.stats, self.state, self.error = dict(fps=0), 'running', None
         self.stopped = False
@@ -40,11 +41,32 @@ def test_a_camera_with_a_supported_rule_runs_with_that_rule(registry):
     assert [r['id'] for r in runner.rules] == ['R-1']
 
 
-def test_only_the_intrusion_condition_runs_for_real(registry):
+def test_conditions_without_a_detector_do_not_run(registry):
     registry.put_camera(CAM)
     registry.put_rule(dict(RULE, id='R-2', condition='no-ppe'))
-    registry.put_rule(dict(RULE, id='R-3', subject='vehicle'))
     assert registry.runner('CAM-1').rules == []
+    assert 'R-2' in registry.rules                         # still stored: the console keeps it, the service just does not run it
+
+
+def test_every_people_and_vehicle_condition_runs_for_real(registry):
+    registry.put_camera(CAM)
+    for condition in ('enters', 'dwells', 'outside', 'crosses', 'stopped'):
+        registry.put_rule(dict(RULE, id=f'R-{condition}', condition=condition))
+    registry.put_rule(dict(RULE, id='R-crowd', condition='crowd', crowdOver=4))
+    registry.put_rule(dict(RULE, id='R-van', subject='vehicle'))
+    assert sorted(r['id'] for r in registry.runner('CAM-1').rules) == sorted(['R-enters', 'R-dwells', 'R-outside', 'R-crosses', 'R-stopped', 'R-crowd', 'R-van'])
+    assert registry.rules['R-crowd']['crowdOver'] == 4
+
+
+def test_a_crowd_rule_needs_a_limit_and_other_new_settings_are_range_checked(registry):
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-c', condition='crowd'))
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-c', condition='crowd', crowdOver=0))
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-d', condition='dwells', minConfidence=3))
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-s', condition='stopped', durationSec=-4))
 
 
 def test_an_unchanged_camera_is_not_restarted_by_a_sync(registry):
@@ -140,12 +162,45 @@ def test_alert_events_serialise_to_json(tmp_path, monkeypatch):
 
     events = []
     runner = CameraRunner.__new__(CameraRunner)
-    runner.camera, runner.stats, runner.emit = dict(id='CAM-1'), dict(alerts=0), events.append
+    runner.camera, runner.stats, runner.emit, runner.recent = dict(id='CAM-1', source=Source('stream', url='x')), dict(alerts=0), events.append, []
     track = np.array([[100, 200, 140, 300, 7, 0.9, 0, 0]], dtype='<f4')[0]
     rows = [(int(track[4]), float(track[0]), float(track[1]), float(track[2]), float(track[3]), float(track[5]))]
-    runner._alert(np.zeros((720, 1280, 3), dtype=np.uint8), rows, dict(id='R-1', mode='live'),
+    engine = type('E', (), dict(kind='enters', subject='person'))()
+    runner._alert(np.zeros((720, 1280, 3), dtype=np.uint8), rows, dict(id='R-1', mode='live'), engine,
                   dict(id=7, zone_id='Z1', zone_name='Grid', confidence=0.9, dwell=1.2, frames=5, reentry=False, moved=22.5), 1280, 720)
     json.dumps(events[0])
+    assert events[0]['condition'] == 'enters' and events[0]['subject'] == 'person' and events[0]['trackId'] == 7
+
+
+def test_new_alert_events_serialise_and_carry_what_the_console_needs(tmp_path, monkeypatch):
+    import json
+
+    import numpy as np
+
+    from qavach.camera_runner import CameraRunner
+    from qavach.zonerules import OUTSIDE_ID, VEHICLE_ID_OFFSET
+
+    monkeypatch.setattr(config, 'SNAPSHOTS', tmp_path)
+    events = []
+    runner = CameraRunner.__new__(CameraRunner)
+    runner.camera, runner.stats, runner.emit, runner.recent = dict(id='CAM-1', source=Source('stream', url='x')), dict(alerts=0), events.append, []
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    car = VEHICLE_ID_OFFSET + 4
+    runner._alert(frame, [(car, 100.0, 200.0, 300.0, 300.0, 0.8)], dict(id='R-S', mode='live'), type('E', (), dict(kind='stopped', subject='vehicle'))(),
+                  dict(id=car, zone_id='Z1', zone_name='Lane', confidence=0.8, dwell=31.0, frames=40, reentry=False, moved=0.0), 1280, 720)
+    runner._alert(frame, [], dict(id='R-C', mode='live'), type('E', (), dict(kind='crowd', subject='person'))(),
+                  dict(id=0, zone_id='Z2', zone_name='Quay', confidence=0.7, dwell=6.0, frames=9, reentry=True, moved=0.0, count=9, limit=5,
+                       box_px=[128.0, 72.0, 256.0, 144.0]), 1280, 720)
+    runner._alert(frame, [(3, 10.0, 10.0, 50.0, 90.0, 0.9)], dict(id='R-O', mode='live'), type('E', (), dict(kind='outside', subject='person'))(),
+                  dict(id=3, zone_id=OUTSIDE_ID, zone_name='outside the allowed areas', confidence=0.9, dwell=3.0, frames=8, reentry=False, moved=40.0), 1280, 720)
+    runner._alert(frame, [(3, 10.0, 10.0, 50.0, 90.0, 0.9)], dict(id='R-L', mode='live'), type('E', (), dict(kind='crosses', subject='person'))(),
+                  dict(id=3, zone_id='L1', zone_name='Gate line', confidence=0.9, dwell=0.0, frames=8, reentry=False, moved=0.0, direction=-1), 1280, 720)
+    json.dumps(events)
+    stopped, crowd, outside, crossed = events
+    assert (stopped['condition'], stopped['subject'], stopped['trackId']) == ('stopped', 'vehicle', 4)
+    assert (crowd['condition'], crowd['count'], crowd['limit'], crowd['trackId']) == ('crowd', 9, 5, 0) and crowd['box'] == [10.0, 10.0, 10.0, 10.0]
+    assert outside['zoneId'] is None and outside['zoneName'] == 'outside the allowed areas'
+    assert crossed['direction'] == -1 and crossed['zoneId'] == 'L1'
 
 
 def test_the_live_reader_releases_its_own_capture_only_after_its_last_read():
@@ -235,7 +290,7 @@ def test_fire_and_smoke_rules_run_for_real(registry):
 
 def test_other_conditions_stay_simulated(registry):
     registry.put_camera(CAM)
-    registry.put_rule(dict(FIRE_RULE, id='R-X', condition='crowd'))
+    registry.put_rule(dict(FIRE_RULE, id='R-X', condition='no-ppe'))
     assert all(r['id'] != 'R-X' for r in FakeRunner.instances[-1].rules)
 
 
@@ -249,7 +304,8 @@ def test_a_fire_rule_with_bad_settings_is_refused(registry):
 def _runner(zones):
     from qavach.camera_runner import CameraRunner
     runner = CameraRunner.__new__(CameraRunner)
-    runner.camera = dict(id='CAM-1', zones=zones)
+    runner.camera = dict(id='CAM-1', zones=zones, source=Source('stream', url='x'))
+    runner.recent = []
     return runner
 
 
@@ -285,3 +341,38 @@ def test_fire_alert_events_serialise_to_json_and_carry_the_hazard(tmp_path, monk
                             zone_id=None, zone_name=None), 1280, 720)
     json.dumps(events[0])
     assert events[0]['hazard'] == 'smoke' and events[0]['box'] == [10.0, 10.0, 10.0, 10.0] and events[0]['zoneName'] == 'the camera view'
+
+
+def test_engines_for_people_and_vehicle_rules_are_built_per_camera_and_the_region_follows_them():
+    from qavach.camera_runner import detection_region, wants
+    from qavach.zonerules import VEHICLE_ID_OFFSET
+
+    zone = dict(id='A', name='Area', purpose='restricted', kind='polygon', points=[[40, 40], [60, 40], [60, 60], [40, 60]])
+    line = dict(id='L', name='Gate', purpose='line', kind='line', points=[[50, 0], [50, 100]])
+    runner = _runner([zone, line])
+    runner.rules = [dict(RULE, id='E', zoneIds=['A']), dict(RULE, id='F', condition='dwells', zoneIds=['A']),
+                    dict(RULE, id='X', condition='crosses', zoneIds=['L']), dict(RULE, id='N', condition='no-ppe'),
+                    dict(FIRE_RULE), dict(RULE, id='D', condition='crosses', zoneIds=['A'])]
+    engines = runner._build_engines(1000, 1000)
+    assert [rule['id'] for _, rule in engines] == ['E', 'F', 'X']          # no-ppe and fire are not people engines; D has no line
+    assert detection_region(engines[:2], 1000, 1000)[2] - detection_region(engines[:2], 1000, 1000)[0] < 500
+    runner.rules = [dict(RULE, id='O', condition='outside', zoneIds=['A'])]
+    assert detection_region(runner._build_engines(1000, 1000), 1000, 1000) == (0, 0, 1000, 1000)       # outside: anywhere in the picture
+    assert wants('person', 5) and not wants('person', VEHICLE_ID_OFFSET + 5) and wants('vehicle', VEHICLE_ID_OFFSET + 5)
+    assert not wants('vehicle', 5) and wants('any', 5) and wants('any', VEHICLE_ID_OFFSET + 5)
+
+
+def test_the_new_conditions_run_for_real_and_keep_their_settings(registry):
+    registry.put_camera(CAM)
+    extras = dict(speeding=dict(speedKmh=25, metersAcross=50), fewer=dict(minPeople=3), wrongway=dict(allowedDir=-1),
+                  tailgate=dict(gapSec=4), near=dict(nearPx=100), running=dict(runSpeed=1.4), abandoned=dict(ownerPx=200),
+                  phone=dict(), absent=dict(), down=dict())
+    for condition, extra in extras.items():
+        registry.put_rule(dict(RULE, id=f'R-{condition}', condition=condition, **extra))
+        stored = registry.rules[f'R-{condition}']
+        assert all(stored[k] == v for k, v in extra.items())
+        assert reg.supported(stored)
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-bad', condition='speeding'))           # no limit or scale
+    with pytest.raises(reg.Invalid):
+        registry.put_rule(dict(RULE, id='R-bad2', condition='wrongway'))          # no allowed direction

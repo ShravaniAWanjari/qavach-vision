@@ -62,11 +62,17 @@ export function RuleEditor() {
   const [text, setText] = useState(existing?.plainText ?? '');
   const [draft, setDraft] = useState<RuleDraft>();
   const [picking, setPicking] = useState(false);
+  // The camera whose zones are shown. A rule can watch many cameras; each has its own zones, so the list follows this one.
+  const [activeId, setActiveId] = useState<string>();
   const [backtest, setBacktest] = useState<{ total: number; hits: { cam: Camera; at: number }[] }>();
 
   const chosen = cams.filter((c) => rule.cameraIds.includes(c.id));
   const isFire = rule.condition === 'smoke';
-  const zoneOptions = useZoneOptions(chosen, isFire);
+  const runsForReal = isFire || REAL_CONDITIONS.includes(rule.condition);
+  const steadyKind = REAL_CONDITIONS.includes(rule.condition);
+  const active = chosen.find((c) => c.id === activeId) ?? chosen[0];
+  const activeList = useMemo(() => (active ? [active] : []), [active]);
+  const zoneOptions = useZoneOptions(activeList, isFire);
   const ignoreAreas = chosen.flatMap((c) => c.zones.filter((z) => z.purpose === 'fire-ignore').map((z) => z.name));
   const selectedZoneNames = zoneOptions.filter((o) => o.ids.some((id) => rule.zoneIds.includes(id))).map((o) => o.name);
   const policy = policies.find((p) => p.priority === rule.priority);
@@ -97,7 +103,7 @@ export function RuleEditor() {
   };
 
   const runBacktest = () => {
-    const base: Record<Condition, number> = { enters: 0.5, outside: 0.45, dwells: 0.35, crosses: 0.15, 'no-ppe': 0.7, crowd: 0.25, smoke: 0.02, stopped: 0.35 };
+    const base: Record<Condition, number> = { enters: 0.5, outside: 0.45, dwells: 0.35, crosses: 0.15, 'no-ppe': 0.7, crowd: 0.25, smoke: 0.02, stopped: 0.35, near: 0.3, fewer: 0.3, absent: 0.2, wrongway: 0.1, tailgate: 0.1, speeding: 0.2, running: 0.3, abandoned: 0.1, phone: 0.3, down: 0.1 };
     const seed = rule.cameraIds.join('').length + rule.durationSec * 7 + rule.zoneIds.length * 3;
     const factor = 1 / (1 + rule.durationSec / 12);
     const total = Math.round(base[rule.condition] * Math.max(1, chosen.length) * factor * (0.8 + (seed % 7) / 10));
@@ -187,12 +193,11 @@ export function RuleEditor() {
             <div className="field">
               <span className="field__label">Cameras</span>
               <div className="row-wrap">
-                {chosen.slice(0, 10).map((c) => (
-                  <span key={c.id} className="chip chip--outline">
+                {chosen.map((c) => (
+                  <button key={c.id} type="button" className="chip chip--outline" aria-pressed={c.id === active?.id} title={`Show the zones of ${c.id}`} onClick={() => setActiveId(c.id)}>
                     <span className="mono">{c.id}</span>
-                  </span>
+                  </button>
                 ))}
-                {chosen.length > 10 && <span className="chip">+{chosen.length - 10} more</span>}
                 <button type="button" className="btn btn--secondary btn--sm" onClick={() => setPicking(true)}>
                   <Icon name="camera" size={15} />
                   {chosen.length ? `Change (${chosen.length})` : 'Choose cameras'}
@@ -201,7 +206,7 @@ export function RuleEditor() {
             </div>
 
             <div className="field">
-              <span className="field__label">{isFire ? 'Watch areas' : 'Zones'}</span>
+              <span className="field__label">{isFire ? 'Watch areas' : 'Zones'}{active ? ` on ${active.id}` : ''}</span>
               {chosen.length === 0 ? (
                 <span className="meta">Choose cameras first.</span>
               ) : zoneOptions.length === 0 ? (
@@ -216,19 +221,19 @@ export function RuleEditor() {
                     const on = o.ids.some((id) => rule.zoneIds.includes(id));
                     return (
                       <button
-                        key={o.name}
+                        key={o.ids.join()}
                         type="button"
                         className="chip chip--outline"
                         aria-pressed={on}
                         onClick={() => set({ zoneIds: on ? rule.zoneIds.filter((id) => !o.ids.includes(id)) : [...rule.zoneIds, ...o.ids] }, 'zones')}
                       >
                         {on && <Icon name="check" size={13} />}
-                        {o.name} · {o.ids.length}
+                        {o.name}
                       </button>
                     );
                   })}
                   <span className="meta">
-                    {rule.zoneIds.length ? '' : isFire ? 'None picked: the whole view' : realCams.length ? 'None picked: people anywhere in the view count, outside the drawn zones too' : 'None picked: the whole view'}
+                    {rule.zoneIds.length && active && !zoneOptions.some((o) => o.ids.some((id) => rule.zoneIds.includes(id))) ? `Nothing picked on ${active.id}: while zones are picked on other cameras, this camera is not watched by the rule.` : rule.zoneIds.length ? '' : isFire ? 'None picked: the whole view' : realCams.length ? NO_ZONE_HINT[rule.condition] ?? 'None picked: the whole view' : 'None picked: the whole view'}
                   </span>
                 </div>
               )}
@@ -256,7 +261,7 @@ export function RuleEditor() {
                     const drawnFor = (fire: boolean) => realCams.flatMap((c) => c.zones.filter((z) => (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
                     if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: drawnFor(true), minFrames: 4, fireClasses: 'both' }, 'condition');
                     else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: drawnFor(false), minFrames: 3 }, 'condition');
-                    else set({ condition }, 'condition');
+                    else set({ condition, ...(CONDITION_DEFAULTS[condition] ?? {}) }, 'condition');
                   }}
                 />
               </div>
@@ -282,6 +287,65 @@ export function RuleEditor() {
               </div>
             )}
 
+            {rule.condition === 'fewer' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-minp">Fewer than how many people</label>
+                <input id="r-minp" className="input" type="number" min={2} value={rule.minPeople ?? 2} onChange={(e) => set({ minPeople: Math.max(2, Number(e.target.value)) })} />
+                <span className="field__hint">At least one person must be there: someone working alone where a team is needed.</span>
+              </div>
+            )}
+            {rule.condition === 'near' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-near">Close means within (pixels)</label>
+                <input id="r-near" className="input" type="number" min={1} value={rule.nearPx ?? 80} onChange={(e) => set({ nearPx: Math.max(1, Number(e.target.value)) })} />
+                <span className="field__hint">Gap between the person and a vehicle that is moving, at 1280 pixels wide. A parked vehicle does not count.</span>
+              </div>
+            )}
+            {rule.condition === 'phone' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-phone">Phone at least this sure (%)</label>
+                <input id="r-phone" className="input" type="number" min={25} max={100} value={Math.round((rule.phoneConfidence ?? 0.35) * 100)} onChange={(e) => set({ phoneConfidence: Math.min(1, Math.max(0.25, Number(e.target.value) / 100)) })} />
+                <span className="field__hint">Higher means fewer false alarms from radios, binoculars and cups, but a phone held far from the camera may be missed.</span>
+              </div>
+            )}
+            {rule.condition === 'wrongway' && (
+              <Choice id="r-dir" label="Allowed direction" value={String(rule.allowedDir ?? 1)} onChange={(v) => set({ allowedDir: Number(v) as 1 | -1 })}
+                options={[{ value: '1', label: 'To the right of the line as drawn (first point to last)' }, { value: '-1', label: 'To the left of the line as drawn' }]} />
+            )}
+            {rule.condition === 'tailgate' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-gap">Second person within (seconds)</label>
+                <input id="r-gap" className="input" type="number" min={1} value={rule.gapSec ?? 3} onChange={(e) => set({ gapSec: Math.max(1, Number(e.target.value)) })} />
+              </div>
+            )}
+            {rule.condition === 'speeding' && (
+              <div className="grid-2" style={{ gap: 12 }}>
+                <div className="field">
+                  <label htmlFor="r-kmh">Speed limit (km/h)</label>
+                  <input id="r-kmh" className="input" type="number" min={1} value={rule.speedKmh ?? 30} onChange={(e) => set({ speedKmh: Math.max(1, Number(e.target.value)) })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="r-across">Metres across the picture</label>
+                  <input id="r-across" className="input" type="number" min={1} value={rule.metersAcross ?? 60} onChange={(e) => set({ metersAcross: Math.max(1, Number(e.target.value)) })} />
+                  <span className="field__hint">About how wide the road is in the picture, left edge to right. It is the scale for the speed, so it is a rough reading, best for vehicles in the middle of the view.</span>
+                </div>
+              </div>
+            )}
+            {rule.condition === 'running' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-run">Pace (body heights a second)</label>
+                <input id="r-run" className="input" type="number" min={0.5} step={0.1} value={rule.runSpeed ?? 1.6} onChange={(e) => set({ runSpeed: Math.max(0.5, Number(e.target.value)) })} />
+                <span className="field__hint">Walking is about 0.8, jogging 1.5 and more.</span>
+              </div>
+            )}
+            {rule.condition === 'abandoned' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-owner">Someone within (pixels) is with it</label>
+                <input id="r-owner" className="input" type="number" min={1} value={rule.ownerPx ?? 150} onChange={(e) => set({ ownerPx: Math.max(1, Number(e.target.value)) })} />
+                <span className="field__hint">Bags and cases that were with a person and then stayed alone for the time below.</span>
+              </div>
+            )}
+
             <div className="grid-2" style={{ gap: 12 }}>
               <div className="field" style={isFire ? { display: 'none' } : undefined}>
                 <label htmlFor="r-dur">For at least</label>
@@ -296,7 +360,7 @@ export function RuleEditor() {
               </div>
             </div>
 
-            {rule.condition === 'enters' && (
+            {steadyKind && (
               <div className="field steady">
                 <span className="field__label">How steady and how sure</span>
                 <div className="grid-3" style={{ gap: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
@@ -313,13 +377,15 @@ export function RuleEditor() {
                   <div className="field">
                     <label htmlFor="r-repeat">Don't repeat for (seconds)</label>
                     <input id="r-repeat" className="input" type="number" min={0} value={steady.repeat} onChange={(e) => set({ repeatSec: Math.max(0, Number(e.target.value) || 0) })} />
-                    <span className="field__hint">After an alert, the same person raises no new one for this long.</span>
+                    <span className="field__hint">{REPEAT_HINT[rule.condition] ?? 'After an alert, the same person raises no new one for this long.'}</span>
                   </div>
-                  <div className="field">
-                    <label htmlFor="r-move">Must have moved (pixels)</label>
-                    <input id="r-move" className="input" type="number" min={0} value={steady.move} onChange={(e) => set({ minMovePx: Math.max(0, Number(e.target.value) || 0) })} />
-                    <span className="field__hint">Ignores a pole or flag the detector sometimes calls a person: it never moves. Someone who walks in and then stops still counts. 0 turns it off.</span>
-                  </div>
+                  {MOVE_HINT[rule.condition] && (
+                    <div className="field">
+                      <label htmlFor="r-move">{rule.condition === 'stopped' ? 'Counts as moving after (pixels)' : 'Must have moved (pixels)'}</label>
+                      <input id="r-move" className="input" type="number" min={0} value={rule.minMovePx ?? MOVE_DEFAULT[rule.condition] ?? steady.move} onChange={(e) => set({ minMovePx: Math.max(0, Number(e.target.value) || 0) })} />
+                      <span className="field__hint">{MOVE_HINT[rule.condition]}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -346,10 +412,10 @@ export function RuleEditor() {
               </div>
             )}
             {realCams.length > 0 && (
-              <span className={`chip ${isFire || (rule.condition === 'enters' && rule.subject !== 'vehicle') ? 'chip--good' : 'chip--warn'}`}>
-                {isFire || (rule.condition === 'enters' && rule.subject !== 'vehicle')
+              <span className={`chip ${runsForReal ? 'chip--good' : 'chip--warn'}`}>
+                {runsForReal
                   ? `Runs for real on ${realCams.length} camera${realCams.length === 1 ? '' : 's'} with a live link or uploaded video`
-                  : 'Only "enters the zone" for people runs on real cameras so far; this rule will not alert on them'}
+                  : 'Protective equipment checks do not run on real cameras yet; this rule will not alert on them'}
               </span>
             )}
 
@@ -504,8 +570,10 @@ export function RuleEditor() {
             const keepZones = rule.zoneIds.filter((z) => ids.some((id) => z.startsWith(`${id}-`)));
             // On a real camera the zones drawn on it are what the rule is for: start with all of them picked, so a person
             // outside them does not alert. Un-pick them all to watch the whole view.
-            const drawn = keepZones.length ? [] : cams.filter((c) => ids.includes(c.id) && c.source).flatMap((c) => c.zones.filter((z) => (isFire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
+            // Cameras added now bring their drawn zones along; cameras already on the rule keep what was picked.
+            const drawn = cams.filter((c) => ids.includes(c.id) && !rule.cameraIds.includes(c.id) && c.source).flatMap((c) => c.zones.filter((z) => (isFire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
             set({ cameraIds: ids, zoneIds: [...keepZones, ...drawn] }, 'cameras');
+            setActiveId((cur) => (cur && ids.includes(cur) ? cur : ids[0]));
             setPicking(false);
           }}
         />
@@ -513,6 +581,58 @@ export function RuleEditor() {
     </div>
   );
 }
+
+/** Conditions the detection service runs for real. The others (protective equipment) are still simulated. */
+const REAL_CONDITIONS: Condition[] = ['enters', 'dwells', 'outside', 'crosses', 'crowd', 'stopped', 'near', 'fewer', 'absent', 'wrongway', 'tailgate', 'speeding', 'running', 'abandoned', 'phone', 'down'];
+
+/** What the rule starts with when the condition is changed to one of these, so the form shows what the service will use. */
+const CONDITION_DEFAULTS: Partial<Record<Condition, Partial<Rule>>> = {
+  dwells: { durationSec: 30, minConfidence: 0.4, minMovePx: 0, minFrames: 3 },
+  outside: { durationSec: 3, minConfidence: 0.25, minMovePx: 10, minFrames: 3 },
+  crosses: { durationSec: 0, minConfidence: 0.3, minFrames: 2 },
+  crowd: { durationSec: 5, minConfidence: 0.3, minFrames: 2 },
+  stopped: { subject: 'vehicle', durationSec: 30, minConfidence: 0.3, minMovePx: 12, minFrames: 3 },
+  near: { subject: 'any', durationSec: 0.5, minConfidence: 0.3, minFrames: 2, repeatSec: 10, nearPx: 80 },
+  fewer: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2, minPeople: 2 },
+  absent: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2 },
+  wrongway: { durationSec: 0, minConfidence: 0.3, minFrames: 2, allowedDir: 1 },
+  tailgate: { subject: 'person', durationSec: 0, minConfidence: 0.3, minFrames: 2, gapSec: 3 },
+  speeding: { subject: 'vehicle', durationSec: 0.5, minConfidence: 0.3, minFrames: 3, speedKmh: 30, metersAcross: 60 },
+  running: { subject: 'person', durationSec: 1, minConfidence: 0.3, minFrames: 3, runSpeed: 1.6 },
+  abandoned: { subject: 'any', durationSec: 60, minConfidence: 0.3, minFrames: 3, ownerPx: 150 },
+  phone: { subject: 'any', durationSec: 2, minConfidence: 0.3, minFrames: 2, phoneConfidence: 0.35 },
+  down: { subject: 'person', durationSec: 5, minConfidence: 0.3, minFrames: 3, repeatSec: 60 },
+};
+const NO_ZONE_HINT: Partial<Record<Condition, string>> = {
+  enters: 'None picked: people anywhere in the view count, outside the drawn zones too',
+  dwells: 'None picked: anyone staying anywhere in the view counts',
+  outside: 'Pick the allowed areas. With none picked this rule has nothing to watch',
+  crosses: 'Pick a line drawn on the camera. With none picked this rule has nothing to watch',
+  crowd: 'None picked: everyone in the view is counted together',
+  stopped: 'None picked: a vehicle stopping anywhere in the view counts',
+  near: 'None picked: a person near a moving vehicle anywhere in the view counts',
+  fewer: 'None picked: everyone in the view is counted together',
+  absent: 'None picked: the whole view must be empty',
+  wrongway: 'Pick a line drawn on the camera. With none picked this rule has nothing to watch',
+  tailgate: 'Pick a line drawn on the camera (the door or gate). With none picked this rule has nothing to watch',
+  speeding: 'None picked: a vehicle over the limit anywhere in the view counts',
+  running: 'None picked: anyone running anywhere in the view counts',
+  abandoned: 'None picked: an object left anywhere in the view counts. Pick a walkway to flag obstructions there',
+  phone: 'None picked: a phone in use anywhere in the view counts',
+  down: 'None picked: a person down anywhere in the view counts',
+};
+const REPEAT_HINT: Partial<Record<Condition, string>> = {
+  crosses: 'After an alert, the same person crossing the same line raises no new one for this long.',
+  crowd: 'While the crowd stays, it alerts again after this long.',
+  stopped: 'While the vehicle stays stopped, it alerts again after this long.',
+};
+const MOVE_DEFAULT: Partial<Record<Condition, number>> = { stopped: 12 };
+const MOVE_HINT: Partial<Record<Condition, string>> = {
+  enters: 'Ignores a pole or flag the detector sometimes calls a person: it never moves. Someone who walks in and then stops still counts. 0 turns it off.',
+  outside: 'Ignores a pole or flag the detector sometimes calls a person: it never moves. 0 turns it off.',
+  dwells: 'Standing still is what this rule looks for, so 0 turns the check off. Set it to ignore a pole the detector calls a person.',
+  stopped: 'A vehicle that creeps less than this is still stopped. A vehicle that was never seen moving is not reported.',
+};
 
 /** The zones a rule can pick. Fire and smoke picks watch areas; every other condition leaves the fire areas out, because
  *  a fire and smoke area is not a restricted area and a restricted area is not a place to watch for fire. */

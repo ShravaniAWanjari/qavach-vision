@@ -101,6 +101,26 @@ function alertText(rule: Rule, zone: Zone | undefined): { title: string; detail:
       return { title: rule.name, detail: `Smoke seen in ${zn} for ${seen}s${need}` };
     case 'stopped':
       return { title: rule.name, detail: `Vehicle stopped ${seen}s in ${zn}${need}` };
+    case 'near':
+      return { title: rule.name, detail: `Person close to a moving vehicle in ${zn}` };
+    case 'fewer':
+      return { title: rule.name, detail: `Fewer than ${rule.minPeople ?? 2} people in ${zn} for ${seen}s${need}` };
+    case 'absent':
+      return { title: rule.name, detail: `Nobody in ${zn} for ${seen}s${need}` };
+    case 'wrongway':
+      return { title: rule.name, detail: `Crossed ${zn} the wrong way` };
+    case 'tailgate':
+      return { title: rule.name, detail: `Followed another person through ${zn}` };
+    case 'speeding':
+      return { title: rule.name, detail: `Vehicle over ${rule.speedKmh ?? '?'} km/h in ${zn}` };
+    case 'running':
+      return { title: rule.name, detail: `Person running in ${zn}` };
+    case 'abandoned':
+      return { title: rule.name, detail: `Object left behind in ${zn} for ${seen}s${need}` };
+    case 'phone':
+      return { title: rule.name, detail: `Phone in use in ${zn} for ${seen}s${need}` };
+    case 'down':
+      return { title: rule.name, detail: `Person down in ${zn} for ${seen}s${need}` };
   }
 }
 
@@ -153,6 +173,55 @@ function buildAlert(rule: Rule, cam: Camera, id: string): Alert {
   };
 }
 
+/** The sentence under an alert's title: what the detection service saw, in the words of the rule's condition. */
+function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
+  const back = ev.reentry ? ' · came back' : '';
+  const who = ev.subject === 'vehicle' ? 'Vehicle' : 'Person';
+  const seen = `${ev.dwell.toFixed(1)}s`;
+  const need = `(rule: ${rule.durationSec}s or more)`;
+  if (ev.hazard) return `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${back}`;
+  switch (ev.condition ?? rule.condition) {
+    case 'dwells':
+      return `${who} stayed in ${where} for ${seen} ${need}${back}`;
+    case 'outside':
+      return `${who} ${where} for ${seen} ${need} · moved ${Math.round(ev.moved)}px${back}`;
+    case 'crosses':
+      return `${who} crossed ${where}${back}`;
+    case 'crowd':
+      return `${ev.count ?? ev.frames} ${ev.subject === 'vehicle' ? 'vehicles' : 'people'} in ${where}, more than ${ev.limit ?? rule.crowdOver}, for ${seen} ${need}${back}`;
+    case 'stopped':
+      return `Vehicle stopped in ${where} for ${seen} ${need}${back}`;
+    case 'near':
+      return `Person ${Math.round(ev.distance ?? 0)}px from a moving vehicle in ${where}${back}`;
+    case 'fewer':
+      return `${ev.count ?? 0} ${(ev.count ?? 0) === 1 ? 'person' : 'people'} in ${where}, fewer than ${ev.limit ?? rule.minPeople}, for ${seen} ${need}${back}`;
+    case 'absent':
+      return `Nobody in ${where} for ${seen} ${need}${back}`;
+    case 'wrongway':
+      return `${who} crossed ${where} the wrong way${back}`;
+    case 'tailgate':
+      return `Person followed another through ${where} ${ev.gap ?? ''}s later${back}`;
+    case 'speeding':
+      return `Vehicle at about ${Math.round(ev.speed ?? 0)} km/h in ${where}, limit ${ev.limit ?? rule.speedKmh}${back}`;
+    case 'running':
+      return `Person running in ${where}, ${ev.speed ?? ''} body heights a second${back}`;
+    case 'abandoned':
+      return `Object left in ${where}, nobody near it for ${seen} ${need}${back}`;
+    case 'phone':
+      return `Person using a phone in ${where} for ${seen} ${need}${back}`;
+    case 'down':
+      return `Person down in ${where} for ${seen} ${need}${back}`;
+    default:
+      return `Inside ${where} for ${seen} ${need} · moved ${Math.round(ev.moved)}px${back}`;
+  }
+}
+
+/** The zone name the activity line mentions: where the thing was seen, or for "outside" the area it should have stayed in. */
+function activityZone(ev: BackendEvent, rule: Rule, cam: Camera): string | undefined {
+  if ((ev.condition ?? rule.condition) === 'outside') return cam.zones.find((z) => rule.zoneIds.includes(z.id))?.name;
+  return ev.zoneId ? ev.zoneName : undefined;
+}
+
 /** Raises an alert for something the detection service saw on a real camera. */
 export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert {
   // The same thing seen again while its alert is still open is one issue, not a new alert every time: a looping hazard
@@ -177,9 +246,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     zoneId: ev.zoneId ?? undefined,
     priority: rule.priority,
     title,
-    detail: ev.hazard
-      ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${ev.reentry ? ' · came back' : ''}`
-      : `Inside ${where} for ${ev.dwell.toFixed(1)}s (rule: ${rule.durationSec}s or more) · moved ${Math.round(ev.moved)}px${ev.reentry ? ' · came back' : ''}`,
+    detail: eventDetail(ev, rule, where),
     at: ev.at,
     state: 'new',
     box: ev.box,
@@ -187,7 +254,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
     snapshot: ev.snapshot,
     clip: ev.clip,
     deliveries: deliveriesFor(policy, cam, ev.at),
-    activity: [{ at: ev.at, text: detectedText(rule, ev.zoneName || undefined, ev.hazard || undefined), actor: 'system' }],
+    activity: [{ at: ev.at, text: detectedText(rule, activityZone(ev, rule, cam), ev.hazard || undefined), actor: 'system' }],
   };
   addAlert(alert);
   return alert;

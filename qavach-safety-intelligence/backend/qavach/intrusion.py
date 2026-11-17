@@ -96,6 +96,17 @@ class IntrusionRule:
     state: dict = field(default_factory=dict)
     alert_count: int = 0
     suppressed_count: int = 0
+    subject: str = 'person'        # which tracks the rule is fed: person, vehicle or any (the runner reads this)
+    kind: str = 'enters'           # the rule's condition: enters, dwells (outside has its own class)
+
+    def locate(self, point):
+        """The zone the point is in, or None. A subclass can change what counts as "in a zone"."""
+        return locate(self.zones, point)
+
+    @property
+    def watch_points(self):
+        """Pixel points the detector must be able to see (the runner crops around them), or None for the whole frame."""
+        return np.concatenate([z.points for z in self.zones])
 
     def update(self, seconds, tracks):
         """tracks: iterable of (track_id, x1, y1, x2, y2, confidence).
@@ -108,7 +119,7 @@ class IntrusionRule:
         rule = self.rule
         for track_id, x1, y1, x2, y2, confidence in tracks:
             track_id = int(track_id)
-            zone = locate(self.zones, ((x1 + x2) / 2, y2))
+            zone = self.locate(((x1 + x2) / 2, y2))
             st = self.state.get(track_id)
             if st is None:
                 st = self.state[track_id] = _Track(move=Movement(rule.motion_window_seconds, self.scale))

@@ -77,7 +77,17 @@ export type Condition =
   | 'no-ppe' // inside the zone without the required PPE
   | 'crowd' // more than N in the zone
   | 'smoke' // smoke or flame
-  | 'stopped'; // vehicle stopped
+  | 'stopped' // vehicle stopped
+  | 'near' // a person close to a moving vehicle
+  | 'fewer' // fewer than N people in the zone (a lone worker)
+  | 'absent' // nobody in the zone
+  | 'wrongway' // crosses a line against the allowed direction
+  | 'tailgate' // follows another person through a line
+  | 'speeding' // a vehicle over the speed limit
+  | 'running' // a person running
+  | 'abandoned' // an object left behind
+  | 'phone' // a phone in use
+  | 'down'; // a person fell and stays down
 
 export type Ppe = 'helmet' | 'vest' | 'life jacket';
 
@@ -107,6 +117,23 @@ export interface Rule {
   fireClasses?: 'both' | 'fire' | 'smoke';
   ppe: Ppe[];
   crowdOver: number;
+  /** Lone worker: alert when fewer than this many people (at least one) are in the zone. */
+  minPeople?: number;
+  /** Near a vehicle: how close, in pixels at 1280 wide, counts as near. */
+  nearPx?: number;
+  /** Phone use: how sure the detector must be that the object is a phone (0 to 1). Look-alikes such as binoculars and radios score low. */
+  phoneConfidence?: number;
+  /** Speeding: the limit in km/h, and about how many metres the picture spans where vehicles drive (gives the scale). */
+  speedKmh?: number;
+  metersAcross?: number;
+  /** Wrong way: the allowed direction across the line, 1 right of the line as drawn (first point to last), -1 left. */
+  allowedDir?: 1 | -1;
+  /** Tailgating: a second person within this many seconds of the first. */
+  gapSec?: number;
+  /** Left-behind object: someone this close (pixels at 1280 wide) still counts as with it. */
+  ownerPx?: number;
+  /** Running: pace in body heights a second (walking is about 0.8). */
+  runSpeed?: number;
   schedule: Schedule;
   priority: Priority;
   mode: 'live' | 'test';

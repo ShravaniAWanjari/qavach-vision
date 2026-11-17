@@ -13,6 +13,16 @@ export const CONDITION_LABEL: Record<Condition, string> = {
   crowd: 'more than N people inside',
   smoke: 'smoke or flame seen',
   stopped: 'vehicle stopped inside',
+  near: 'comes close to a moving vehicle',
+  fewer: 'fewer than N people inside',
+  absent: 'nobody inside',
+  wrongway: 'crosses the wrong way',
+  tailgate: 'follows another through',
+  speeding: 'vehicle over the speed limit',
+  running: 'runs',
+  abandoned: 'object left behind',
+  phone: 'uses a phone',
+  down: 'falls and stays down',
 };
 
 export const SCHEDULE_LABEL: Record<Schedule, string> = {
@@ -27,7 +37,7 @@ export const SUBJECT_LABEL: Record<Subject, string> = { person: 'A person', vehi
 const secs = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
 
 /** One sentence for what a rule watches for. */
-export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver'>, zoneNames: string[]): string {
+export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver'> & Partial<Pick<Rule, 'minPeople' | 'speedKmh'>>, zoneNames: string[]): string {
   const names = zoneNames.join(' or ');
   const inZone = names ? `in ${names}` : 'in view';
   const subj = SUBJECT_LABEL[r.subject];
@@ -50,6 +60,26 @@ export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSe
       return `Smoke or flame ${inZone}${dur}`;
     case 'stopped':
       return `A vehicle stopped ${inZone}${dur}`;
+    case 'near':
+      return `${subj === 'Vehicle' ? 'A person' : 'A person'} close to a moving vehicle ${inZone}`;
+    case 'fewer':
+      return `Fewer than ${r.minPeople ?? 2} people ${inZone}${dur}`;
+    case 'absent':
+      return `Nobody ${inZone}${dur}`;
+    case 'wrongway':
+      return `${subj} crosses ${names || 'a line in view'} the wrong way`;
+    case 'tailgate':
+      return `A second person follows through ${names || 'a line in view'}`;
+    case 'speeding':
+      return `A vehicle over ${r.speedKmh ?? '?'} km/h ${inZone}`;
+    case 'running':
+      return `A person running ${inZone}${dur}`;
+    case 'abandoned':
+      return `An object left behind ${inZone}${dur}`;
+    case 'phone':
+      return `A person using a phone ${inZone}${dur}`;
+    case 'down':
+      return `A person down ${inZone}${dur}`;
   }
 }
 
@@ -82,6 +112,26 @@ export function detectedText(r: Pick<Rule, 'subject' | 'condition' | 'ppe' | 'fi
       return r.fireClasses === 'fire' ? 'Fire detected' : 'Smoke detected';
     case 'stopped':
       return `Stopped vehicle detected${at('on')}`;
+    case 'near':
+      return `Person close to a moving vehicle${at('in')}`;
+    case 'fewer':
+      return `Too few people${at('in')}`;
+    case 'absent':
+      return `Nobody${at('in')}`;
+    case 'wrongway':
+      return `${who} crossing the wrong way${zone ? ` ${zone}` : ''}`;
+    case 'tailgate':
+      return `Person following another through${zone ? ` ${zone}` : ' a line'}`;
+    case 'speeding':
+      return `Vehicle over the speed limit${at('in')}`;
+    case 'running':
+      return `Person running${at('in')}`;
+    case 'abandoned':
+      return `Object left behind${at('in')}`;
+    case 'phone':
+      return `Person using a phone${at('in')}`;
+    case 'down':
+      return `Person down${at('in')}`;
   }
 }
 
@@ -144,7 +194,7 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   understood.push(`Condition: ${CONDITION_LABEL[condition].replace('N', String(crowdOver))}`);
   if (condition === 'no-ppe') understood.push(`PPE: ${ppe.join(', ')}`);
 
-  let durationSec = { enters: 1, outside: 5, dwells: 30, crosses: 0, 'no-ppe': 3, crowd: 30, smoke: 3, stopped: 60 }[condition];
+  let durationSec = { enters: 1, outside: 5, dwells: 30, crosses: 0, 'no-ppe': 3, crowd: 30, smoke: 3, stopped: 60, near: 1, fewer: 30, absent: 30, wrongway: 0, tailgate: 0, speeding: 1, running: 2, abandoned: 60, phone: 3, down: 5 }[condition];
   const s = /(\d+)\s*(s|sec|secs|second|seconds)\b/.exec(t);
   const m = /(\d+)\s*(m|min|mins|minute|minutes)\b/.exec(t);
   if (s) durationSec = Number(s[1]);
@@ -226,6 +276,16 @@ const ACTION: Record<Condition, string> = {
   crowd: 'Access to the gangway controlled until numbers came down.',
   smoke: 'Area cleared and the fire team informed.',
   stopped: 'Driver asked to move clear of the crossing.',
+  near: 'Person moved clear of the moving vehicle; driver and supervisor told.',
+  fewer: 'Second person sent to the area before work went on.',
+  absent: 'Post covered; supervisor told why it was empty.',
+  wrongway: 'Driver or person stopped and directed the right way.',
+  tailgate: 'Access point checked; the second person identified.',
+  speeding: 'Driver spoken to about the speed limit.',
+  running: 'Supervisor spoke to the person about running.',
+  abandoned: 'Object checked and removed or returned to its owner.',
+  phone: 'Person reminded that phones are not allowed here.',
+  down: 'First aid sent to the person; supervisor told.',
 };
 
 /** Drafts the Qavach record for an alert. */

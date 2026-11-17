@@ -516,21 +516,32 @@ export function CameraEditor() {
           Cancel
         </Link>
         <span className="spacer" />
-        {step !== 'connect' && (
-          <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'walls' ? 'zones' : 'connect')}>
-            Back
-          </button>
-        )}
-        {step !== 'walls' ? (
-          <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'connect' ? 'zones' : 'walls')} disabled={!canNext}>
-            Next
-            <Icon name="arrow-right" size={16} />
-          </button>
-        ) : null}
-        {canEdit && (
-          <button type="button" className="btn" onClick={save} disabled={test !== 'ok' || !cam.name.trim()}>
-            {isNew ? 'Add camera' : 'Save camera'}
-          </button>
+        {isNew && step === 'connect' ? (
+          // A new camera is first connected; adding it takes you to drawing its zones.
+          canEdit && (
+            <button type="button" className="btn" onClick={() => setStep('zones')} disabled={test !== 'ok' || !cam.name.trim()}>
+              Add camera
+            </button>
+          )
+        ) : (
+          <>
+            {step !== 'connect' && (
+              <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'walls' ? 'zones' : 'connect')}>
+                Back
+              </button>
+            )}
+            {step !== 'walls' && (
+              <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'connect' ? 'zones' : 'walls')} disabled={!canNext}>
+                Next
+                <Icon name="arrow-right" size={16} />
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" className="btn" onClick={save} disabled={test !== 'ok' || !cam.name.trim()}>
+                Save camera
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

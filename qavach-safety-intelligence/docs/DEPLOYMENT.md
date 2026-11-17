@@ -9,9 +9,10 @@ Browser ── HTTP ──▶ :8830  FastAPI (uvicorn)
                            ├─ serves the React console at /
                            ├─ API at /api
                            ├─ camera threads (OpenCV + ffmpeg, yt-dlp)
-                           ├─ person detector (YOLO11s, in process)
+                           ├─ person and vehicle detector (YOLO11s, in process)
                            ├─ fire/smoke detector (YOLOv8n D-Fire, in process)
-                           └─ tracker worker (child process per camera with an intrusion rule)
+                           ├─ vehicle tracker (in process, box overlap; for rules about vehicles)
+                           └─ tracker worker (child process per camera with a rule about people)
 Volume /data: state.json, uploads/, frames/, snapshots/
 ```
 
@@ -25,6 +26,19 @@ Volume /data: state.json, uploads/, frames/, snapshots/
   - `backend/seed/state.json`: the cameras and rules the detection service starts with, so they are already running before anyone opens the console. The service applies it once per version of the file. `backend/seed/snapshots/` and `backend/seed/clips/` hold the pictures and short clips of the sample alerts (a copy of each is also in `public/fallback/`, which the front end shows when the service is not running).
   - Every new alert from a real camera saves an 8 second clip around the moment (`/data/clips`, served at `/api/clips/<event id>.mp4`). A camera on a video file is cut from the file; a live camera's clip is made from the last pictures the service kept. It needs `ffmpeg`, which the image installs.
   - Cameras on the sample videos refer to them by id only (`backend/samples/<id>.mp4`); there are no file paths anywhere in the set-up.
+- Rules the service runs for real (`backend/qavach/zonerules.py`, tested in `backend/tests/test_zone_rules.py`). Everything else the rule editor offers (protective equipment) is still simulated by the console.
+
+  | Condition | Alerts when | `durationSec` means | Other settings |
+  |---|---|---|---|
+  | `enters` | a person (or vehicle) is in a zone | time inside | `minFrames`, `minConfidence`, `repeatSec`, `minMovePx` (must have moved) |
+  | `dwells` | someone stays in a zone | time inside, standing still counts | same; `minMovePx` defaults to 0, `minConfidence` to 0.4, `durationSec` to 30 |
+  | `outside` | someone is outside the allowed zones (the zones the rule picks) | time outside | same as `enters`; detects over the whole picture |
+  | `crosses` | a person or vehicle crosses a line zone | not used | `minFrames`, `minConfidence`, `repeatSec` per track and line |
+  | `crowd` | more than `crowdOver` are in a zone | time over the limit | `minFrames`, `minConfidence`, `repeatSec` (alerts again while it lasts) |
+  | `stopped` | a vehicle that was moving has been still in a zone | time still | `minMovePx` (how far it may creep), `repeatSec` (alerts again while it stays) |
+  | `smoke` | fire or smoke persists | not used | `fireClasses`, `minFrames` (of the last 8), `minConfidence`, `repeatSec` |
+
+  Vehicles are COCO car, motorcycle, bus and truck from the same YOLO11s pass as people, followed by a box-overlap tracker. Alert events carry `condition`, `subject` and, where they apply, `count`, `limit` and `direction`. `python backend/tools/try_rules.py VIDEO CONFIG.json` runs the rules on a video without the service.
 - Detection runs from first start. A feed that cannot be opened shows "Camera feed interrupted" in the console; the service retries.
 
 ## 2. Components

@@ -15,12 +15,18 @@ import numpy as np
 from qavach import clips, config, sources
 from qavach.detector import TrackerClient
 from qavach.fire import FireEngine, FireRule
-from qavach.intrusion import IntrusionRule, Rule, zones_to_pixels
+from qavach.intrusion import Rule, zones_to_pixels
+from qavach.moverules import (NEEDS, OBJECT_CLASSES, OBJECT_FLOOR, OBJECT_ID_OFFSET, PHONE_CLASS, PHONE_FLOOR, PHONE_ID_OFFSET, kind_of)
+from qavach.zonerules import (CONDITIONS, OUTSIDE_ID, PERSON_CLASS, VEHICLE_CLASSES, VEHICLE_FLOOR, VEHICLE_ID_OFFSET, WHOLE_VIEW, VehicleTracker,
+                              build_engine, settings_for)
 
 RED, AMBER, GREY = (60, 60, 235), (30, 170, 245), (190, 190, 190)
 FIRE_RED, FIRE_ORANGE = (60, 60, 235), (40, 150, 255)      # BGR: fire, smoke
 STATIC = (200, 175, 130)        # in a zone, but not (yet) shown to be moving: a light, thin box with no label
-WHOLE_VIEW = dict(id='__view__', name='the camera view', kind='polygon', points=[[0, 0], [100, 0], [100, 100], [0, 100]])
+# What the preview writes on a flagged track, by the rule that flagged it.
+TRACK_LABELS = dict(enters='#{id}', dwells='#{id} dwell', outside='#{id} outside', crosses='#{id} crossed', stopped='stopped', crowd='', near='#{id} near vehicle',
+                    fewer='', absent='', wrongway='#{id} wrong way', tailgate='#{id} tailgating', speeding='speeding', running='#{id} running',
+                    abandoned='left behind', phone='#{id} phone', down='#{id} down')            # a crowd is marked by its red boxes: a word on each would bury the picture
 STALL_SECONDS = 20          # a live stream that sends nothing for this long is treated as dropped
 PREVIEW_ONLY_FPS = 12       # preview rate of a camera that has no rule to run
 
@@ -42,10 +48,53 @@ def intrusion_rule(data):
                                min_motion_px=data.get('minMovePx')))
 
 
+def wants(subject, track_id):
+    """Whether a rule about `subject` (person, vehicle or any) is fed this track: vehicle ids start at VEHICLE_ID_OFFSET."""
+    return kind_of(track_id) in (('person', 'vehicle') if subject == 'any' else (subject,))
+
+
+def _iou_box(a, b):
+    ix1, iy1, ix2, iy2 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def feeds(engine, track_id):
+    """Whether an engine is fed this track. A rule that looks at people and something else (near, abandoned, phone) is fed every
+    kind it needs; the others by their subject, where "any" is people and vehicles."""
+    kind = kind_of(track_id)
+    if engine.kind in NEEDS:
+        return kind in NEEDS[engine.kind]
+    return kind in (('person', 'vehicle') if engine.subject == 'any' else (engine.subject,))
+
+
+def engine_needs(engine):
+    """The kinds of thing the detectors must find for this engine: person, vehicle, object, phone."""
+    if engine.kind in NEEDS:
+        return set(NEEDS[engine.kind])
+    return {'person', 'vehicle'} if engine.subject == 'any' else {engine.subject}
+
+
+def validate_rule(data):
+    """Raises ValueError when a console rule's detection settings are out of range. Conditions without a detector are checked
+    as far as the intrusion rule's settings go, so the console can keep saving them."""
+    if is_fire(data):
+        fire_rule(data)
+    elif data.get('condition') in CONDITIONS:
+        settings_for(data)
+    else:
+        intrusion_rule(data)
+
+
 def detection_region(engines, width, height):
-    """The part of the frame to run the detector on: the drawn zones plus a margin, because people stand partly
-    outside a zone (their head is above the feet that decide) and the tracker needs a little context."""
-    points = np.concatenate([zone.points for engine, _ in engines for zone in engine.zones])
+    """The part of the frame to run the detector on: the drawn zones (or lines) plus a margin, because people stand partly
+    outside a zone (their head is above the feet that decide) and the tracker needs a little context. A rule that must see
+    anywhere in the picture (someone outside the allowed areas) makes it the whole frame."""
+    parts = [engine.watch_points for engine, _ in engines]
+    if any(part is None for part in parts):
+        return (0, 0, width, height)
+    points = np.concatenate(parts)
     x1, y1 = points.min(axis=0)
     x2, y2 = points.max(axis=0)
     margin = int(0.15 * max(x2 - x1, y2 - y1)) + 48
@@ -118,11 +167,13 @@ class LiveReader(threading.Thread):
 
 
 class CameraRunner:
-    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None):
+    def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None, get_pose_detector=None):
         """camera: dict(id, name, source, zones). rules: front-end rules this camera runs. get_detector: callable that
         returns the shared Detector. emit: called with each alert event dict."""
         self.camera, self.rules, self.get_detector, self.emit = camera, rules, get_detector, emit
         self.get_fire_detector = get_fire_detector
+        self.get_pose_detector = get_pose_detector
+        self.pose_detector = None        # loaded for cameras with a person-down rule
         # A video file restarts when it ends and a live stream restarts when it drops, with its clock back at zero. The
         # fire and smoke rule keeps its state across those restarts (so "don't repeat for" means what it says), and
         # `loop_offset` keeps the time it sees running forwards.
@@ -130,7 +181,10 @@ class CameraRunner:
         self.loop_offset = 0.0
         self.state = 'starting'          # starting | running | reconnecting | error | stopped
         self.error = None
-        self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
+        self.object_tracker = None      # the same kind of tracker for left-behind object candidates
+        self.vehicle_tracker = None     # box-overlap tracker for vehicle rules (zonerules.VehicleTracker)
+        self.detect_classes = (PERSON_CLASS,)
+        self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, vehicles=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
         self.jpeg = None
         self.seq = 0
         self.full = None                 # latest full-size frame
@@ -165,16 +219,36 @@ class CameraRunner:
                 backoff = min(30.0, backoff * 2)
 
     def _build_engines(self, width, height):
+        """One engine per people or vehicle rule (enters, dwells, outside, crosses, crowd, stopped). A rule with nothing to
+        watch (its zones were deleted, or are the wrong shape for it) has no engine."""
         engines = []
         for rule in self.rules:
-            if is_fire(rule):
+            if is_fire(rule) or rule.get('condition', 'enters') not in CONDITIONS:
                 continue
-            wanted = set(rule.get('zoneIds') or [])
-            zones = [z for z in self.camera['zones'] if z['id'] in wanted] if wanted else [WHOLE_VIEW]
-            pixels = zones_to_pixels(zones, width, height)
-            if pixels:          # a rule whose zones were deleted or are only lines has nothing to watch
-                engines.append((IntrusionRule(pixels, intrusion_rule(rule), scale=width / 1280), rule))
+            engine = build_engine(rule, self.camera['zones'], width, height)
+            if engine is not None:
+                engines.append((engine, rule))
         return engines
+
+    def _prepare(self, engines):
+        """Set up what the engines need beyond the people tracker: the vehicle and object trackers and the classes to detect.
+        Returns the kinds needed (person, vehicle, object, phone)."""
+        needs = set().union(*(engine_needs(e) for e, _ in engines)) if engines else set()
+        self.vehicle_tracker = VehicleTracker() if 'vehicle' in needs else None
+        self.object_tracker = VehicleTracker(min_hits=3) if 'object' in needs else None
+        self.detect_classes = (((PERSON_CLASS,) if 'person' in needs else ()) + (VEHICLE_CLASSES if 'vehicle' in needs else ())
+                               + (OBJECT_CLASSES if 'object' in needs else ()) + ((PHONE_CLASS,) if 'phone' in needs else ()))
+        return needs
+
+    def _poses(self, crop, tracks, region):
+        """{track id: 17x3 keypoints} for the tracked people the pose model also found (boxes overlapping by at least 0.3)."""
+        found = self.pose_detector.detect(crop, detect_size(region))
+        poses = {}
+        for t in tracks:
+            best = max(((_iou_box(t[:4], box), kp) for box, kp in found), key=lambda x: x[0], default=(0.0, None))
+            if best[0] >= 0.3:
+                poses[int(t[4])] = best[1]
+        return poses
 
     def _build_fire_engines(self, width, height):
         """One engine per fire and smoke rule. Its watch areas are the camera's fire-watch zones the rule picked (none
@@ -209,8 +283,11 @@ class CameraRunner:
         try:
             if engines:
                 detector = self.get_detector()
-                tracker = TrackerClient()
-                tracker.reset(fps)
+                needs = self._prepare(engines)
+                if 'person' in needs:
+                    tracker = TrackerClient()
+                    tracker.reset(fps)
+                self.pose_detector = self.get_pose_detector() if 'pose' in needs else None
                 region = detection_region(engines, width, height)
             if fire_engines:
                 fire_detector = self.get_fire_detector()
@@ -227,7 +304,8 @@ class CameraRunner:
                 rows, fires = self._process(frame, seconds, engines, tracker, detector, region, width, height, fire_engines, fire_detector)
                 done += 1
                 busy += time.time() - tick
-                self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=len(rows),
+                self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=sum(1 for r in rows if kind_of(r[0]) == 'person'),
+                                  vehicles=sum(1 for r in rows if kind_of(r[0]) == 'vehicle'),
                                   hazards=sum(1 for f in fires if f[3] == 'counted'), frames=self.stats['frames'] + 1)
                 if reader:      # how fast the stream itself delivers, to tell a slow stream from a slow detector
                     self.stats['stream_fps'] = round(reader.count / max(time.time() - opened, 1e-6), 1)
@@ -285,27 +363,50 @@ class CameraRunner:
     # ── per frame ───────────────────────────────────────────────────────────────────────────────────────────────
     def _process(self, frame, seconds, engines, tracker, detector, region, width, height, fire_engines=(), fire_detector=None):
         self.full = frame
-        rows, flagged, inside, waiting = [], set(), set(), set()
+        rows, flagged, inside, waiting, labels = [], set(), set(), set(), {}
         if engines:
             x1, y1, x2, y2 = region
             crop = np.ascontiguousarray(frame[y1:y2, x1:x2])
-            tracks = tracker.update(crop, detector.detect(crop, detect_size(region)))
-            rows = [(int(t[4]), float(t[0]) + x1, float(t[1]) + y1, float(t[2]) + x1, float(t[3]) + y1, float(t[5]))
-                    for t in tracks]       # plain floats: they end up in the JSON alert events
+            found = detector.detect(crop, detect_size(region), self.detect_classes)
+            if tracker is not None:
+                tracks = tracker.update(crop, found[found[:, 5] == PERSON_CLASS])
+                rows = [(int(t[4]), float(t[0]) + x1, float(t[1]) + y1, float(t[2]) + x1, float(t[3]) + y1, float(t[5]))
+                        for t in tracks]       # plain floats: they end up in the JSON alert events
+                if self.pose_detector is not None:
+                    poses = self._poses(crop, tracks, region)
+                    for engine, _ in engines:
+                        if engine.kind == 'down':
+                            engine.pose = poses
+            if self.vehicle_tracker is not None:
+                cars = found[np.isin(found[:, 5], VEHICLE_CLASSES) & (found[:, 4] >= VEHICLE_FLOOR)]
+                rows += [(VEHICLE_ID_OFFSET + t[0], float(t[1]) + x1, float(t[2]) + y1, float(t[3]) + x1, float(t[4]) + y1, float(t[5]))
+                         for t in self.vehicle_tracker.update(seconds, cars[:, :5])]
+            if self.object_tracker is not None:
+                things = found[np.isin(found[:, 5], OBJECT_CLASSES) & (found[:, 4] >= OBJECT_FLOOR)]
+                rows += [(OBJECT_ID_OFFSET + t[0], float(t[1]) + x1, float(t[2]) + y1, float(t[3]) + x1, float(t[4]) + y1, float(t[5]))
+                         for t in self.object_tracker.update(seconds, things[:, :5])]
+            if PHONE_CLASS in self.detect_classes:
+                phones = found[(found[:, 5] == PHONE_CLASS) & (found[:, 4] >= PHONE_FLOOR)]
+                rows += [(PHONE_ID_OFFSET + i, float(p[0]) + x1, float(p[1]) + y1, float(p[2]) + x1, float(p[3]) + y1, float(p[4]))
+                         for i, p in enumerate(phones)]
             now = datetime.now()
             for engine, rule in engines:
                 if not schedule_active(rule.get('schedule', 'always'), now):
                     continue
-                info, events = engine.update(seconds, rows)
+                info, events = engine.update(seconds, [r for r in rows if feeds(engine, r[0])])
                 for track_id, state in info.items():
-                    (flagged if state['flagged'] else inside if state['inside'] else set()).add(track_id)
+                    if state['flagged']:
+                        flagged.add(track_id)
+                        labels.setdefault(track_id, engine.kind)
+                    elif state['inside']:
+                        inside.add(track_id)
                     if state['waiting']:
                         waiting.add(track_id)
                 for event in events:
                     if event['type'] == 'alert':
-                        self._alert(frame, rows, rule, event, width, height)
+                        self._alert(frame, rows, rule, engine, event, width, height)
         fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
-        self._draw(frame, rows, flagged, inside, waiting - flagged, fires)
+        self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels)
         return rows, fires
 
     def _process_fire(self, frame, seconds, fire_engines, fire_detector, width, height):
@@ -349,28 +450,35 @@ class CameraRunner:
         self.stats['alerts'] += 1
         clip = self._clip(event_id)
         self.emit(dict(
-            clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
+            clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'], condition='smoke',
             zoneId=event['zone_id'], zoneName=event['zone_name'] or WHOLE_VIEW['name'], hazard=event['hazard'],
             trackId=0, confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
             reentry=event['repeat'], moved=0.0, mode=rule.get('mode', 'test'),
             box=[round(100 * x1 / width, 1), round(100 * y1 / height, 1), round(100 * (x2 - x1) / width, 1),
                  round(100 * (y2 - y1) / height, 1)]))
 
-    def _alert(self, frame, rows, rule, event, width, height):
+    def _alert(self, frame, rows, rule, engine, event, width, height):
+        """Save the picture and clip of an alert and publish it. A track's alert is boxed on the track; a crowd's on its zone."""
         row = next((r for r in rows if r[0] == event['id']), None)
-        if row is None:
+        if 'box_px' in event:
+            x1, y1, x2, y2 = event['box_px']
+        elif row is None:
             return
-        _, x1, y1, x2, y2, _ = row
+        else:
+            _, x1, y1, x2, y2, _ = row
         event_id = f'EV-{uuid.uuid4().hex[:8]}'
         config.SNAPSHOTS.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(config.SNAPSHOTS / f'{event_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
         self.stats['alerts'] += 1
         clip = self._clip(event_id)
+        subject = kind_of(event['id']) if event['id'] else engine.subject
+        extra = {k: event[k] for k in ('count', 'limit', 'direction', 'speed', 'distance', 'gap', 'other') if k in event}
         self.emit(dict(
             clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
-            zoneId=None if event['zone_id'] == WHOLE_VIEW['id'] else event['zone_id'], zoneName=event['zone_name'],
-            trackId=event['id'], confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
-            reentry=event['reentry'], moved=event['moved'], mode=rule.get('mode', 'test'),
+            condition=engine.kind, subject=subject,
+            zoneId=None if event['zone_id'] in (WHOLE_VIEW['id'], OUTSIDE_ID) else event['zone_id'], zoneName=event['zone_name'],
+            trackId=event['id'] % VEHICLE_ID_OFFSET, confidence=event['confidence'], dwell=event['dwell'], frames=event['frames'],
+            reentry=event['reentry'], moved=event['moved'], mode=rule.get('mode', 'test'), **extra,
             box=[round(100 * x1 / width, 1), round(100 * y1 / height, 1), round(100 * (x2 - x1) / width, 1),
                  round(100 * (y2 - y1) / height, 1)]))
 
@@ -386,7 +494,7 @@ class CameraRunner:
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
 
-    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=()):
+    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=(), labels=None):
         """The live preview: the frame, downscaled, with a box on every tracked person. Zones are drawn by the page."""
         height, width = frame.shape[:2]
         scale = min(1.0, config.PREVIEW_WIDTH / width)
@@ -395,8 +503,9 @@ class CameraRunner:
             colour = RED if track_id in flagged else STATIC if track_id in waiting else AMBER if track_id in inside else GREY
             p1, p2 = (int(x1 * scale) - 2, int(y1 * scale) - 2), (int(x2 * scale) + 2, int(y2 * scale) + 2)
             cv2.rectangle(view, p1, p2, colour, 2 if track_id in flagged else 1)
-            if track_id in flagged:
-                self._label(view, f'#{track_id}', p1, colour)
+            text = TRACK_LABELS.get((labels or {}).get(track_id), '#{id}').format(id=track_id % VEHICLE_ID_OFFSET)
+            if track_id in flagged and text:
+                self._label(view, text, p1, colour)
         for name, conf, (x1, y1, x2, y2), status in fires:
             p1, p2 = (int(x1 * scale), int(y1 * scale)), (int(x2 * scale), int(y2 * scale))
             if status == 'ignored':

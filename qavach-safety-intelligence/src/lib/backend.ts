@@ -1,4 +1,4 @@
-import type { Camera, Rule } from '../data/types';
+import type { Camera, Condition, Rule } from '../data/types';
 import { assetUrl } from './assets';
 
 // Client for the detection service in ../backend. The console works without it, on sample data; with it, cameras can
@@ -60,6 +60,19 @@ export interface BackendEvent {
   trackId: number;
   /** Set for fire and smoke alerts: which one was seen. */
   hazard?: 'fire' | 'smoke';
+  /** The rule's condition the event came from (enters, dwells, outside, crosses, crowd, stopped, smoke). */
+  condition?: Condition;
+  /** Who it is about: a person or a vehicle. */
+  subject?: 'person' | 'vehicle' | 'object';
+  /** Crowd: how many were in the zone, and the rule's limit ("more than"). */
+  count?: number;
+  limit?: number;
+  /** Line crossing: 1 for crossing to the right of the line as drawn (first point to last), -1 to the left. */
+  direction?: 1 | -1;
+  /** Speeding: km/h. Running: body heights a second. Near: pixels to the vehicle. Tailgating: seconds after the one before. */
+  speed?: number;
+  distance?: number;
+  gap?: number;
   confidence: number;
   dwell: number;
   frames: number;

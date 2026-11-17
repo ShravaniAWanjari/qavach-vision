@@ -113,7 +113,7 @@ class FireEngine:
             # Still burning when the repeat time is over counts as seen again: a fire that never leaves the picture
             # (a looping video, a real fire that goes on) alerts every `repeat_seconds`, not once.
             still = (persistent and hazard.active and bool(seen) and hazard.last_alert is not None
-                     and seconds - hazard.last_alert >= self.rule.repeat_seconds)
+                     and self.rule.repeat_seconds > 0 and seconds - hazard.last_alert >= self.rule.repeat_seconds)    # 0: no repeat alerts
             if still:
                 hazard.best = max(seen, key=lambda h: h[0])
                 hazard.first_hit = seconds

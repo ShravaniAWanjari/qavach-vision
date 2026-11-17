@@ -46,6 +46,15 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
     setTool('select');
   };
 
+  // The same drop-down sets what the next area is for and, while an area is selected, switches that area (for example restricted to fire and smoke watch) without redrawing it.
+  const changeAs = (purpose: ZonePurpose) => {
+    setDrawAs(purpose);
+    if (!selected || selected.kind !== 'polygon') return;
+    const label = purpose === 'fire-watch' ? 'Watch area' : purpose === 'fire-ignore' ? 'Ignore area' : 'Zone';
+    const auto = /^(Zone|Watch area|Ignore area) \d+$/.test(selected.name);
+    onChange(zones.map((z) => (z.id === selected.id ? { ...z, purpose, name: auto ? `${label} ${selected.name.split(' ').pop()}` : z.name } : z)));
+  };
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (tool === 'select') return;
@@ -116,7 +125,7 @@ export function ZoneEditor({ cam, zones, onChange, selectedId, onSelect, readOnl
             <Icon name="polygon" size={16} />
             Draw an area
           </button>
-          <Choice small className="zedit__as" label="What a new area is for" value={drawAs} onChange={setDrawAs} options={AREA_PURPOSES} />
+          <Choice small className="zedit__as" label={selected && selected.kind === 'polygon' ? 'What the selected area is for' : 'What a new area is for'} value={selected && selected.kind === 'polygon' ? selected.purpose : drawAs} onChange={changeAs} options={AREA_PURPOSES} />
           <button
             type="button"
             aria-pressed={tool === 'line'}
