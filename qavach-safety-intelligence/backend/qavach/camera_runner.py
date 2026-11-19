@@ -13,7 +13,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from qavach import clips, config, phonecues, scene, sources, zoom
+from qavach import clips, config, crowdcount, phonecues, scene, sources, zoom
 from qavach.detector import TrackerClient
 from qavach.fire import FireEngine, FireRule
 from qavach.intrusion import Rule, zones_to_pixels
@@ -77,6 +77,14 @@ def engine_needs(engine):
     if engine.kind in NEEDS:
         return set(NEEDS[engine.kind])
     return {'person', 'vehicle'} if engine.subject == 'any' else {engine.subject}
+
+
+def needs_tracker(engines):
+    """Whether a camera's rules need the people tracker. A people crowd only needs a count, which the person boxes give (and
+    the tracker's re-identification model costs seconds a frame on a CPU in a busy scene), so a camera whose only people rules
+    are crowd rules runs without it."""
+    people = [e for e, _ in engines if 'person' in engine_needs(e)]
+    return bool(people) and not all(e.kind == 'crowd' and e.subject == 'person' for e in people)
 
 
 def validate_rule(data):
@@ -306,7 +314,7 @@ class CameraRunner:
             if engines:
                 detector = self.get_detector()
                 needs = self._prepare(engines)
-                if 'person' in needs:
+                if 'person' in needs and needs_tracker(engines):
                     tracker = TrackerClient()
                     tracker.reset(fps)
                 self.pose_detector = self.get_pose_detector() if 'pose' in needs else None
@@ -418,6 +426,23 @@ class CameraRunner:
                     phones = zoom.merge(phones, seen[seen[:, 4] >= PHONE_FLOOR])
                 rows += [(PHONE_ID_OFFSET + i, float(p[0]), float(p[1]), float(p[2]), float(p[3]), float(p[4])) for i, p in enumerate(phones)]
                 self._phone_cues(frame, rows, engines)
+            # A people crowd is counted from every person box, the region's and the small ones its tiles find, not only from
+            # the tracks: people packed together are missed by the tracker's detector pass.
+            whole = None
+            for engine, _ in engines:
+                if engine.kind == 'crowd' and engine.subject == 'person':
+                    if whole is None:
+                        whole = found[found[:, 5] == PERSON_CLASS].copy()
+                        whole[:, [0, 2]] += x1
+                        whole[:, [1, 3]] += y1
+                    engine.people = crowdcount.people_boxes(detector, frame, _zones_box(engine, frame.shape), whole)
+                    if tracker is None:
+                        # No tracker on a crowd-only camera: the counted people are the preview's boxes (numbered per frame).
+                        known = {tuple(round(v) for v in r[1:5]) for r in rows}
+                        for b in engine.people:
+                            if tuple(round(v) for v in b[:4]) not in known:
+                                known.add(tuple(round(v) for v in b[:4]))
+                                rows.append((len(rows) + 1, *b[:5]))
             now = datetime.now()
             for engine, rule in engines:
                 if not schedule_active(rule.get('schedule', 'always'), now):
@@ -435,7 +460,16 @@ class CameraRunner:
                     if event['type'] == 'alert':
                         self._alert(frame, rows, rule, engine, event, width, height)
         fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
-        self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels)
+        notes = []
+        for engine, _ in engines:
+            if engine.kind == 'crowd':
+                for z in engine.zones:
+                    st = engine.state.get(z.id)
+                    if st is not None:
+                        x, y = z.points[:, 0].min(), z.points[:, 1].max()   # bottom left: the zone's name is at its top
+                        word = 'people' if engine.subject == 'person' else 'vehicles'
+                        notes.append((float(x), float(y), f'{st.now} / {engine.limit} {word}', RED if st.flagged else AMBER))
+        self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels, notes)
         return rows, fires
 
     def _person_pose(self, frame, box):
@@ -580,7 +614,7 @@ class CameraRunner:
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
 
-    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=(), labels=None):
+    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=(), labels=None, notes=()):
         """The live preview: the frame, downscaled, with a box on every tracked person. Zones are drawn by the page."""
         height, width = frame.shape[:2]
         scale = min(1.0, config.PREVIEW_WIDTH / width)
@@ -600,6 +634,8 @@ class CameraRunner:
             colour = FIRE_RED if name == 'fire' else FIRE_ORANGE
             cv2.rectangle(view, p1, p2, colour, 2)
             self._label(view, f'{name.upper()} {int(conf * 100)}%', p1, colour)
+        for x, y, text, colour in notes:               # a crowd zone's count against its limit, inside its bottom left corner
+            self._label(view, text, (int(x * scale) + 6, int(y * scale) - 4), colour)
         ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
         self.jpeg = buffer.tobytes()
         self.recent.append(self.jpeg)

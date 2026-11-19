@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, Choice, Modal, Seg, Switch, useConfirm } from '../../components/ui';
+import { CameraView, Choice, Drawer, Modal, PRIORITY_NAME, Seg, useConfirm } from '../../components/ui';
+import { describeRule } from '../../lib/qai';
 import { AREA_DEPARTMENT, AREAS, DEPARTMENTS } from '../../data/seed';
 import { cameraStore, nextCameraId, ruleStore } from '../../state/store';
 
@@ -49,6 +50,9 @@ export function CameraEditor() {
   const [rulePlan, setRulePlan] = useState<Record<string, boolean>>({});
   // The zones of this camera each rule watches, once someone changed them here; until then zonesFor() works them out.
   const [ruleZones, setRuleZones] = useState<Record<string, string[]>>({});
+  // The existing rule open in the side panel, and the zones ticked there before Apply.
+  const [panelRule, setPanelRule] = useState<string>();
+  const [panelZones, setPanelZones] = useState<string[]>([]);
   const [newRule, setNewRule] = useState(false);
   // A camera being added starts on the walls and rules that already cover its work area, until someone changes a choice.
   const [touched, setTouched] = useState(false);
@@ -85,10 +89,18 @@ export function CameraEditor() {
     const had = r.zoneIds.filter((id) => usable.includes(id));
     return r.cameraIds.includes(cam?.id ?? '') && had.length ? had : usable;
   };
-  const toggleZone = (r: Rule, zoneId: string) => {
-    const now = zonesFor(r);
-    setRuleZones({ ...ruleZones, [r.id]: now.includes(zoneId) ? now.filter((id) => id !== zoneId) : [...now, zoneId] });
+  const openRule = (r: Rule) => {
+    setPanelZones(zonesFor(r));
+    setPanelRule(r.id);
   };
+  /** Apply in the side panel: the rule watches this camera in the zones ticked there (saved with the camera). */
+  const applyRule = (on: boolean) => {
+    if (!panelRule) return;
+    if (on) setRuleZones({ ...ruleZones, [panelRule]: panelZones });
+    choose({ rule: [panelRule, on] });
+    setPanelRule(undefined);
+  };
+  const zoneNamesOf = (ids: string[]) => (cam?.zones ?? []).filter((z) => ids.includes(z.id)).map((z) => z.name);
   // The first change turns what was suggested into explicit choices.
   const choose = (patch: { wall?: [string, 'off' | 'rolls' | 'pinned']; rule?: [string, boolean] }) => {
     const wp = Object.fromEntries(walls.map((w) => [w.id, wallMode(w.id)])) as Record<string, 'off' | 'rolls' | 'pinned'>;
@@ -498,7 +510,7 @@ export function CameraEditor() {
                 <tr>
                   <th>Rule</th>
                   <th>Criticality</th>
-                  <th>Watches this camera, in these zones</th>
+                  <th>On this camera</th>
                 </tr>
               </thead>
               <tbody>
@@ -512,33 +524,21 @@ export function CameraEditor() {
                     </td>
                     <td>{r.priority}</td>
                     <td>
-                      <Switch checked={ruleOn(r.id)} onChange={(v) => choose({ rule: [r.id, v] })} label={ruleOn(r.id) ? 'Yes' : 'No'} />
-                      {ruleOn(r.id) && (
-                        <div className="row-wrap" style={{ marginTop: 8 }} aria-label={`Zones ${r.id} watches on this camera`}>
-                          {zonesForKind(r).length === 0 ? (
-                            <span className="meta">{r.condition === 'smoke' ? 'No fire watch area drawn: watches the whole view' : 'No zone drawn: watches the whole view'}</span>
-                          ) : (
-                            <>
-                              {zonesForKind(r).map((z) => {
-                                const on = zonesFor(r).includes(z.id);
-                                return (
-                                  <button key={z.id} type="button" className="chip chip--outline" aria-pressed={on} onClick={() => toggleZone(r, z.id)}>
-                                    {on && <Icon name="check" size={13} />}
-                                    {z.name}
-                                  </button>
-                                );
-                              })}
-                              {zonesFor(r).length === 0 && (
-                                <span className="meta">
-                                  {r.zoneIds.some((id) => !cam.zones.some((z) => z.id === id))
-                                    ? 'None picked: the rule has zones on other cameras, so it would not watch this one'
-                                    : 'None picked: the whole view'}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
+                      <div className="row-wrap">
+                        {ruleOn(r.id) ? (
+                          <span className="chip chip--good">
+                            <Icon name="check" size={13} />
+                            {zonesForKind(r).length === 0 || zonesFor(r).length === 0 ? 'Whole view' : zoneNamesOf(zonesFor(r)).join(', ')}
+                          </span>
+                        ) : (
+                          <span className="meta">Not on this camera</span>
+                        )}
+                        {canEdit && (
+                          <button type="button" className="btn btn--secondary btn--sm" onClick={() => openRule(r)}>
+                            {ruleOn(r.id) ? 'Change zones' : 'Apply'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -546,6 +546,61 @@ export function CameraEditor() {
             </table>
           </div>
         )}
+        {panelRule && cam && (() => {
+          const r = rules.find((x) => x.id === panelRule);
+          if (!r) return null;
+          const usable = zonesForKind(r);
+          const fire = r.condition === 'smoke';
+          const elsewhere = r.zoneIds.some((id) => !cam.zones.some((z) => z.id === id));
+          return (
+            <Drawer
+              title={r.name}
+              sub={`${r.id} · ${r.priority} ${PRIORITY_NAME[r.priority]} · ${r.mode === 'live' ? 'Live' : 'Test only'}`}
+              onClose={() => setPanelRule(undefined)}
+              footer={
+                <>
+                  <button type="button" className="btn btn--secondary" onClick={() => setPanelRule(undefined)}>
+                    Cancel
+                  </button>
+                  {ruleOn(r.id) && (
+                    <button type="button" className="btn btn--secondary" onClick={() => applyRule(false)}>
+                      Remove from {cam.id}
+                    </button>
+                  )}
+                  <button type="button" className="btn" onClick={() => applyRule(true)}>
+                    {ruleOn(r.id) ? 'Save zones' : `Apply to ${cam.id}`}
+                  </button>
+                </>
+              }
+            >
+              <p style={{ marginTop: 0 }}>{describeRule(r, zoneNamesOf(panelZones))}.</p>
+              <div className="field">
+                <span className="field__label">{fire ? 'Watch areas' : 'Zones'} on {cam.id}</span>
+                {usable.length === 0 ? (
+                  <span className="meta">
+                    {fire ? 'No fire and smoke watch area is drawn on this camera, so the rule watches the whole view.' : 'No zone is drawn on this camera, so the rule watches the whole view. Go back to Draw zones to add one.'}
+                  </span>
+                ) : (
+                  <div className="row-wrap">
+                    {usable.map((z) => {
+                      const on = panelZones.includes(z.id);
+                      return (
+                        <button key={z.id} type="button" className="chip chip--outline" aria-pressed={on} onClick={() => setPanelZones(on ? panelZones.filter((id) => id !== z.id) : [...panelZones, z.id])}>
+                          {on && <Icon name="check" size={13} />}
+                          {z.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {usable.length > 0 && panelZones.length === 0 && (
+                  <span className="field__hint">{elsewhere ? 'None picked: the rule has zones on other cameras, so it would not watch this one.' : 'None picked: the rule watches the whole view.'}</span>
+                )}
+                <span className="field__hint">To change anything else about the rule, open it on the Rules page.</span>
+              </div>
+            </Drawer>
+          );
+        })()}
         {newRule && cam && (
           <NewRulePanel
             forCamera={cam.id}

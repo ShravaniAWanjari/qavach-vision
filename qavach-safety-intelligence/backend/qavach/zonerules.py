@@ -48,6 +48,9 @@ LINE_DEAD_PX = 12.0                        # feet this close to a line are "on" 
 STOPPED_WOBBLE_PX = 12.0                   # a stopped vehicle's box moves this much from noise alone (at 1280 px wide)
 ARRIVE_PX = 40.0                           # a vehicle must have travelled this far (at 1280 px wide) to count as having stopped
 CROWD_HOLD_SECONDS = 1.0                   # a crowd that dips under the limit for less than this is still the same crowd
+                                           # (stretched to about two frame gaps on a slow camera)
+CROWD_WINDOW_SECONDS = 4.0                 # the count is the median over this long: people hidden behind others for a frame,
+                                           # or a passer-by counted twice, do not make the crowd flicker over and under the limit
 
 
 # ── settings ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -280,11 +283,13 @@ class LineRule:
 # ── a crowd ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 @dataclass
 class _Crowd:
+    counts: list = field(default_factory=list)   # (seconds, people) in the last CROWD_WINDOW_SECONDS
     over_since: float = None
     last_over: float = -1e9
     flagged: bool = False
     last_alert: float = None
     alerts: int = 0
+    now: int = 0                                 # the smoothed count, for the live preview
 
 
 @dataclass
@@ -298,6 +303,11 @@ class CrowdRule:
     state: dict = field(default_factory=dict)         # zone id -> _Crowd
     seen: dict = field(default_factory=dict)          # track id -> (frames seen, peak confidence)
     alert_count: int = 0
+    people: list = None            # set by the camera runner for a people crowd: every person box this frame, from the
+                                   # region and its tiles (crowdcount.py), (x1, y1, x2, y2, confidence); counted instead of
+                                   # the tracks, which miss people packed together
+    _last_seconds: float = None
+    _gap: float = 0.0
 
     @property
     def watch_points(self):
@@ -325,20 +335,38 @@ class CrowdRule:
                     if confirmed:
                         counted.setdefault(z.id, []).append(track_id)
             info[track_id] = dict(zone=zone.id if zone else None, inside=zone is not None, flagged=False, moved=True, waiting=False)
+        peaks = {}
+        if self.people is not None:
+            # A people crowd counts every person box the runner found this frame (tiles included), by their feet.
+            counted = {}
+            for x1, y1, x2, y2, confidence in self.people:
+                foot = _foot(x1, y1, x2, y2)
+                for z in self.zones:
+                    if cv2.pointPolygonTest(z.points.astype(np.float32), (float(foot[0]), float(foot[1])), False) >= 0:
+                        counted.setdefault(z.id, []).append(None)
+                        peaks[z.id] = max(peaks.get(z.id, 0.0), float(confidence))
+        if self._last_seconds is not None and seconds > self._last_seconds:
+            self._gap = seconds - self._last_seconds
+        self._last_seconds = seconds
+        hold = max(CROWD_HOLD_SECONDS, 2.2 * self._gap)
         crowded = set()
         for z in self.zones:
             st = self.state.setdefault(z.id, _Crowd())
-            n = len(counted.get(z.id, []))
+            st.counts = [(t, c) for t, c in st.counts if seconds - t < CROWD_WINDOW_SECONDS] + [(seconds, len(counted.get(z.id, [])))]
+            n = int(round(float(np.median([c for _, c in st.counts]))))
+            st.now = n
             if self.breached(n):
                 if st.over_since is None:
                     st.over_since = seconds
                 st.last_over = seconds
-            elif st.over_since is not None and seconds - st.last_over > CROWD_HOLD_SECONDS:
+            elif st.over_since is not None and seconds - st.last_over > hold:
                 st.over_since = None
                 if st.flagged:
                     st.flagged = False
                     events.append(dict(type='cleared', seconds=seconds, zone_id=z.id, zone_name=z.name))
-            if st.over_since is not None and seconds - st.over_since >= rule.dwell_seconds:
+            # The smoothed count decides that the zone is crowded; an alert also needs this frame's own count over the limit,
+            # so the smoothing's lag never raises an alert just after the crowd has gone.
+            if st.over_since is not None and seconds - st.over_since >= rule.dwell_seconds and self.breached(len(counted.get(z.id, []))):
                 again = st.flagged and st.last_alert is not None and seconds - st.last_alert >= rule.repeat_seconds
                 first = not st.flagged
                 held_back = first and st.last_alert is not None and seconds - st.last_alert < rule.repeat_seconds
@@ -352,7 +380,7 @@ class CrowdRule:
                     x1, y1 = z.points.min(axis=0)
                     x2, y2 = z.points.max(axis=0)
                     events.append(dict(type='alert', id=0, seconds=seconds, zone_id=z.id, zone_name=z.name,
-                                       confidence=round(max((self.seen[t][1] for t in counted.get(z.id, [])), default=0.0), 3),
+                                       confidence=round(peaks[z.id] if z.id in peaks else max((self.seen[t][1] for t in counted.get(z.id, []) if t in self.seen), default=0.0), 3),
                                        reentry=st.alerts > 1, dwell=round(seconds - st.over_since, 2), frames=n, moved=0.0,
                                        count=n, limit=self.limit, box_px=[float(x1), float(y1), float(x2), float(y2)]))
             if st.flagged:

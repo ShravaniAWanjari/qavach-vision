@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from qavach import config, sources                                    # noqa: E402
-from qavach.camera_runner import CameraRunner, detect_size, detection_region, schedule_active   # noqa: E402,F401
+from qavach.camera_runner import CameraRunner, detect_size, detection_region, needs_tracker, schedule_active   # noqa: E402,F401
 from qavach.detector import Detector, TrackerClient                  # noqa: E402
 from qavach.zonerules import VehicleTracker, build_engine            # noqa: E402
 
@@ -109,7 +109,7 @@ def main():
         runner.pose_detector = PoseDetector()
     detector = Detector()
     tracker = None
-    if 'person' in needs:
+    if 'person' in needs and needs_tracker(engines):
         tracker = TrackerClient()
         tracker.reset(args.fps)
     region = detection_region(engines, width, height)

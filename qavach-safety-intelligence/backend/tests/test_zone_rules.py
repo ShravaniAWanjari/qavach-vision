@@ -251,7 +251,9 @@ def test_people_outside_the_zone_and_unsure_detections_are_not_counted():
 
 
 def test_a_person_has_to_be_seen_for_the_minimum_frames_before_they_are_counted():
-    assert kinds(run(crowd_engine(3, 0.0, minFrames=5), [people(5)] * 20))[0] == (0.4, 'alert')
+    # counted from the 5th frame (0.4 s); the count is a median over 4 s, so it is over the limit once more than half the
+    # frames seen so far had the crowd: at 0.8 s
+    assert kinds(run(crowd_engine(3, 0.0, minFrames=5), [people(5)] * 20))[0] == (0.8, 'alert')
 
 
 def test_each_zone_is_counted_on_its_own_and_the_crowd_is_marked_in_the_preview():
