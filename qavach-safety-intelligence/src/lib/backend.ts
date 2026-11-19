@@ -73,6 +73,11 @@ export interface BackendEvent {
   speed?: number;
   distance?: number;
   gap?: number;
+  /** Phone use: 'confirmed' when a sure sign was seen, 'possible' when only a flashlight-like light, a hand at the ear or a
+   *  screen light on an infrared camera was seen (a person should verify); the strongest sign; and the scene it was seen in. */
+  level?: 'confirmed' | 'possible';
+  cue?: string;
+  scene?: 'day' | 'night-lit' | 'night-dark' | 'night-ir' | 'unknown';
   confidence: number;
   dwell: number;
   frames: number;

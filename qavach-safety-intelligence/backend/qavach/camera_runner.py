@@ -2,6 +2,7 @@
 publishes a live preview plus alert events.
 
 A camera with no usable rule still runs as a preview, so the video wall and the zone editor have a picture."""
+import logging
 import math
 import threading
 import time
@@ -12,7 +13,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from qavach import clips, config, sources
+from qavach import clips, config, phonecues, scene, sources, zoom
 from qavach.detector import TrackerClient
 from qavach.fire import FireEngine, FireRule
 from qavach.intrusion import Rule, zones_to_pixels
@@ -28,6 +29,8 @@ TRACK_LABELS = dict(enters='#{id}', dwells='#{id} dwell', outside='#{id} outside
                     fewer='', absent='', wrongway='#{id} wrong way', tailgate='#{id} tailgating', speeding='speeding', running='#{id} running',
                     abandoned='left behind', phone='#{id} phone', down='#{id} down')            # a crowd is marked by its red boxes: a word on each would bury the picture
 STALL_SECONDS = 20          # a live stream that sends nothing for this long is treated as dropped
+PHONE_POSE_SIZE = 320       # pose input for one person's crop (phone rule)
+PHONE_POSE_PEOPLE = 4       # people a frame the phone rule runs pose on
 PREVIEW_ONLY_FPS = 12       # preview rate of a camera that has no rule to run
 
 
@@ -166,7 +169,25 @@ class LiveReader(threading.Thread):
         return None
 
 
+log = logging.getLogger('qavach.runner')
+
+
+def _zones_box(engine, shape):
+    """(x1, y1, x2, y2) in pixels around a rule's zones, or the whole picture when it has none."""
+    height, width = shape[:2]
+    try:
+        points = engine.watch_points
+    except ValueError:                                   # no zones: the whole view
+        return 0, 0, width, height
+    x1, y1 = np.floor(points.min(axis=0)).astype(int)
+    x2, y2 = np.ceil(points.max(axis=0)).astype(int)
+    x1, y1, x2, y2 = max(0, x1), max(0, y1), min(width, x2), min(height, y2)
+    return (x1, y1, x2, y2) if x2 - x1 >= 8 and y2 - y1 >= 8 else (0, 0, width, height)
+
+
 class CameraRunner:
+    phone_scenes = None             # class default, so a runner built without __init__ (tools/try_rules.py) works too
+
     def __init__(self, camera, rules, get_detector, emit, get_fire_detector=None, get_pose_detector=None):
         """camera: dict(id, name, source, zones). rules: front-end rules this camera runs. get_detector: callable that
         returns the shared Detector. emit: called with each alert event dict."""
@@ -184,6 +205,7 @@ class CameraRunner:
         self.object_tracker = None      # the same kind of tracker for left-behind object candidates
         self.vehicle_tracker = None     # box-overlap tracker for vehicle rules (zonerules.VehicleTracker)
         self.detect_classes = (PERSON_CLASS,)
+        self.phone_scenes = {}           # phone rule -> (scene.SceneWatch, phonecues.StaticLights)
         self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, vehicles=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
         self.jpeg = None
         self.seq = 0
@@ -372,7 +394,7 @@ class CameraRunner:
                 tracks = tracker.update(crop, found[found[:, 5] == PERSON_CLASS])
                 rows = [(int(t[4]), float(t[0]) + x1, float(t[1]) + y1, float(t[2]) + x1, float(t[3]) + y1, float(t[5]))
                         for t in tracks]       # plain floats: they end up in the JSON alert events
-                if self.pose_detector is not None:
+                if self.pose_detector is not None and any(e.kind == 'down' for e, _ in engines):
                     poses = self._poses(crop, tracks, region)
                     for engine, _ in engines:
                         if engine.kind == 'down':
@@ -386,9 +408,16 @@ class CameraRunner:
                 rows += [(OBJECT_ID_OFFSET + t[0], float(t[1]) + x1, float(t[2]) + y1, float(t[3]) + x1, float(t[4]) + y1, float(t[5]))
                          for t in self.object_tracker.update(seconds, things[:, :5])]
             if PHONE_CLASS in self.detect_classes:
-                phones = found[(found[:, 5] == PHONE_CLASS) & (found[:, 4] >= PHONE_FLOOR)]
-                rows += [(PHONE_ID_OFFSET + i, float(p[0]) + x1, float(p[1]) + y1, float(p[2]) + x1, float(p[3]) + y1, float(p[4]))
-                         for i, p in enumerate(phones)]
+                phones = found[(found[:, 5] == PHONE_CLASS) & (found[:, 4] >= PHONE_FLOOR)].copy()
+                phones[:, [0, 2]] += x1                 # into picture pixels, like the person rows
+                phones[:, [1, 3]] += y1
+                # A phone is tiny in a wide view: look again, enlarged, at each person who is small in the picture.
+                people = [r[1:5] for r in rows if r[0] < VEHICLE_ID_OFFSET]
+                if people:
+                    seen = zoom.zoom_phones(detector, frame, people)
+                    phones = zoom.merge(phones, seen[seen[:, 4] >= PHONE_FLOOR])
+                rows += [(PHONE_ID_OFFSET + i, float(p[0]), float(p[1]), float(p[2]), float(p[3]), float(p[4])) for i, p in enumerate(phones)]
+                self._phone_cues(frame, rows, engines)
             now = datetime.now()
             for engine, rule in engines:
                 if not schedule_active(rule.get('schedule', 'always'), now):
@@ -408,6 +437,63 @@ class CameraRunner:
         fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
         self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels)
         return rows, fires
+
+    def _person_pose(self, frame, box):
+        """17 keypoints in picture pixels for the person in `box`, from the pose model run on that person alone (a padded crop
+        at PHONE_POSE_SIZE pixels: several times cheaper than the whole picture on a CPU), or None."""
+        height, width = frame.shape[:2]
+        x1, y1, x2, y2 = box
+        w, h = x2 - x1, y2 - y1
+        cx1, cy1 = int(max(0, x1 - 0.15 * w)), int(max(0, y1 - 0.1 * h))
+        cx2, cy2 = int(min(width, x2 + 0.15 * w)), int(min(height, y2 + 0.05 * h))
+        if cx2 - cx1 < 8 or cy2 - cy1 < 16:
+            return None
+        found = self.pose_detector.detect(np.ascontiguousarray(frame[cy1:cy2, cx1:cx2]), PHONE_POSE_SIZE)
+        if not found:
+            return None
+        # the pose whose box best covers the tracked person (another person can stand partly inside the crop)
+        target = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
+        score, kp = max(((_iou_box(target, b), k) for b, k in found), key=lambda x: x[0])
+        if score < 0.3:
+            return None
+        kp = np.asarray(kp, dtype=np.float32).copy()
+        kp[:, 0] += cx1
+        kp[:, 1] += cy1
+        return kp
+
+    def _phone_cues(self, frame, rows, engines):
+        """Give each phone rule its scene mode and, for each person inside its zones, their posture and the lights at their
+        hands (lights only at night). The scene is measured on the area of the rule's zones, on the first frame and then every
+        scene.CHECK_EVERY frames; the map of lamps and lit windows is refreshed at the same time. Pose runs only on people
+        inside a phone rule's zones, at most PHONE_POSE_PEOPLE a frame (the largest first)."""
+        if self.phone_scenes is None:
+            self.phone_scenes = {}
+        people = sorted((r for r in rows if kind_of(int(r[0])) == 'person'), key=lambda r: -(r[4] - r[2]))
+        poses, posed = {}, 0
+        for engine, _ in engines:
+            if engine.kind != 'phone':
+                continue
+            watch, static = self.phone_scenes.setdefault(id(engine), (scene.SceneWatch(), phonecues.StaticLights()))
+            due = watch.due()
+            area = _zones_box(engine, frame.shape)
+            mode = watch.update(lambda: frame[area[1]:area[3], area[0]:area[2]])
+            if due:
+                static.update(frame, [r[1:5] for r in people])
+            engine.scene = mode
+            cues = {}
+            for r in people:
+                box = r[1:5]
+                if engine.in_zone(box) is None:
+                    continue
+                tid = int(r[0])
+                if tid not in poses and self.pose_detector is not None and posed < PHONE_POSE_PEOPLE:
+                    poses[tid] = self._person_pose(frame, box)
+                    posed += 1
+                kp = poses.get(tid)
+                lights = phonecues.glow(frame, box, kp, static) if mode and mode.startswith('night') else []
+                cues[int(r[0])] = (phonecues.posture(kp, box), lights, *phonecues.hands(kp, box))
+            engine.cues = cues
+            self.stats.update(scene=mode, sceneChecks=watch.checks)
 
     def _process_fire(self, frame, seconds, fire_engines, fire_detector, width, height):
         """Run the fire and smoke detector once on the frame and give every fire rule its detections. Returns
@@ -472,7 +558,7 @@ class CameraRunner:
         self.stats['alerts'] += 1
         clip = self._clip(event_id)
         subject = kind_of(event['id']) if event['id'] else engine.subject
-        extra = {k: event[k] for k in ('count', 'limit', 'direction', 'speed', 'distance', 'gap', 'other') if k in event}
+        extra = {k: event[k] for k in ('count', 'limit', 'direction', 'speed', 'distance', 'gap', 'other', 'level', 'cue', 'scene') if k in event}
         self.emit(dict(
             clip=clip, id=event_id, at=int(time.time() * 1000), cameraId=self.camera['id'], ruleId=rule['id'],
             condition=engine.kind, subject=subject,

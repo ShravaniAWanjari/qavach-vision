@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
-import { CameraView, Choice, Seg, Switch, useConfirm } from '../../components/ui';
+import { CameraView, Choice, Modal, Seg, Switch, useConfirm } from '../../components/ui';
 import { AREA_DEPARTMENT, AREAS, DEPARTMENTS } from '../../data/seed';
-import { nextCameraId, ruleStore } from '../../state/store';
+import { cameraStore, nextCameraId, ruleStore } from '../../state/store';
 
 const PREFIX_OF: Record<string, string> = { quay: 'QUA', deck: 'DCK', yard: 'YRD', reefer: 'RFR', gate: 'GTE', workshop: 'WSH', hazmat: 'HAZ', perimeter: 'PER' };
 import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
@@ -50,6 +50,10 @@ export function CameraEditor() {
   const [newRule, setNewRule] = useState(false);
   // A camera being added starts on the walls and rules that already cover its work area, until someone changes a choice.
   const [touched, setTouched] = useState(false);
+  // A new camera counts as added (and is saved) once Add camera is clicked on Connect; the later steps open only then.
+  const [added, setAdded] = useState(false);
+  const [noZoneAsk, setNoZoneAsk] = useState(false);
+  const [noZoneOk, setNoZoneOk] = useState(false);
 
   useEffect(() => {
     if (existing && existing.id !== cam?.id) setCam(existing);
@@ -176,10 +180,18 @@ export function CameraEditor() {
 
   const usedBy = (zoneId: string) => rules.filter((r) => r.zoneIds.includes(zoneId)).map((r) => r.id);
 
-  const save = () => {
-    if (isRtsp) rememberPassword(cam.id, pass);
+  /** Store the camera and its zones (and send it to the detection service), without touching rules or walls. Done when the
+   *  camera is added on Connect, so the rule editor lists it at once, and again on the way to Rules and walls, so a new rule
+   *  made there can pick the zones just drawn. */
+  const storeCamera = () => {
+    if (isRtsp && pass) rememberPassword(cam.id, pass);
+    const stored = cameraStore.get().find((c) => c.id === cam.id);
     // The choices made here are the ones that count, so the store does not add the camera to anything on its own.
-    saveCamera({ ...cam, addedAt: existing?.addedAt ?? Date.now(), addedBy: existing?.addedBy ?? me.id, status: existing?.status ?? 'online' }, { place: false });
+    saveCamera({ ...cam, addedAt: stored?.addedAt ?? Date.now(), addedBy: stored?.addedBy ?? me.id, status: stored?.status ?? 'online' }, { place: false });
+  };
+
+  const save = () => {
+    storeCamera();
     for (const w of walls) {
       const want = wallMode(w.id);
       let pinned = w.pinned.map((p) => (p === cam.id ? null : p));
@@ -202,8 +214,31 @@ export function CameraEditor() {
       if (want === r.cameraIds.includes(cam.id)) continue;
       saveRule(setCameraOnRule(r, cam, want, []));
     }
-    toast(isNew ? `${cam.id} ${cam.name} added with ${cam.zones.length} zones` : `${cam.id} saved`);
-    nav(isNew ? `/cameras/${cam.id}` : '/cameras');
+    const watching = ruleStore.get().filter((r) => r.cameraIds.includes(cam.id)).length;
+    toast(`${cam.id} ${cam.name} saved · ${cam.zones.length} ${cam.zones.length === 1 ? 'zone' : 'zones'}, ${watching} ${watching === 1 ? 'rule' : 'rules'}`);
+    nav('/cameras');                     // done: back to the list, never back into the editor
+  };
+
+  /** Add camera on Connect: the camera is saved now, with no zones yet, and the next step is drawing them. */
+  const addCamera = () => {
+    storeCamera();
+    setAdded(true);
+    setStep('zones');
+    toast(`${cam.id} ${cam.name} added · draw its zones next`);
+  };
+
+  /** Move between the steps. Leaving Draw zones for Rules and walls stores the zones (rules made there need them), and asks
+   *  first when no zone was drawn, because then detection would watch the whole picture. */
+  const goTo = (to: Step) => {
+    if (to === step) return;
+    if (to === 'walls' && step !== 'walls') {
+      if (cam.zones.length === 0 && !noZoneOk) {
+        setNoZoneAsk(true);
+        return;
+      }
+      storeCamera();
+    }
+    setStep(to);
   };
 
   const steps: { id: Step; label: string }[] = [
@@ -212,7 +247,7 @@ export function CameraEditor() {
     { id: 'walls', label: '3 · Rules and walls' },
   ];
   const selZone = cam.zones.find((z) => z.id === sel);
-  const canNext = step !== 'connect' || test === 'ok';
+  const open = (id: Step) => id === 'connect' || (test === 'ok' && (!isNew || added));
 
   return (
     <div className="page camsetup">
@@ -245,7 +280,7 @@ export function CameraEditor() {
 
       <div className="tabs" role="tablist">
         {steps.map((s) => (
-          <button key={s.id} type="button" role="tab" aria-selected={step === s.id} onClick={() => (s.id === 'connect' || test === 'ok' ? setStep(s.id) : undefined)} disabled={s.id !== 'connect' && test !== 'ok'}>
+          <button key={s.id} type="button" role="tab" aria-selected={step === s.id} onClick={() => open(s.id) && goTo(s.id)} disabled={!open(s.id)}>
             {s.label}
           </button>
         ))}
@@ -256,7 +291,7 @@ export function CameraEditor() {
           <div className="camedit">
             <div className="card card--pad stack">
               <div className="grid-2" style={{ gap: 12 }}>
-                <Choice id="c-area" label="Work Area" value={cam.areaId} onChange={setArea} disabled={!isNew} options={AREAS.map((a) => ({ value: a.id, label: a.name }))} />
+                <Choice id="c-area" label="Work Area" value={cam.areaId} onChange={setArea} disabled={!isNew || added} options={AREAS.map((a) => ({ value: a.id, label: a.name }))} />
                 <Choice
                   id="c-dept"
                   label="Department"
@@ -345,7 +380,6 @@ export function CameraEditor() {
                       {cam.source?.kind === 'upload' ? 'Choose another video' : 'Choose a video'}
                     </button>
                     {progress !== null && <span className="meta">Uploading {Math.round(progress * 100)}%</span>}
-                    {progress === null && cam.source?.kind === 'upload' && <span className="meta">{cam.source.fileName}</span>}
                   </div>
                   <span className="field__hint">mp4, mov, avi, mkv or webm. It plays in real time and starts over when it ends, like a camera that is always on. Use it when the live feed has nothing happening.</span>
                 </div>
@@ -516,32 +550,56 @@ export function CameraEditor() {
           Cancel
         </Link>
         <span className="spacer" />
-        {isNew && step === 'connect' ? (
-          // A new camera is first connected; adding it takes you to drawing its zones.
-          canEdit && (
-            <button type="button" className="btn" onClick={() => setStep('zones')} disabled={test !== 'ok' || !cam.name.trim()}>
-              Add camera
-            </button>
-          )
-        ) : (
-          <>
-            {step !== 'connect' && (
-              <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'walls' ? 'zones' : 'connect')}>
-                Back
-              </button>
-            )}
-            {step !== 'walls' && (
-              <button type="button" className="btn btn--secondary" onClick={() => setStep(step === 'connect' ? 'zones' : 'walls')} disabled={!canNext}>
-                Next
-                <Icon name="arrow-right" size={16} />
-              </button>
-            )}
-            {canEdit && (
-              <button type="button" className="btn" onClick={save} disabled={test !== 'ok' || !cam.name.trim()}>
-                Save camera
-              </button>
-            )}
-          </>
+        {step === 'connect' && isNew && !added && canEdit && (
+          // A new camera is first connected; Add camera saves it and goes on to drawing its zones.
+          <button type="button" className="btn" onClick={addCamera} disabled={test !== 'ok' || !cam.name.trim()}>
+            Add camera
+          </button>
+        )}
+        {step !== 'connect' && (
+          <button type="button" className="btn btn--secondary" onClick={() => goTo(step === 'walls' ? 'zones' : 'connect')}>
+            Back
+          </button>
+        )}
+        {step !== 'walls' && !(step === 'connect' && isNew && !added) && (
+          <button type="button" className={step === 'zones' ? 'btn' : 'btn btn--secondary'} onClick={() => goTo(step === 'connect' ? 'zones' : 'walls')} disabled={test !== 'ok'}>
+            Next
+            <Icon name="arrow-right" size={16} />
+          </button>
+        )}
+        {step === 'walls' && canEdit && (
+          <button type="button" className="btn" onClick={save} disabled={test !== 'ok' || !cam.name.trim()}>
+            Save camera
+          </button>
+        )}
+        {noZoneAsk && (
+          <Modal
+            title="No zone drawn"
+            onClose={() => setNoZoneAsk(false)}
+            footer={
+              <>
+                <button type="button" className="btn btn--primary" autoFocus onClick={() => setNoZoneAsk(false)}>
+                  Draw zone
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => {
+                    setNoZoneAsk(false);
+                    setNoZoneOk(true);
+                    storeCamera();
+                    setStep('walls');
+                  }}
+                >
+                  Continue
+                </button>
+              </>
+            }
+          >
+            <p style={{ margin: 0 }}>
+              {cam.name || cam.id} has no zones. Without a zone, rules on this camera watch the whole picture, which raises more false alarms on a live feed. Draw a zone, or continue without one.
+            </p>
+          </Modal>
         )}
       </div>
     </div>

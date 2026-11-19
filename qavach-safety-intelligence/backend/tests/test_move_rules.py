@@ -204,3 +204,25 @@ def test_build_engine_for_each_new_condition():
         r = dict(id='R', condition=condition, zoneIds=extra.pop('zoneIds', ['z']), **extra)
         engine = build_engine(r, zones, W, H)
         assert engine is not None and engine.kind == condition
+
+
+def test_phone_in_zone_counts_when_feet_are_cut_off():
+    """A person standing at the picture's bottom edge has their feet just outside a zone drawn short of the edge; a phone in the zone still counts."""
+    zone = ZonePx(id='z', name='Z', points=np.array([[0, 0], [1000, 0], [1000, 700], [0, 700]], dtype=np.int32), points_pct=[[0, 0], [100, 0], [100, 97], [0, 97]])
+    engine = PhoneRule([zone], rule(dwell_seconds=0, min_frames=1), 0.35)
+    person = (1, 400, 300, 520, 720, 0.9)             # feet at y=720, outside the zone
+    phone = (PHONE_ID_OFFSET + 5, 430, 450, 450, 470, 0.7)
+    engine.update(1.0, [person, phone])                # one frame is not enough: a phone must be seen on two
+    _, events = engine.update(1.2, [person, phone])
+    assert events and events[0]['type'] == 'alert'
+
+
+def test_zoom_boxes_only_small_people_and_merge_keeps_surer():
+    import numpy as np
+    from qavach import zoom
+    boxes = zoom.zoom_boxes([(100, 100, 160, 300), (0, 0, 400, 700)], 1280, 720)     # the second person is taller than 55% of the picture
+    assert len(boxes) == 1 and boxes[0][0] < 100 and boxes[0][2] > 160
+    a = np.array([[10, 10, 30, 30, 0.3, 67]], dtype=np.float32)
+    b = np.array([[11, 11, 31, 31, 0.6, 67], [200, 200, 220, 220, 0.5, 67]], dtype=np.float32)
+    m = zoom.merge(a, b)
+    assert len(m) == 2 and abs(float(m[0][4]) - 0.6) < 1e-6

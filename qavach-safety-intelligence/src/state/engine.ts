@@ -173,6 +173,8 @@ function buildAlert(rule: Rule, cam: Camera, id: string): Alert {
   };
 }
 
+const SCENE_WORDS = { day: 'daylight', 'night-lit': 'night, floodlit', 'night-dark': 'night, dark', 'night-ir': 'night, infrared camera' } as const;
+
 /** The sentence under an alert's title: what the detection service saw, in the words of the rule's condition. */
 function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
   const back = ev.reentry ? ' · came back' : '';
@@ -207,8 +209,11 @@ function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
       return `Person running in ${where}, ${ev.speed ?? ''} body heights a second${back}`;
     case 'abandoned':
       return `Object left in ${where}, nobody near it for ${seen} ${need}${back}`;
-    case 'phone':
-      return `Person using a phone in ${where} for ${seen} ${need}${back}`;
+    case 'phone': {
+      const scene = ev.scene && ev.scene !== 'unknown' ? ` · ${SCENE_WORDS[ev.scene]}` : '';
+      if (ev.level === 'possible') return `Possible phone use in ${where} for ${seen} ${need}: ${ev.cue ?? 'weak sign'} seen, check the clip${scene}${back}`;
+      return `Person using a phone in ${where} for ${seen} ${need}${ev.cue ? ` · ${ev.cue}` : ''}${scene}${back}`;
+    }
     case 'down':
       return `Person down in ${where} for ${seen} ${need}${back}`;
     default:
@@ -227,7 +232,7 @@ export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert
   // The same thing seen again while its alert is still open is one issue, not a new alert every time: a looping hazard
   // would otherwise bury the list. The open alert counts the repeats and notes when it was last seen. Fire and smoke are
   // different things: smoke seen while a fire alert is open is its own alert.
-  const title = ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : rule.name;
+  const title = ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : ev.level === 'possible' ? `Possible phone use: please verify · ${rule.name}` : rule.name;
   // Only within the rule's "don't repeat for" time: when the video loops round and the same thing is seen again after
   // that, it is a new alert and notifies again.
   const window = (rule.repeatSec ?? 120) * 900; // a little under the rule's time, as frame times and clocks jitter

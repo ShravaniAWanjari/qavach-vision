@@ -36,7 +36,7 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
     crowdOver: 6,
     schedule: 'always',
     priority: 'P2',
-    mode: 'test',
+    mode: forCamera ? 'live' : 'test', // a rule made while setting up a camera is meant to work on it, so it starts live
     qavach: 'Observation',
     classification: 'Unsafe act',
     updatedAt: Date.now(),

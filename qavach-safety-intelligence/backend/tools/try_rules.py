@@ -122,7 +122,7 @@ def main():
         before = len(found)
         runner._process(frame, t, engines, tracker, detector, region, width, height)
         for _, e in found[before:]:
-            banner = (f'ALERT  {e["condition"]}: {e["zoneName"]}' + ''.join(f' ({k} {e[k]})' for k in ('count', 'limit') if k in e), t + 2.0)
+            banner = (f'ALERT  {e["condition"]}: {e["zoneName"]}' + ''.join(f' ({k} {e[k]})' for k in ('count', 'limit', 'level', 'cue', 'scene') if k in e), t + 2.0)
         view = cv2.imdecode(np.frombuffer(runner.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
         draw_zones(view, cfg['zones'], view.shape[1] / width)
         if args.title:
@@ -142,7 +142,7 @@ def main():
     print(f'\n{count} frames in {time.time() - began:.0f} s ({count / (time.time() - began):.1f} frames/s)')
     print(f'{len(found)} alerts')
     for t, e in found:
-        extra = ''.join(f' {k}={e[k]}' for k in ('count', 'limit', 'direction', 'speed', 'distance', 'gap') if k in e)
+        extra = ''.join(f' {k}={e[k]}' for k in ('count', 'limit', 'direction', 'speed', 'distance', 'gap', 'level', 'cue', 'scene') if k in e)
         print(f'  t={t:6.1f}s  {e["ruleId"]:8} {e["condition"]:8} {e["subject"]:7} track {e["trackId"]:<4} zone "{e["zoneName"]}" '
               f'dwell {e["dwell"]:.1f}s conf {e["confidence"]:.2f}{extra}  {e["id"]}')
 

@@ -40,6 +40,11 @@ OWNER_PX = 150.0                           # default: an object this close to a 
 OBJECT_WOBBLE_PX = 10.0                    # a still object's box moves this much from noise alone
 TRAIL_SECONDS = 3.0
 PHONE_HOLD_SECONDS = 1.0                   # a phone the detector loses for less than this is still held
+PHONE_WRIST_REACH = 0.7                    # with the wrists seen, a phone object must be within this many shoulder widths of one:
+                                           # a phone in use is in a hand; binoculars hanging on the chest are not
+PHONE_BINOCULARS_SECONDS = 4.0             # after the binoculars posture, phone objects at the person are ignored this long
+PHONE_MIN_SIGNS = 2                        # frames that actually show a sign before a spell of phone use counts: one frame
+                                           # where binoculars score as a phone must not be carried through the whole time asked
 RUN_BODY_HEIGHTS = 1.6                     # default running pace in body heights a second (walking is about 0.8)
 
 
@@ -112,6 +117,12 @@ class _Watch:
     last_seen: float = 0.0
     trail: _Trail = field(default_factory=_Trail)
     extra: float = 0.0
+    level: str = None             # phone rule: 'confirmed' or 'possible' for the current spell
+    cue: str = None
+    cue_conf: float = 0.0
+    signs: int = 0                # phone rule: frames in the current spell that showed a sign
+    binoculars_until: float = 0.0
+    first_sign: float = 0.0
 
 
 class _SustainedRule:
@@ -398,35 +409,111 @@ class AbandonedRule:
 
 # ── a phone held up ─────────────────────────────────────────────────────────────────────────────────────────────────
 class PhoneRule(_SustainedRule):
+    """A person in a zone using a phone. What can be seen of a phone depends on the scene (scene.py), which the camera runner
+    sets on `self.scene` before each update, together with `self.cues`: {person track id: (posture, [lights])} from phonecues.py.
+
+      day, night-lit   the phone object at the person (sure enough) -> phone use
+                       a weaker phone object with a call or texting posture -> phone use
+      night-lit, dark  a screen's light at the hands or face -> phone use
+      any              a flashlight-like light at the hands -> possible phone use (a work torch looks the same)
+      any              a hand held at the ear (call posture) without a phone seen -> possible phone use (radios are held there too)
+      night-ir         an infrared picture shows little of a screen: a screen's light there is only possible phone use
+
+    An alert says `level`: 'confirmed' when any sure sign was seen during the time held, else 'possible' (to be verified by a
+    person), and `cue`, the strongest sign seen."""
     kind = 'phone'
     subject = 'any'
 
     def __init__(self, zones, rule, phone_confidence=PHONE_CONFIDENCE, scale=1.0):
         super().__init__(zones, rule, scale)
         self.phone_confidence = max(PHONE_FLOOR, float(phone_confidence))
+        self.scene = None
+        self.cues = {}
+        self._last_seconds = None
+        self._gap = 0.0
+
+    def in_zone(self, box):
+        """The zone a person box is in (by the feet, or by the middle when the feet are cut off), else None. The camera runner
+        uses it to look for posture and lights only on people a phone rule cares about."""
+        x1, y1, x2, y2 = box
+        return _in_zones(self.zones, _foot(x1, y1, x2, y2)) or _in_zones(self.zones, ((x1 + x2) / 2, (y1 + y2) / 2))
+
+    def _signs(self, tid, box, phones, seconds):
+        """[(level, cue, confidence)] for one person in this frame, and the zone a phone in their hands is in."""
+        x1, y1, x2, y2 = box
+        width, height = x2 - x1, y2 - y1
+        cue = self.cues.get(tid, (None, []))
+        pose, lights = cue[0], cue[1]
+        wrists, reach = (cue[2], cue[3]) if len(cue) > 3 else ([], 0.0)    # wrist points and shoulder width, when pose saw them
+        st = self.state[tid]
+        if pose == 'binoculars':
+            st.binoculars_until = seconds + PHONE_BINOCULARS_SECONDS
+        night = self.scene in ('night-lit', 'night-dark', 'night-ir')
+        signs, zone = [], None
+        for _, px1, py1, px2, py2, pconf in phones:
+            cx, cy = (px1 + px2) / 2, (py1 + py2) / 2
+            if x1 - PHONE_PAD * width <= cx <= x2 + PHONE_PAD * width and y1 - PHONE_PAD * height <= cy <= y2:
+                zone = zone or _in_zones(self.zones, (cx, cy))
+                if seconds < st.binoculars_until:
+                    continue          # binoculars at the face score as a phone up to 0.71 (measured): a phone object is not
+                                      # trusted while the binoculars posture was seen; a phone's light at night still counts
+                if wrists and min(math.hypot(cx - wx, cy - wy) for wx, wy in wrists) > PHONE_WRIST_REACH * reach:
+                    continue          # not in a hand: binoculars or a radio hanging on the chest
+                if pconf >= self.phone_confidence:
+                    signs.append(('confirmed', 'phone', pconf))
+                elif pose in ('call', 'texting'):
+                    signs.append(('confirmed', f'phone and {pose} posture', pconf))
+        for light in lights:
+            if light.kind == 'screen' and self.scene in ('night-lit', 'night-dark'):
+                signs.append(('confirmed', 'screen light', light.score))
+            elif light.kind == 'screen' and night:
+                signs.append(('possible', 'screen light (infrared camera)', light.score))
+            elif light.kind == 'flashlight':
+                signs.append(('possible', 'flashlight', light.score))
+        if pose == 'call' and not signs:
+            signs.append(('possible', 'hand at ear', 0.5))
+        return signs, zone
 
     def update(self, seconds, tracks):
-        """A person holds a phone when a phone's centre is inside their box (a little beyond it at the sides and top), from the head
-        down to the feet: phones are read at the head, at the chest and low in the hands while walking and looking down. Phones
-        less sure than the rule's phone confidence are ignored (binoculars, cups and radios score low), and a phone seen in the
-        last second still counts, because phones are small and flicker."""
+        """A phone counts when its centre is inside a person's box (a little beyond it at the sides and top), from the head down
+        to the feet. A sign seen within the hold time still counts, because phones and their lights are small and flicker; the
+        hold stretches with the time between analysed frames, so a slow camera does not lose every sign between two frames."""
         info, events = {}, []
-        phones = [t for t in tracks if kind_of(int(t[0])) == 'phone' and t[5] >= self.phone_confidence]
+        if self._last_seconds is not None and seconds > self._last_seconds:
+            self._gap = seconds - self._last_seconds
+        self._last_seconds = seconds
+        hold = max(PHONE_HOLD_SECONDS, 2.2 * self._gap)     # one missed frame between two signs still holds
+        phones = [t for t in tracks if kind_of(int(t[0])) == 'phone' and t[5] >= PHONE_FLOOR]
         for tid, x1, y1, x2, y2, conf in tracks:
             tid = int(tid)
             if kind_of(tid) != 'person':
                 continue
             st = self.state.setdefault(tid, _Watch())
             st.last_seen = seconds
+            box = (x1, y1, x2, y2)
             zone = _in_zones(self.zones, _foot(x1, y1, x2, y2))
-            width, height = x2 - x1, y2 - y1
-            for _, px1, py1, px2, py2, pconf in phones:
-                cx, cy = (px1 + px2) / 2, (py1 + py2) / 2
-                if x1 - PHONE_PAD * width <= cx <= x2 + PHONE_PAD * width and y1 - PHONE_PAD * height <= cy <= y2:
-                    st.extra = seconds
-            holding = zone is not None and seconds - st.extra <= PHONE_HOLD_SECONDS and st.extra > 0
+            signs, phone_zone = self._signs(tid, box, phones, seconds)
+            if signs:
+                # Feet cut off at the picture's edge are outside a zone drawn a little short of it: the phone in the zone counts too.
+                zone = zone or phone_zone or self.in_zone(box)
+                if not st.extra or seconds - st.extra > hold:
+                    st.level, st.cue, st.cue_conf = None, None, 0.0          # a new spell of phone use
+                    st.signs, st.first_sign = 0, seconds
+                st.extra = seconds
+                st.signs += 1
+                for level, cue, sconf in signs:
+                    better = (level == 'confirmed' and st.level != 'confirmed') or (level == st.level and sconf > st.cue_conf) or st.level is None
+                    if better:
+                        st.level, st.cue, st.cue_conf = level, cue, float(sconf)
+            # A hand at the ear with no phone seen is weak evidence and pose flickers on hidden hands (binoculars, a helmet
+            # strap): it must be seen on every frame of the time asked, with no carry-over between frames.
+            carry = 0.0 if st.cue == 'hand at ear' else hold
+            holding = zone is not None and st.extra > 0 and seconds - st.extra <= carry and st.signs >= PHONE_MIN_SIGNS
+            if holding and st.since is None:
+                st.since = st.first_sign                  # the time asked counts from the first sign, not the second
             if self._hold(st, seconds, holding, conf):
-                events.append(self._event(tid, seconds, zone, st))
+                events.append(self._event(tid, seconds, zone, st, level=st.level or 'possible', cue=st.cue or 'phone',
+                                          scene=self.scene or 'unknown'))
             info[tid] = _info(flagged=st.flagged and holding, zone=zone.id if zone else None)
         self._forget(seconds)
         return info, events
@@ -437,6 +524,6 @@ NEEDS = {
     'near': {'person', 'vehicle'},
     'speeding': {'vehicle'},
     'abandoned': {'person', 'object'},
-    'phone': {'person', 'phone'},
+    'phone': {'person', 'phone', 'pose'},   # pose: hand-at-ear and texting postures, and where the hands are for lights at night
     'down': {'person', 'pose'},          # 'pose' is not a detection class: it asks for the pose model on the people found
 }

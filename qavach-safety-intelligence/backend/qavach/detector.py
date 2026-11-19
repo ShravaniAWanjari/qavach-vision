@@ -12,6 +12,14 @@ import numpy as np
 from qavach import config
 from qavach.device import half_precision, pick_device
 
+# Apple's GPU (mps) crashes when two models encode work on it at once from different threads ("A command encoder is already
+# encoding to this command buffer"), so on mps every model shares one lock. CUDA and the CPU keep a lock per model.
+_MPS_LOCK = threading.Lock()
+
+
+def _lock_for(device):
+    return _MPS_LOCK if str(device).startswith('mps') else threading.Lock()
+
 
 class Detector:
     """One model shared by every camera; calls are serialised because the GPU is shared too."""
@@ -23,21 +31,21 @@ class Detector:
         self.device = pick_device()
         self.half = half_precision(self.device)
         self.model = YOLO(str(config.YOLO_WEIGHTS))
-        self.lock = threading.Lock()
+        self.lock = _lock_for(self.device)
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
 
     def detect(self, frame, size, classes=(0,)):
         """Boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class. `classes` are COCO ids: 0 is a person,
         2, 3, 5 and 7 are the vehicles. One pass finds all of them, so a camera that watches people and vehicles pays once."""
-        with self.lock:
+        with self.lock:          # reading results off the GPU is GPU work too: it stays inside the lock (mps crashes otherwise)
             result = self.model.predict(frame, conf=0.05, iou=0.45, imgsz=size, device=self.device, half=self.half,
                                         classes=list(classes), verbose=False)[0]
-        boxes = result.boxes
-        if len(boxes) == 0:
-            return np.zeros((0, 6), dtype=np.float32)
-        xyxy = boxes.xyxy.cpu().numpy()
-        conf = boxes.conf.cpu().numpy()[:, None]
-        cls = boxes.cls.cpu().numpy()[:, None]
+            boxes = result.boxes
+            if len(boxes) == 0:
+                return np.zeros((0, 6), dtype=np.float32)
+            xyxy = boxes.xyxy.cpu().numpy()
+            conf = boxes.conf.cpu().numpy()[:, None]
+            cls = boxes.cls.cpu().numpy()[:, None]
         return np.concatenate([xyxy, conf, cls], axis=1).astype(np.float32)
 
 
@@ -56,17 +64,17 @@ class FireDetector:
         self.device = pick_device()
         self.half = half_precision(self.device)
         self.model = YOLO(str(config.FIRE_WEIGHTS))
-        self.lock = threading.Lock()
+        self.lock = _lock_for(self.device)
         self.detect(np.zeros((540, 960, 3), dtype=np.uint8))          # warm up the GPU kernels
 
     def detect(self, frame):
         """[(class name, confidence, (x1, y1, x2, y2))] with plain floats, so the results can go straight into JSON."""
-        with self.lock:
+        with self.lock:          # results are read off the GPU inside the lock too
             result = self.model.predict(frame, conf=self.FLOOR, imgsz=self.SIZE, device=self.device, half=self.half, verbose=False)[0]
-        boxes = result.boxes
-        if len(boxes) == 0:
-            return []
-        rows = zip(boxes.xyxy.cpu().numpy().tolist(), boxes.conf.cpu().numpy().tolist(), boxes.cls.cpu().numpy().astype(int).tolist())
+            boxes = result.boxes
+            if len(boxes) == 0:
+                return []
+            rows = list(zip(boxes.xyxy.cpu().numpy().tolist(), boxes.conf.cpu().numpy().tolist(), boxes.cls.cpu().numpy().astype(int).tolist()))
         return [(self.NAMES[cls], float(conf), tuple(float(v) for v in box)) for box, conf, cls in rows if cls in self.NAMES]
 
 
@@ -81,17 +89,17 @@ class PoseDetector:
         self.device = pick_device(allow_mps=False)       # Ultralytics: pose models misread keypoints on Apple's GPU backend
         self.half = half_precision(self.device)
         self.model = YOLO(str(config.POSE_WEIGHTS))
-        self.lock = threading.Lock()
+        self.lock = _lock_for(self.device)
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)
 
     def detect(self, frame, size):
         """[(box (x1, y1, x2, y2), keypoints 17x3 as x, y, confidence)] for the people in `frame`."""
         with self.lock:
             result = self.model.predict(frame, conf=0.25, imgsz=size, device=self.device, half=self.half, verbose=False)[0]
-        if result.keypoints is None or len(result.boxes) == 0:
-            return []
-        boxes = result.boxes.xyxy.cpu().numpy()
-        kps = np.concatenate([result.keypoints.xy.cpu().numpy(), result.keypoints.conf.cpu().numpy()[..., None]], axis=2)
+            if result.keypoints is None or len(result.boxes) == 0:
+                return []
+            boxes = result.boxes.xyxy.cpu().numpy()
+            kps = np.concatenate([result.keypoints.xy.cpu().numpy(), result.keypoints.conf.cpu().numpy()[..., None]], axis=2)
         return [(tuple(float(v) for v in b), k.astype(float)) for b, k in zip(boxes, kps)]
 
 
