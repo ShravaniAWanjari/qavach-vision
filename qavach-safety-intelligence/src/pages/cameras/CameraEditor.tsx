@@ -7,7 +7,7 @@ import { AREA_DEPARTMENT, AREAS, DEPARTMENTS } from '../../data/seed';
 import { cameraStore, nextCameraId, ruleStore } from '../../state/store';
 
 const PREFIX_OF: Record<string, string> = { quay: 'QUA', deck: 'DCK', yard: 'YRD', reefer: 'RFR', gate: 'GTE', workshop: 'WSH', hazmat: 'HAZ', perimeter: 'PER' };
-import type { Camera, CameraSource, ZonePurpose } from '../../data/types';
+import type { Camera, CameraSource, Rule, ZonePurpose } from '../../data/types';
 import { SAMPLE_VIDEOS } from '../../data/samples';
 import { backend, rememberPassword, type ProbeResult } from '../../lib/backend';
 import { FIRE_PURPOSES, PURPOSE_LABEL, ZONE_COLORS } from '../../scenes/zones';
@@ -47,6 +47,8 @@ export function CameraEditor() {
   const [sample, setSample] = useState<string>(() => SAMPLE_VIDEOS.find((v) => v.id === existing?.source?.uploadId)?.id ?? '');
   const [wallPlan, setWallPlan] = useState<Record<string, 'off' | 'rolls' | 'pinned'>>({});
   const [rulePlan, setRulePlan] = useState<Record<string, boolean>>({});
+  // The zones of this camera each rule watches, once someone changed them here; until then zonesFor() works them out.
+  const [ruleZones, setRuleZones] = useState<Record<string, string[]>>({});
   const [newRule, setNewRule] = useState(false);
   // A camera being added starts on the walls and rules that already cover its work area, until someone changes a choice.
   const [touched, setTouched] = useState(false);
@@ -73,6 +75,20 @@ export function CameraEditor() {
   const wallMode = (id: string): 'off' | 'rolls' | 'pinned' => (suggested ? (suggested.walls.includes(id) ? 'rolls' : 'off') : (wallPlan[id] ?? 'off'));
   // Rules are the admin's choice: nothing is ticked for a new camera.
   const ruleOn = (id: string) => rulePlan[id] ?? false;
+  /** This camera's zones a rule can use: fire watch areas for a fire and smoke rule, the other zones for the rest. */
+  const zonesForKind = (r: Rule) => (cam?.zones ?? []).filter((z) => (r.condition === 'smoke' ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-')));
+  /** The zones of this camera a rule watches: as changed here, else as the rule already has them, else every zone that fits
+   *  the rule (a rule switched on here watches what was drawn for it, with no second visit to the Rules page). */
+  const zonesFor = (r: Rule) => {
+    const usable = zonesForKind(r).map((z) => z.id);
+    if (ruleZones[r.id]) return ruleZones[r.id].filter((id) => usable.includes(id));
+    const had = r.zoneIds.filter((id) => usable.includes(id));
+    return r.cameraIds.includes(cam?.id ?? '') && had.length ? had : usable;
+  };
+  const toggleZone = (r: Rule, zoneId: string) => {
+    const now = zonesFor(r);
+    setRuleZones({ ...ruleZones, [r.id]: now.includes(zoneId) ? now.filter((id) => id !== zoneId) : [...now, zoneId] });
+  };
   // The first change turns what was suggested into explicit choices.
   const choose = (patch: { wall?: [string, 'off' | 'rolls' | 'pinned']; rule?: [string, boolean] }) => {
     const wp = Object.fromEntries(walls.map((w) => [w.id, wallMode(w.id)])) as Record<string, 'off' | 'rolls' | 'pinned'>;
@@ -208,11 +224,15 @@ export function CameraEditor() {
       }
       if (want !== (w.pinned.includes(cam.id) ? 'pinned' : w.rotation.includes(cam.id) ? 'rolls' : 'off')) saveWall({ ...w, pinned, rotation });
     }
-    // Rules: the camera joins the ones ticked and leaves the ones that are not, with the zones that go with it.
+    // Rules: the camera joins the ones switched on, with the zones picked for each, and leaves the ones switched off.
     for (const r of ruleStore.get()) {
       const want = ruleOn(r.id);
-      if (want === r.cameraIds.includes(cam.id)) continue;
-      saveRule(setCameraOnRule(r, cam, want, []));
+      const has = r.cameraIds.includes(cam.id);
+      if (!want && !has) continue;
+      const zones = want ? zonesFor(r) : [];
+      const before = r.zoneIds.filter((id) => cam.zones.some((z) => z.id === id));
+      if (want === has && zones.length === before.length && zones.every((id) => before.includes(id))) continue;
+      saveRule(setCameraOnRule(r, cam, want, zones));
     }
     const watching = ruleStore.get().filter((r) => r.cameraIds.includes(cam.id)).length;
     toast(`${cam.id} ${cam.name} saved · ${cam.zones.length} ${cam.zones.length === 1 ? 'zone' : 'zones'}, ${watching} ${watching === 1 ? 'rule' : 'rules'}`);
@@ -478,7 +498,7 @@ export function CameraEditor() {
                 <tr>
                   <th>Rule</th>
                   <th>Criticality</th>
-                  <th>Watches this camera</th>
+                  <th>Watches this camera, in these zones</th>
                 </tr>
               </thead>
               <tbody>
@@ -493,6 +513,32 @@ export function CameraEditor() {
                     <td>{r.priority}</td>
                     <td>
                       <Switch checked={ruleOn(r.id)} onChange={(v) => choose({ rule: [r.id, v] })} label={ruleOn(r.id) ? 'Yes' : 'No'} />
+                      {ruleOn(r.id) && (
+                        <div className="row-wrap" style={{ marginTop: 8 }} aria-label={`Zones ${r.id} watches on this camera`}>
+                          {zonesForKind(r).length === 0 ? (
+                            <span className="meta">{r.condition === 'smoke' ? 'No fire watch area drawn: watches the whole view' : 'No zone drawn: watches the whole view'}</span>
+                          ) : (
+                            <>
+                              {zonesForKind(r).map((z) => {
+                                const on = zonesFor(r).includes(z.id);
+                                return (
+                                  <button key={z.id} type="button" className="chip chip--outline" aria-pressed={on} onClick={() => toggleZone(r, z.id)}>
+                                    {on && <Icon name="check" size={13} />}
+                                    {z.name}
+                                  </button>
+                                );
+                              })}
+                              {zonesFor(r).length === 0 && (
+                                <span className="meta">
+                                  {r.zoneIds.some((id) => !cam.zones.some((z) => z.id === id))
+                                    ? 'None picked: the rule has zones on other cameras, so it would not watch this one'
+                                    : 'None picked: the whole view'}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
