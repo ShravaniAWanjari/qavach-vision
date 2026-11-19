@@ -32,6 +32,31 @@ export const SCHEDULE_LABEL: Record<Schedule, string> = {
   'vessel-ops': 'During vessel operations',
 };
 
+/** A short name for a rule of each kind, used when nobody types one: a name, not a sentence ("Crowd restriction", not
+ *  "More than 6 people inside for 30s or more"). */
+export const RULE_NAME: Record<Condition, string> = {
+  enters: 'Restricted area entry',
+  outside: 'Outside the allowed area',
+  dwells: 'Loitering',
+  crosses: 'Line crossing',
+  'no-ppe': 'PPE not worn',
+  crowd: 'Crowd restriction',
+  smoke: 'Fire and smoke',
+  stopped: 'Stopped vehicle',
+  near: 'Person near a moving vehicle',
+  fewer: 'Lone worker',
+  absent: 'Post unattended',
+  wrongway: 'Wrong-way crossing',
+  tailgate: 'Tailgating',
+  speeding: 'Speeding',
+  running: 'Running',
+  abandoned: 'Left-behind object',
+  phone: 'Phone use in restricted area',
+  down: 'Person down',
+};
+export const defaultRuleName = (r: Pick<Rule, 'condition' | 'subject'>) =>
+  r.condition === 'crowd' && r.subject === 'vehicle' ? 'Vehicle crowd restriction' : RULE_NAME[r.condition];
+
 export const SUBJECT_LABEL: Record<Subject, string> = { person: 'A person', vehicle: 'A vehicle', any: 'Anything' };
 
 const secs = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
@@ -186,7 +211,8 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   else if (crowd || /crowd/.test(t)) {
     condition = 'crowd';
     crowdOver = crowd ? Number(crowd[2]) : 6;
-  } else if (/cross(es|ing)?|climbs? (over|the)|jumps?/.test(t)) condition = 'crosses';
+  } else if (/\b(phone|mobile|cellphone|texting|on a call)\b/.test(t)) condition = 'phone';
+  else if (/cross(es|ing)?|climbs? (over|the)|jumps?/.test(t)) condition = 'crosses';
   else if (/away from|leaves?|outside|out of|steps? off|moves? off|off the/.test(t)) condition = 'outside';
   else if (/stopped|parked|stationary|idle|blocking/.test(t)) condition = 'stopped';
   else if (/stays?|loiter|remains?|lingers?|waits?/.test(t)) condition = 'dwells';

@@ -103,3 +103,19 @@
 .table.camsetup__table td { padding: 9px 15px; }
 .table.camsetup__table td .meta { margin-top: 1px; }
 .camsetup .card .card__head { flex-wrap: wrap; row-gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+
+/* Camera set-up: room to breathe. Fields 20px apart, the form card padded more, hints easier to read, and more space above
+   the buttons; the page can grow taller, there is room below. */
+.camsetup .tabs { margin-bottom: 22px; }
+.camsetup .camedit { gap: 28px; }
+.camsetup .camedit > .card--pad.stack { padding: 28px; gap: 26px; }
+.camsetup .camedit .grid-2 { gap: 20px; }
+.camsetup .field { gap: 8px; }
+.camsetup .field__hint { line-height: 1.55; }
+.camsetup .camedit__foot { margin-top: 32px; padding-top: 22px; }
+/* The picture source switch fills its field, the two choices sharing it equally (no empty grey track beside them). */
+.camsetup .field > .seg { display: flex; }
+.camsetup .field > .seg button { flex: 1 1 0; justify-content: center; height: 40px; }
+/* The form gets the wider column, so work areas, locations and stream addresses are not cut off; the picture keeps 16:9. */
+.camsetup .camedit:not(.camedit--zones) { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+@media (max-width: 1000px) { .camsetup .camedit:not(.camedit--zones) { grid-template-columns: 1fr; } }

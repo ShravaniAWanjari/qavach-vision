@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { Choice, Drawer, MultiSelect, PRIORITY_NAME, Seg } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
-import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
+import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
 import { nextRuleId, saveRule, toast, useCameras, useMe, useRules } from '../../state/store';
 import { EXAMPLES, useZoneOptions } from './RuleEditor';
 
@@ -70,7 +70,7 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
   const sentence = `${describeRule(rule, zoneNames)}${rule.schedule !== 'always' ? `, ${SCHEDULE_LABEL[rule.schedule].toLowerCase()}` : ''}`;
   const valid = !!forCamera || rule.cameraIds.length > 0;
   const create = () => {
-    const saved = { ...rule, name: rule.name.trim() || sentence, updatedAt: Date.now(), updatedBy: me.id };
+    const saved = { ...rule, name: rule.name.trim() || defaultRuleName(rule), updatedAt: Date.now(), updatedBy: me.id };
     saveRule(saved);
     onCreated?.(saved);
     toast(`${rule.id} created · ${rule.mode === 'live' ? 'live now' : 'in test: matches are logged, no one is told'}`);
@@ -143,7 +143,8 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
 
         <div className="field">
           <label htmlFor="nr-name">Rule Name</label>
-          <input id="nr-name" className="input" value={rule.name} onChange={(e) => set({ name: e.target.value })} placeholder="Named from the rule if left empty" />
+          <input id="nr-name" className="input" value={rule.name} onChange={(e) => set({ name: e.target.value })} placeholder={defaultRuleName(rule)} />
+          <span className="field__hint">Left empty, the rule is called "{defaultRuleName(rule)}".</span>
         </div>
 
         <MultiSelect

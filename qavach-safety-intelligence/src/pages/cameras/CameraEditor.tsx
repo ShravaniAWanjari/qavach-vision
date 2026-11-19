@@ -322,7 +322,7 @@ export function CameraEditor() {
         {step === 'connect' && (
           <div className="camedit">
             <div className="card card--pad stack">
-              <div className="grid-2" style={{ gap: 12 }}>
+              <div className="grid-2">
                 <Choice id="c-area" label="Work Area" value={cam.areaId} onChange={setArea} disabled={!isNew || added} options={AREAS.map((a) => ({ value: a.id, label: a.name }))} />
                 <Choice
                   id="c-dept"
@@ -332,7 +332,7 @@ export function CameraEditor() {
                   options={[...new Set([...DEPARTMENTS, ...cams.map(departmentOf)])].map((d) => ({ value: d, label: d }))}
                 />
               </div>
-              <div className="grid-2" style={{ gap: 12 }}>
+              <div className="grid-2">
                 <div className="field">
                   <label htmlFor="c-id">Camera ID</label>
                   <input id="c-id" className="input mono" value={cam.id} readOnly />
@@ -379,7 +379,7 @@ export function CameraEditor() {
                     <span className="field__hint">A YouTube live link, or a camera's stream on the network (RTSP, or an http / HLS stream). The detection service pulls it; nothing is exposed outside.</span>
                   </div>
                   {(isRtsp || !service.online) && (
-                    <div className="grid-2" style={{ gap: 12 }}>
+                    <div className="grid-2">
                       <div className="field">
                         <label htmlFor="c-user">User name</label>
                         <input id="c-user" className="input" value={user} onChange={(e) => setUser(e.target.value)} autoComplete="off" />

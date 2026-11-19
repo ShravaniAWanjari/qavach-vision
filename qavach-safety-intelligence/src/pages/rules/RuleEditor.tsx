@@ -5,7 +5,7 @@ import { ReadOnlyNote } from '../../components/Shell';
 import { CameraView, CHANNEL, Choice, looseMatch, Modal, PRIORITY_NAME, PriorityBadge, Seg, useConfirm } from '../../components/ui';
 import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
-import { CONDITION_LABEL, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
+import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
 import { apiUrl } from '../../lib/backend';
 import { duration, hm } from '../../lib/time';
 import { useMatches } from '../../state/bridge';
@@ -112,9 +112,9 @@ export function RuleEditor() {
     setBacktest({ total, hits: hits.sort((a, b) => b.at - a.at) });
   };
 
-  const valid = rule.name.trim() && rule.cameraIds.length > 0;
+  const valid = rule.cameraIds.length > 0;
   const save = () => {
-    saveRule({ ...rule, updatedAt: Date.now(), updatedBy: me.id });
+    saveRule({ ...rule, name: rule.name.trim() || defaultRuleName(rule), updatedAt: Date.now(), updatedBy: me.id });
     toast(`${rule.id} saved · ${rule.mode === 'live' ? 'live now' : 'in test: matches are logged, no one is told'}`);
     nav('/rules');
   };
@@ -187,7 +187,8 @@ export function RuleEditor() {
           <div className="card card--pad stack ruleform">
             <div className="field">
               <label htmlFor="r-name">Rule name</label>
-              <input id="r-name" className="input" value={rule.name} onChange={(e) => set({ name: e.target.value }, 'name')} placeholder="For example: Person away from the deck walkway" />
+              <input id="r-name" className="input" value={rule.name} onChange={(e) => set({ name: e.target.value }, 'name')} placeholder={defaultRuleName(rule)} />
+              <span className="field__hint">Left empty, the rule is called "{defaultRuleName(rule)}".</span>
             </div>
 
             <div className="field">
@@ -554,7 +555,7 @@ export function RuleEditor() {
           </button>
         )}
         <span className="spacer" />
-        {!valid && <span className="meta">Give it a name and at least one camera.</span>}
+        {!valid && <span className="meta">Choose at least one camera.</span>}
         {admin && (
           <button type="button" className="btn" onClick={save} disabled={!valid}>
             Save rule
