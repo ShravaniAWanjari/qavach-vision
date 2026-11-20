@@ -97,6 +97,8 @@ function alertText(rule: Rule, zone: Zone | undefined): { title: string; detail:
       return { title: rule.name, detail: `${rule.ppe.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' and ')} not seen for ${seen}s${need}` };
     case 'crowd':
       return { title: rule.name, detail: `${rule.crowdOver + 1 + Math.floor(Math.random() * 3)} people in ${zn} for ${seen}s` };
+    case 'gathering':
+      return { title: rule.name, detail: `Group of ${(rule.minPeople ?? 5) + Math.floor(Math.random() * 3)} people gathered in ${zn} for ${seen}s` };
     case 'smoke':
       return { title: rule.name, detail: `Smoke seen in ${zn} for ${seen}s${need}` };
     case 'stopped':
@@ -191,6 +193,8 @@ function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
       return `${who} crossed ${where}${back}`;
     case 'crowd':
       return `${ev.count ?? ev.frames} ${ev.subject === 'vehicle' ? 'vehicles' : 'people'} in ${where}, more than ${ev.limit ?? rule.crowdOver}, for ${seen} ${need}${back}`;
+    case 'gathering':
+      return `Group of ${ev.count ?? ev.frames} people gathered in ${where}, ${ev.limit ?? rule.minPeople} or more, for ${seen} ${need}${back}`;
     case 'stopped':
       return `Vehicle stopped in ${where} for ${seen} ${need}${back}`;
     case 'near':

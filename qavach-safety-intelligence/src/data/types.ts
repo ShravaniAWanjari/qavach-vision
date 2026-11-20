@@ -33,6 +33,8 @@ export interface CameraSource {
   user?: string;
   uploadId?: string;
   fileName?: string;
+  /** Uploaded video: analyse every frame, so nothing is skipped; the video plays slower than real time if the service cannot keep up. */
+  everyFrame?: boolean;
   /** The still frame taken when the connection was tested; zones are drawn on it. Relative to the detection service. */
   frameUrl?: string;
   width?: number;
@@ -76,6 +78,7 @@ export type Condition =
   | 'crosses' // crosses a line
   | 'no-ppe' // inside the zone without the required PPE
   | 'crowd' // more than N in the zone
+  | 'gathering' // a group of at least N people packed together
   | 'smoke' // smoke or flame
   | 'stopped' // vehicle stopped
   | 'near' // a person close to a moving vehicle
@@ -119,6 +122,8 @@ export interface Rule {
   crowdOver: number;
   /** Lone worker: alert when fewer than this many people (at least one) are in the zone. */
   minPeople?: number;
+  /** Crowd gathering: how close people stand to be one group, in body heights (0.5 by default; about 1 for a large, loose crowd). */
+  gatherReach?: number;
   /** Near a vehicle: how close, in pixels at 1280 wide, counts as near. */
   nearPx?: number;
   /** Phone use: how sure the detector must be that the object is a phone (0 to 1). Look-alikes such as binoculars and radios score low. */

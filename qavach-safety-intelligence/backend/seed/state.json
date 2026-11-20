@@ -89,6 +89,199 @@
     "user": "",
     "password": ""
    }
+  },
+  {
+   "id": "GTE-51",
+   "name": "Gate · pedestrian crossing",
+   "zones": [
+    {
+     "id": "GTE-51-Z-1",
+     "name": "Crossing area",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       2.4,
+       63.5
+      ],
+      [
+       33.9,
+       51.1
+      ],
+      [
+       97.7,
+       55.4
+      ],
+      [
+       86.5,
+       88.3
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e000008",
+    "user": "",
+    "password": ""
+   }
+  },
+  {
+   "id": "QUA-133",
+   "name": "Berth 2 · night apron",
+   "zones": [
+    {
+     "id": "QUA-133-Z-1",
+     "name": "Apron area",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       23.6,
+       35.4
+      ],
+      [
+       12.1,
+       98.6
+      ],
+      [
+       98.3,
+       99.0
+      ],
+      [
+       99.3,
+       46.4
+      ],
+      [
+       70.6,
+       38.6
+      ],
+      [
+       41.4,
+       33.3
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e000009",
+    "user": "",
+    "password": ""
+   }
+  },
+  {
+   "id": "GTE-52",
+   "name": "Gate · guard post",
+   "zones": [
+    {
+     "id": "GTE-52-Z-1",
+     "name": "Guard post area",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       1.0,
+       1.0
+      ],
+      [
+       99.0,
+       1.0
+      ],
+      [
+       99.0,
+       99.0
+      ],
+      [
+       1.0,
+       99.0
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e00000a",
+    "user": "",
+    "password": ""
+   }
+  },
+  {
+   "id": "YRD-241",
+   "name": "Terminal car park",
+   "zones": [
+    {
+     "id": "YRD-241-Z-1",
+     "name": "Car park lanes",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       0.0,
+       22.0
+      ],
+      [
+       100.0,
+       22.0
+      ],
+      [
+       100.0,
+       100.0
+      ],
+      [
+       0.0,
+       100.0
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e00000b",
+    "user": "",
+    "password": ""
+   }
+  },
+  {
+   "id": "GTE-53",
+   "name": "Berth 3 · vehicle marshalling lane",
+   "zones": [
+    {
+     "id": "GTE-53-Z-1",
+     "name": "Marshalling lane",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       50.0,
+       74.0
+      ],
+      [
+       74.0,
+       74.0
+      ],
+      [
+       74.0,
+       96.0
+      ],
+      [
+       50.0,
+       96.0
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e000007",
+    "user": "",
+    "password": ""
+   }
   }
  ],
  "rules": [
@@ -1243,6 +1436,110 @@
    "schedule": "always",
    "mode": "live",
    "priority": "P1"
+  },
+  {
+   "id": "R-16",
+   "name": "Crowd Limit Exceeded",
+   "cameraIds": [
+    "QUA-133"
+   ],
+   "zoneIds": [
+    "QUA-133-Z-1"
+   ],
+   "subject": "person",
+   "condition": "crowd",
+   "durationSec": 5,
+   "minFrames": 2,
+   "minConfidence": 0.3,
+   "repeatSec": 10,
+   "crowdOver": 6,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3"
+  },
+  {
+   "id": "R-17",
+   "name": "Large Crowd Gathering",
+   "cameraIds": [
+    "GTE-51"
+   ],
+   "zoneIds": [
+    "GTE-51-Z-1"
+   ],
+   "subject": "person",
+   "condition": "gathering",
+   "durationSec": 2,
+   "minFrames": 2,
+   "minConfidence": 0.3,
+   "repeatSec": 10,
+   "crowdOver": 6,
+   "minPeople": 8,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3",
+   "gatherReach": 1.0
+  },
+  {
+   "id": "R-18",
+   "name": "Phone use at the guard post",
+   "cameraIds": [
+    "GTE-52"
+   ],
+   "zoneIds": [
+    "GTE-52-Z-1"
+   ],
+   "subject": "any",
+   "condition": "phone",
+   "durationSec": 2,
+   "minFrames": 2,
+   "minConfidence": 0.3,
+   "repeatSec": 10,
+   "crowdOver": 6,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3"
+  },
+  {
+   "id": "R-19",
+   "name": "Car park speed limit",
+   "cameraIds": [
+    "YRD-241"
+   ],
+   "zoneIds": [
+    "YRD-241-Z-1"
+   ],
+   "subject": "vehicle",
+   "condition": "speeding",
+   "durationSec": 0.5,
+   "minFrames": 3,
+   "minConfidence": 0.3,
+   "repeatSec": 10,
+   "crowdOver": 6,
+   "speedKmh": 15,
+   "metersAcross": 35,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3"
+  },
+  {
+   "id": "R-20",
+   "name": "Vehicle Dwell Time Exceeded",
+   "cameraIds": [
+    "GTE-53"
+   ],
+   "zoneIds": [
+    "GTE-53-Z-1"
+   ],
+   "subject": "vehicle",
+   "condition": "dwells",
+   "durationSec": 30,
+   "minFrames": 3,
+   "minConfidence": 0.3,
+   "repeatSec": 60,
+   "minMovePx": 0,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3"
   }
  ]
 }

@@ -11,6 +11,9 @@ on its own (tests/test_zone_rules.py).
   crosses   a person or vehicle crosses a line drawn on the camera. It counts when the feet really cross from one side to
             the other, so someone pacing along the line does not set it off.
   crowd     more than N people (or vehicles) stay in a zone for long enough, and it alerts again while it lasts.
+  gathering people packed together at one place: the biggest group of people standing close to each other (each within about
+            half a body height of another) holds at least N for long enough. Spread-out people do not count however many there are,
+            which is what tells it from the crowd rule's head count of a whole zone.
   stopped   a vehicle that was moving comes to a halt in a zone (or anywhere) and stays for long enough. A "vehicle" that has
             never moved is not reported: it is a parked car that was there before the camera looked, or a building the detector
             now and then calls a truck, and the same check keeps a static object from alerting as a moving one (motion.py).
@@ -26,6 +29,9 @@ The console's rule fields map like this (see settings_for):
   minMovePx     outside and enters: the feet must have moved this far (rules out a pole called a person);
                 stopped: how far a vehicle may creep before it counts as moving again
   crowdOver     crowd: alert when MORE than this many are in the zone
+  minPeople     gathering: alert when a group of at least this many people is packed together
+  gatherReach   gathering: how close people stand to belong to one group, in body heights (default 0.5: shoulder to shoulder;
+                about 1 for a large, looser crowd)
 """
 import math
 from dataclasses import dataclass, field
@@ -41,7 +47,7 @@ VEHICLE_ID_OFFSET = 1_000_000              # vehicle track ids start here, so a 
 VEHICLE_FLOOR = 0.25                       # the detector's floor for vehicles; the rule's "sure" setting sits above it
 OUTSIDE_ID = '__outside__'
 WHOLE_VIEW = dict(id='__view__', name='the camera view', kind='polygon', points=[[0, 0], [100, 0], [100, 100], [0, 100]])
-CONDITIONS = ('enters', 'dwells', 'outside', 'crosses', 'crowd', 'stopped',
+CONDITIONS = ('enters', 'dwells', 'outside', 'crosses', 'crowd', 'gathering', 'stopped',
               'near', 'fewer', 'absent', 'wrongway', 'tailgate', 'speeding', 'running', 'abandoned', 'phone', 'down')
 SUBJECTS = ('person', 'vehicle', 'any')
 LINE_DEAD_PX = 12.0                        # feet this close to a line are "on" it: the side is not decided yet (at 1280 px wide)
@@ -49,6 +55,9 @@ STOPPED_WOBBLE_PX = 12.0                   # a stopped vehicle's box moves this 
 ARRIVE_PX = 40.0                           # a vehicle must have travelled this far (at 1280 px wide) to count as having stopped
 CROWD_HOLD_SECONDS = 1.0                   # a crowd that dips under the limit for less than this is still the same crowd
                                            # (stretched to about two frame gaps on a slow camera)
+GATHER_REACH = 0.5                         # two people belong to one group when their box centres are this many body heights apart or less
+GATHER_DEPTH = 1.0                         # up and down the picture counts the same as across it
+GATHER_MIN = 3                             # the smallest group a gathering rule can ask for
 CROWD_WINDOW_SECONDS = 4.0                 # the count is the median over this long: people hidden behind others for a frame,
                                            # or a passer-by counted twice, do not make the crowd flicker over and under the limit
 
@@ -87,6 +96,14 @@ def settings_for(data):
         fields['min_frames'] = _num(data, 'minFrames', 2)
         if int(_num(data, 'crowdOver', 0) or 0) < 1:
             raise ValueError('A crowd rule needs a limit of at least 1')
+    elif kind == 'gathering':
+        fields['dwell_seconds'] = _num(data, 'durationSec', 10.0)
+        fields['min_confidence'] = _num(data, 'minConfidence', 0.3)
+        fields['min_frames'] = _num(data, 'minFrames', 2)
+        if int(_num(data, 'minPeople', 0) or 0) < GATHER_MIN:
+            raise ValueError(f'A gathering rule needs a group of at least {GATHER_MIN} people')
+        if not 0.2 <= float(_num(data, 'gatherReach', GATHER_REACH)) <= 3.0:
+            raise ValueError('How close people stand must be between 0.2 and 3 body heights')
     elif kind == 'near':
         fields['dwell_seconds'] = _num(data, 'durationSec', 0.5)
         fields['min_confidence'] = _num(data, 'minConfidence', 0.3)
@@ -290,6 +307,38 @@ class _Crowd:
     last_alert: float = None
     alerts: int = 0
     now: int = 0                                 # the smoothed count, for the live preview
+    box: tuple = None                            # gathering: where the biggest group is now, (x1, y1, x2, y2)
+
+
+def biggest_group(feet, reach=GATHER_REACH, depth=GATHER_DEPTH):
+    """The largest set of people standing close together: [(centre x, centre y, body height)] -> (size, (x1, y1, x2, y2) round
+    them). Two people are linked when the centres of their boxes are within `reach` body heights (the taller of the two sets the
+    yardstick, so a far-off small figure and a near big one are judged fairly), and a group is everyone linked by a chain of such
+    pairs. Centres, not feet: in a tight circle the people behind have their feet hidden, so their box bottoms say nothing."""
+    n = len(feet)
+    if n == 0:
+        return 0, None
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i in range(n):
+        xi, yi, hi = feet[i]
+        for j in range(i + 1, n):
+            xj, yj, hj = feet[j]
+            if math.hypot(xi - xj, depth * (yi - yj)) <= reach * max(hi, hj):
+                parent[find(i)] = find(j)
+    groups = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    best = max(groups.values(), key=len)
+    xs = [feet[i][0] for i in best]
+    pad = max(feet[i][2] for i in best) * 0.3
+    return len(best), (min(xs) - pad, min(feet[i][1] - feet[i][2] / 2 for i in best) - pad,
+                       max(xs) + pad, max(feet[i][1] + feet[i][2] / 2 for i in best) + pad)
 
 
 @dataclass
@@ -322,6 +371,7 @@ class CrowdRule:
         info, events = {}, []
         rule = self.rule
         counted = {}
+        feet = {}                                  # gathering: zone id -> [(foot x, foot y, body height)]
         for track_id, x1, y1, x2, y2, confidence in tracks:
             track_id = int(track_id)
             frames, peak = self.seen.get(track_id, (0, 0.0))
@@ -334,17 +384,26 @@ class CrowdRule:
                     zone = z
                     if confirmed:
                         counted.setdefault(z.id, []).append(track_id)
+                        feet.setdefault(z.id, []).append((float(x1 + x2) / 2, float(y1 + y2) / 2, float(y2 - y1)))
             info[track_id] = dict(zone=zone.id if zone else None, inside=zone is not None, flagged=False, moved=True, waiting=False)
         peaks = {}
         if self.people is not None:
             # A people crowd counts every person box the runner found this frame (tiles included), by their feet.
-            counted = {}
+            counted, feet = {}, {}
             for x1, y1, x2, y2, confidence in self.people:
                 foot = _foot(x1, y1, x2, y2)
                 for z in self.zones:
                     if cv2.pointPolygonTest(z.points.astype(np.float32), (float(foot[0]), float(foot[1])), False) >= 0:
                         counted.setdefault(z.id, []).append(None)
+                        feet.setdefault(z.id, []).append((float(x1 + x2) / 2, float(y1 + y2) / 2, float(y2 - y1)))
                         peaks[z.id] = max(peaks.get(z.id, 0.0), float(confidence))
+        boxes = {}
+        if self.kind == 'gathering':
+            # What is counted is the biggest packed group in each zone, not everyone in it.
+            for z in self.zones:
+                size, box = biggest_group(feet.get(z.id, []), getattr(self, 'reach', GATHER_REACH))
+                counted[z.id] = [None] * size
+                boxes[z.id] = box
         if self._last_seconds is not None and seconds > self._last_seconds:
             self._gap = seconds - self._last_seconds
         self._last_seconds = seconds
@@ -355,6 +414,8 @@ class CrowdRule:
             st.counts = [(t, c) for t, c in st.counts if seconds - t < CROWD_WINDOW_SECONDS] + [(seconds, len(counted.get(z.id, [])))]
             n = int(round(float(np.median([c for _, c in st.counts]))))
             st.now = n
+            if boxes.get(z.id) is not None:
+                st.box = boxes[z.id]
             if self.breached(n):
                 if st.over_since is None:
                     st.over_since = seconds
@@ -379,17 +440,37 @@ class CrowdRule:
                     self.alert_count += 1
                     x1, y1 = z.points.min(axis=0)
                     x2, y2 = z.points.max(axis=0)
+                    if self.kind == 'gathering' and boxes.get(z.id) is not None:
+                        x1, y1, x2, y2 = boxes[z.id]                      # the picture is boxed on the group, not the whole zone
+                    # The alert says this frame's count, which is always over the limit here (the smoothed count lags behind it).
                     events.append(dict(type='alert', id=0, seconds=seconds, zone_id=z.id, zone_name=z.name,
                                        confidence=round(peaks[z.id] if z.id in peaks else max((self.seen[t][1] for t in counted.get(z.id, []) if t in self.seen), default=0.0), 3),
-                                       reentry=st.alerts > 1, dwell=round(seconds - st.over_since, 2), frames=n, moved=0.0,
-                                       count=n, limit=self.limit, box_px=[float(x1), float(y1), float(x2), float(y2)]))
+                                       reentry=st.alerts > 1, dwell=round(seconds - st.over_since, 2), frames=len(counted.get(z.id, [])), moved=0.0,
+                                       count=len(counted.get(z.id, [])), limit=self.limit + (1 if self.kind == 'gathering' else 0), box_px=[float(x1), float(y1), float(x2), float(y2)]))
             if st.flagged:
                 crowded.add(z.id)
         for track_id, state in info.items():
             state['flagged'] = state['zone'] in crowded
+        if self.kind == 'gathering':
+            # Only the people in the group are drawn as the alert, not everyone else in the zone.
+            by_id = {int(t[0]): t for t in tracks}
+            for track_id, state in info.items():
+                box = self.state[state['zone']].box if state['zone'] in self.state else None
+                t = by_id.get(track_id)
+                if state['flagged'] and (box is None or t is None or not (box[0] <= _foot(*t[1:5])[0] <= box[2] and box[1] <= _foot(*t[1:5])[1] <= box[3])):
+                    state['flagged'] = False
         for track_id in [t for t in self.seen if t not in info]:       # forget tracks that left, so the dict stays small
             del self.seen[track_id]
         return info, events
+
+
+@dataclass
+class GatheringRule(CrowdRule):
+    """People packed together: alerts when the biggest group in a zone has at least `limit + 1` people (limit is one less, so
+    the crowd rule's "more than" test serves both) and keeps that for the rule's time. Everything else is the crowd rule's:
+    the smoothing over a few seconds, the repeat time, the person boxes from the region and its tiles."""
+    kind: str = 'gathering'
+    reach: float = GATHER_REACH
 
 
 # ── a stopped vehicle ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -580,6 +661,9 @@ def build_engine(rule, camera_zones, width, height):
         return moverules.PhoneRule(polygons, settings, phone_confidence=moverules.PHONE_CONFIDENCE if phone_conf is None else float(phone_conf), scale=scale)
     if kind == 'crowd':
         return CrowdRule(polygons, settings, limit=int(rule['crowdOver']), scale=scale, subject=subject)
+    if kind == 'gathering':
+        return GatheringRule(polygons, settings, limit=int(rule['minPeople']) - 1, scale=scale, subject='person',
+                             reach=float(rule.get('gatherReach') or GATHER_REACH))
     if kind == 'stopped':
         return StoppedRule(polygons, settings, scale=scale, subject=subject)
     return IntrusionRule(polygons, settings, scale=scale, subject=subject, kind=kind)

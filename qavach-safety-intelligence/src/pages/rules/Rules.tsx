@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
 import { CascadeSelect, type CascadeField, Choice, PRIORITY_NAME, PriorityBadge, SearchActions, Switch } from '../../components/ui';
-import type { Classification, Condition, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
-import { CONDITION_LABEL, describeRule, SCHEDULE_LABEL, SUBJECT_LABEL } from '../../lib/qai';
+import type { Classification, Condition, Priority, QavachRecordType, Rule, Schedule } from '../../data/types';
+import { describeRule, SCHEDULE_LABEL } from '../../lib/qai';
+import { ACTIVE_CONDITIONS, conditionLabel, isActiveRule, LOOKS_FOR, looksOf, type Looks } from '../../lib/usecases';
 import { AREAS_BY_ID, isAdmin, saveRule, toast, useAlerts, useCameras, useMe, useRules } from '../../state/store';
 import './rules.css';
 
@@ -27,7 +28,9 @@ type Filters = Record<FilterKey, string[]>;
 const NO_FILTERS: Filters = { level: [], status: [], record: [], classification: [], condition: [], subject: [], schedule: [], area: [] };
 
 export function Rules() {
-  const rules = useRules();
+  const allRules = useRules();
+  // Rules of the use cases set aside (sample data) stay in the store for their alerts, but are not listed.
+  const rules = useMemo(() => allRules.filter(isActiveRule), [allRules]);
   const cams = useCameras();
   const alerts = useAlerts();
   const me = useMe();
@@ -55,7 +58,7 @@ export function Rules() {
     record: [r.qavach],
     classification: r.qavach === 'none' ? [] : [r.classification],
     condition: [r.condition],
-    subject: [r.subject],
+    subject: [looksOf(r)],
     schedule: [r.schedule],
     area: [...new Set(camsOf(r).map((c) => c.areaId))],
   });
@@ -91,8 +94,8 @@ export function Rules() {
     { key: 'status', title: 'Status', options: [{ value: 'live', label: 'Live' }, { value: 'test', label: 'Testing' }] },
     { key: 'record', title: 'Reported to QHSE', options: RECORDS.map((v) => ({ value: v, label: v === 'none' ? 'None' : v })) },
     { key: 'classification', title: 'Classification', options: (['Unsafe act', 'Unsafe condition'] as Classification[]).map((v) => ({ value: v, label: v })) },
-    { key: 'condition', title: 'Detects', options: (Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: CONDITION_LABEL[c][0].toUpperCase() + CONDITION_LABEL[c].slice(1) })) },
-    { key: 'subject', title: 'Who or what', options: (Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => ({ value: s, label: SUBJECT_LABEL[s] })) },
+    { key: 'subject', title: 'Looks for', options: (Object.keys(LOOKS_FOR) as Looks[]).map((l) => ({ value: l, label: LOOKS_FOR[l] })) },
+    { key: 'condition', title: 'Does what', options: ACTIVE_CONDITIONS.map((c: Condition) => ({ value: c, label: conditionLabel(c) })) },
     { key: 'schedule', title: 'When', options: (Object.keys(SCHEDULE_LABEL) as Schedule[]).map((s) => ({ value: s, label: SCHEDULE_LABEL[s] })) },
     { key: 'area', title: 'Area', options: areaIds.map((a) => ({ value: a, label: AREAS_BY_ID[a]?.name ?? a })) },
   ];

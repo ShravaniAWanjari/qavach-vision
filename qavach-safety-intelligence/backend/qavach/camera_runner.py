@@ -84,7 +84,7 @@ def needs_tracker(engines):
     the tracker's re-identification model costs seconds a frame on a CPU in a busy scene), so a camera whose only people rules
     are crowd rules runs without it."""
     people = [e for e, _ in engines if 'person' in engine_needs(e)]
-    return bool(people) and not all(e.kind == 'crowd' and e.subject == 'person' for e in people)
+    return bool(people) and not all(e.kind in ('crowd', 'gathering') and e.subject == 'person' for e in people)
 
 
 def validate_rule(data):
@@ -327,7 +327,7 @@ class CameraRunner:
                 reader = LiveReader(capture, fps)
                 reader.start()
             done, busy, opened = 0, 0.0, time.time()
-            for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines))):
+            for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines), self.camera['source'].every_frame)):
                 tick = time.time()
                 last_seconds = seconds
                 self.file_pos = seconds
@@ -336,7 +336,8 @@ class CameraRunner:
                 busy += time.time() - tick
                 self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=sum(1 for r in rows if kind_of(r[0]) == 'person'),
                                   vehicles=sum(1 for r in rows if kind_of(r[0]) == 'vehicle'),
-                                  hazards=sum(1 for f in fires if f[3] == 'counted'), frames=self.stats['frames'] + 1)
+                                  hazards=sum(1 for f in fires if f[3] == 'counted'), frames=self.stats['frames'] + 1,
+                                  **({} if reader else dict(position=round(seconds, 1))))     # a video file: seconds into the file
                 if reader:      # how fast the stream itself delivers, to tell a slow stream from a slow detector
                     self.stats['stream_fps'] = round(reader.count / max(time.time() - opened, 1e-6), 1)
         finally:
@@ -349,12 +350,14 @@ class CameraRunner:
                 tracker.close()
 
     # ── frame sources ───────────────────────────────────────────────────────────────────────────────────────────
-    def _file_frames(self, capture, fps, detecting):
+    def _file_frames(self, capture, fps, detecting, every_frame=False):
         """A video file plays in real time, like a camera that is always on; frames are skipped when the detector
-        falls behind. The caller starts it again when the file ends, with fresh tracking."""
+        falls behind. With `every_frame` nothing is skipped: each frame is analysed in order, so the video plays slower
+        than real time when the detector cannot keep up (and never faster than real time). Times stay the video's own
+        either way. The caller starts it again when the file ends, with fresh tracking."""
         started, number = time.time(), 0
         while not self.stop_flag.is_set():
-            if time.time() - (started + number / fps) > 1.5 / fps:
+            if not every_frame and time.time() - (started + number / fps) > 1.5 / fps:
                 if not capture.grab():
                     return
                 number += 1
@@ -364,7 +367,7 @@ class CameraRunner:
                 return
             yield frame, number / fps
             number += 1
-            self.stop_flag.wait(max(0.0, started + number / fps - time.time()))
+            self.stop_flag.wait(max(0.0, started + number / fps - time.time()))   # never ahead of real time; no wait when behind
 
     def _live_frames(self, reader, fps):
         """Frames of a live stream, spaced evenly in stream time at whatever rate the detector can sustain. The time
@@ -430,7 +433,7 @@ class CameraRunner:
             # the tracks: people packed together are missed by the tracker's detector pass.
             whole = None
             for engine, _ in engines:
-                if engine.kind == 'crowd' and engine.subject == 'person':
+                if engine.kind in ('crowd', 'gathering') and engine.subject == 'person':
                     if whole is None:
                         whole = found[found[:, 5] == PERSON_CLASS].copy()
                         whole[:, [0, 2]] += x1
@@ -462,13 +465,15 @@ class CameraRunner:
         fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
         notes = []
         for engine, _ in engines:
-            if engine.kind == 'crowd':
+            if engine.kind in ('crowd', 'gathering'):
                 for z in engine.zones:
                     st = engine.state.get(z.id)
                     if st is not None:
                         x, y = z.points[:, 0].min(), z.points[:, 1].max()   # bottom left: the zone's name is at its top
                         word = 'people' if engine.subject == 'person' else 'vehicles'
-                        notes.append((float(x), float(y), f'{st.now} / {engine.limit} {word}', RED if st.flagged else AMBER))
+                        text = (f'group of {st.now} (alert at {engine.limit + 1})' if engine.kind == 'gathering'
+                                else f'{st.now} / {engine.limit} {word}')
+                        notes.append((float(x), float(y), text, RED if st.flagged else AMBER))
         self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels, notes)
         return rows, fires
 

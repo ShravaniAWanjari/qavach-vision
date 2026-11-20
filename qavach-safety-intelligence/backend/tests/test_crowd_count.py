@@ -89,3 +89,14 @@ def test_people_outside_the_restricted_area_are_not_counted():
         engine.people = inside + outside + edge
         events += engine.update(i / FPS, [])[1]
     assert events == [] and engine.state['a1'].now == 6
+
+
+def test_the_alert_reports_a_count_over_the_limit_never_the_smoothed_one():
+    """The smoothed count lags: an alert raised while it is still under the limit must still say a count over the limit."""
+    engine = crowd(limit=10, seconds=1.0)
+    events = []
+    for i, n in enumerate([14] * 20 + [11] + [9, 9, 12, 9]):
+        engine.people = boxes(n)
+        events += engine.update(i / FPS, [])[1]
+    alerts = [e for e in events if e['type'] == 'alert']
+    assert alerts and all(e['count'] > e['limit'] for e in alerts)

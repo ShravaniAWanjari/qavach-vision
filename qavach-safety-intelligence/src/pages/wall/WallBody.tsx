@@ -61,31 +61,24 @@ export function useWallModel(wall: Wall, paused: boolean): WallModel & { secsLef
       .sort((a, b) => (activity[b] ?? 0) - (activity[a] ?? 0))[0];
   }, [wall, busyBucket, byId]);
 
+  // A camera someone pinned keeps its tile: an alert or the busiest camera only takes a slot that is empty. An alert camera
+  // that finds none stays at the front of the rolling section (and shows its alert on its own tile when it is pinned already).
   const slots = wall.pinnedShare === 0 ? 0 : LAYOUT_SLOTS[wall.pinnedLayout];
-  const pinned: WallModel['pinned'] = [];
-  const used = new Set<string>();
-  for (const id of takeover) {
-    if (pinned.length >= slots) break;
-    pinned.push({ cam: byId.get(id) ?? null, reason: 'alert', slot: pinned.length });
-    used.add(id);
-  }
-  const base = wall.pinned.slice(0, slots);
-  const reserveBusy = !!busiest && slots > 1;
-  for (let i = 0; i < base.length && pinned.length < slots - (reserveBusy ? 1 : 0); i++) {
-    const id = base[i];
-    if (id && used.has(id)) continue;
-    pinned.push({ cam: id ? (byId.get(id) ?? null) : null, reason: 'pinned', slot: i });
-    if (id) used.add(id);
-  }
-  while (pinned.length < slots - (reserveBusy ? 1 : 0)) pinned.push({ cam: null, reason: 'pinned', slot: pinned.length });
-  if (reserveBusy && busiest && !used.has(busiest)) {
-    pinned.push({ cam: byId.get(busiest) ?? null, reason: 'busy', slot: slots - 1 });
-    used.add(busiest);
-  } else if (reserveBusy) pinned.push({ cam: null, reason: 'pinned', slot: slots - 1 });
+  const base = Array.from({ length: slots }, (_, i) => wall.pinned[i] ?? null);
+  const used = new Set<string>(base.filter((id): id is string => !!id));
+  const incoming: { id: string; reason: 'alert' | 'busy' }[] = [];
+  for (const id of takeover) if (!used.has(id) && !incoming.some((x) => x.id === id)) incoming.push({ id, reason: 'alert' });
+  if (busiest && slots > 1 && !used.has(busiest) && !incoming.some((x) => x.id === busiest)) incoming.push({ id: busiest, reason: 'busy' });
+  const pinned: WallModel['pinned'] = base.map((id, i) => {
+    if (id) return { cam: byId.get(id) ?? null, reason: 'pinned' as const, slot: i };
+    const next = incoming.shift();
+    if (!next) return { cam: null, reason: 'pinned' as const, slot: i };
+    used.add(next.id);
+    return { cam: byId.get(next.id) ?? null, reason: next.reason, slot: i };
+  });
 
-  // Cameras pushed off the pinned area by an alert roll first.
-  const displaced = base.filter((id): id is string => !!id && !used.has(id));
-  const pool = [...displaced, ...wall.rotation.filter((id) => !used.has(id) && !displaced.includes(id))]
+  const pool = wall.rotation
+    .filter((id) => !used.has(id))
     .map((id) => byId.get(id))
     .filter((c): c is Camera => !!c);
 
@@ -103,12 +96,18 @@ export function useWallModel(wall: Wall, paused: boolean): WallModel & { secsLef
     return () => window.clearInterval(t);
   }, [wall.rotateSec, paused, wall.id]);
   const p = page % pages;
-  const stickyAlerts = pool.filter((c) => alertsByCam.has(c.id));
-  const rest = pool.filter((c) => !alertsByCam.has(c.id));
-  const restPages = Math.max(1, Math.ceil(rest.length / Math.max(1, n - stickyAlerts.length)));
-  const per = Math.max(0, n - stickyAlerts.length);
+  // Cameras with an open alert stay on screen, most urgent first, but never take more than half of the rolling tiles (all of
+  // them when everything fits): with many alerts open the other cameras would otherwise never come round.
+  const alertCams = pool
+    .filter((c) => alertsByCam.has(c.id))
+    .sort((x, y) => PRIO_RANK[alertsByCam.get(x.id)!.priority] - PRIO_RANK[alertsByCam.get(y.id)!.priority] || alertsByCam.get(y.id)!.at - alertsByCam.get(x.id)!.at);
+  const sticky = alertCams.slice(0, pool.length <= n ? n : Math.max(1, Math.floor(n / 2)));
+  const stickyIds = new Set(sticky.map((c) => c.id));
+  const rest = pool.filter((c) => !stickyIds.has(c.id));
+  const per = Math.max(0, n - sticky.length);
+  const restPages = Math.max(1, Math.ceil(rest.length / Math.max(1, per)));
   const start = (page % restPages) * per;
-  const rolling = [...stickyAlerts.slice(0, n), ...Array.from({ length: Math.min(per, rest.length) }, (_, i) => rest[(start + i) % rest.length])];
+  const rolling = [...sticky, ...Array.from({ length: Math.min(per, rest.length) }, (_, i) => rest[(start + i) % rest.length])];
   const secsLeft = paused ? wall.rotateSec : Math.max(0, wall.rotateSec - Math.floor((now - tickAt) / 1000));
 
   return { pinned, rolling, pool, page: p, pages, alertsByCam, scopeAlerts, secsLeft, paused };

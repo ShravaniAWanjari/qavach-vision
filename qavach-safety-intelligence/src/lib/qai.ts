@@ -11,6 +11,7 @@ export const CONDITION_LABEL: Record<Condition, string> = {
   crosses: 'crosses',
   'no-ppe': 'is inside without PPE',
   crowd: 'more than N people inside',
+  gathering: 'a group of N or more packed together',
   smoke: 'smoke or flame seen',
   stopped: 'vehicle stopped inside',
   near: 'comes close to a moving vehicle',
@@ -41,6 +42,7 @@ export const RULE_NAME: Record<Condition, string> = {
   crosses: 'Line crossing',
   'no-ppe': 'PPE not worn',
   crowd: 'Crowd restriction',
+  gathering: 'Crowd gathering',
   smoke: 'Fire and smoke',
   stopped: 'Stopped vehicle',
   near: 'Person near a moving vehicle',
@@ -55,7 +57,7 @@ export const RULE_NAME: Record<Condition, string> = {
   down: 'Person down',
 };
 export const defaultRuleName = (r: Pick<Rule, 'condition' | 'subject'>) =>
-  r.condition === 'crowd' && r.subject === 'vehicle' ? 'Vehicle crowd restriction' : RULE_NAME[r.condition];
+  r.condition === 'crowd' && r.subject === 'vehicle' ? 'Vehicle crowd restriction' : r.condition === 'dwells' && r.subject === 'vehicle' ? 'Vehicle dwell time' : RULE_NAME[r.condition];
 
 export const SUBJECT_LABEL: Record<Subject, string> = { person: 'A person', vehicle: 'A vehicle', any: 'Anything' };
 
@@ -81,6 +83,8 @@ export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSe
       return `${subj} without ${ppe} ${names ? `at ${names}` : 'in view'}${dur}`;
     case 'crowd':
       return `More than ${r.crowdOver} people ${inZone}${dur}`;
+    case 'gathering':
+      return `${r.minPeople ?? 5} or more people packed together ${inZone}${dur}`;
     case 'smoke':
       return `Smoke or flame ${inZone}${dur}`;
     case 'stopped':
@@ -133,6 +137,8 @@ export function detectedText(r: Pick<Rule, 'subject' | 'condition' | 'ppe' | 'fi
       return `${who} without ${r.ppe.length ? `a ${r.ppe.join(' or ')}` : 'PPE'} detected${at('at')}`;
     case 'crowd':
       return `Crowd detected${at('in')}`;
+    case 'gathering':
+      return `Crowd gathering detected${at('in')}`;
     case 'smoke':
       return r.fireClasses === 'fire' ? 'Fire detected' : 'Smoke detected';
     case 'stopped':
@@ -199,26 +205,19 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   understood.push(`Subject: ${SUBJECT_LABEL[subject].toLowerCase()}`);
 
   const ppe: Ppe[] = [];
-  if (/helmet|hard ?hat/.test(t)) ppe.push('helmet');
-  if (/\bvest|hi-?vis/.test(t)) ppe.push('vest');
-  if (/life ?jacket|life ?vest|pfd/.test(t)) ppe.push('life jacket');
 
+  // Only the use cases offered are drafted: fire and smoke, a count over a limit, phone use, and entering a restricted
+  // area (anything else reads as that). The rest are parked, see lib/usecases.ts.
   let condition: Condition = 'enters';
   let crowdOver = 0;
-  const crowd = /(more than|over|above|exceeds?)\s+(\d+)\s*(people|persons|workers|men)?/.exec(t);
+  const crowd = /(more than|over|above|exceeds?)\s+(\d+)\s*(people|persons|workers|men|vehicles|trucks|cars)?/.exec(t);
   if (/\b(smoke|fire|flame)\b/.test(t)) condition = 'smoke';
-  else if (ppe.length && /(without|no |not wearing|missing|isn'?t wearing)/.test(t)) condition = 'no-ppe';
   else if (crowd || /crowd/.test(t)) {
     condition = 'crowd';
     crowdOver = crowd ? Number(crowd[2]) : 6;
   } else if (/\b(phone|mobile|cellphone|texting|on a call)\b/.test(t)) condition = 'phone';
-  else if (/cross(es|ing)?|climbs? (over|the)|jumps?/.test(t)) condition = 'crosses';
-  else if (/away from|leaves?|outside|out of|steps? off|moves? off|off the/.test(t)) condition = 'outside';
-  else if (/stopped|parked|stationary|idle|blocking/.test(t)) condition = 'stopped';
-  else if (/stays?|loiter|remains?|lingers?|waits?/.test(t)) condition = 'dwells';
-  else if (!/enter|inside|into|walks? in|goes in|in the/.test(t)) assumed.push('No action word found, so the rule fires when the subject enters the zone');
+  else if (!/enter|inside|into|walks? in|goes in|in the|restricted/.test(t)) assumed.push('No action word found, so the rule fires when the subject enters the restricted area');
   understood.push(`Condition: ${CONDITION_LABEL[condition].replace('N', String(crowdOver))}`);
-  if (condition === 'no-ppe') understood.push(`PPE: ${ppe.join(', ')}`);
 
   let durationSec = { enters: 1, outside: 5, dwells: 30, crosses: 0, 'no-ppe': 3, crowd: 30, smoke: 3, stopped: 60, near: 1, fewer: 30, absent: 30, wrongway: 0, tailgate: 0, speeding: 1, running: 2, abandoned: 60, phone: 3, down: 5 }[condition];
   const s = /(\d+)\s*(s|sec|secs|second|seconds)\b/.exec(t);
@@ -226,7 +225,7 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   if (s) durationSec = Number(s[1]);
   else if (m) durationSec = Number(m[1]) * 60;
   if (s || m) understood.push(`Duration: ${secs(durationSec)} or more`);
-  else if (condition !== 'crosses') assumed.push(`No time given, so it waits ${secs(durationSec)} before alerting`);
+  else assumed.push(`No time given, so it waits ${secs(durationSec)} before alerting`);
 
   // Zones: score each zone name by the words it shares with the text.
   const zoneNames = [...new Set(cameras.flatMap((c) => c.zones.map((z) => z.name)))];
@@ -242,7 +241,6 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
       bestScore = score;
     }
   }
-  if (condition === 'no-ppe' && ppe.includes('life jacket') && zoneNames.includes('Deck edge') && /edge|rail|side/.test(t)) best = 'Deck edge';
 
   let cameraIds: string[] = [];
   let zoneIds: string[] = [];
@@ -270,21 +268,12 @@ export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]
   else if (/\bhigh\b|asap|quickly/.test(t)) priority = 'P2';
   else if (/\blow\b|just log|only log|record only/.test(t)) priority = 'P4';
   else {
-    priority =
-      condition === 'smoke' || /exclusion|imdg|hazard/.test(t)
-        ? 'P1'
-        : condition === 'no-ppe' && ppe.includes('life jacket')
-          ? 'P2'
-          : condition === 'no-ppe' || condition === 'crowd'
-          ? 'P3'
-          : condition === 'stopped'
-            ? 'P4'
-            : 'P2';
+    priority = condition === 'smoke' || /exclusion|imdg|hazard/.test(t) ? 'P1' : condition === 'crowd' ? 'P3' : 'P2';
     assumed.push(`Alert criticality ${priority} suggested from what the rule watches for`);
   }
 
   const qavach: QavachRecordType | 'none' = priority === 'P1' ? 'Incident' : priority === 'P4' ? 'none' : subject === 'vehicle' || /lane/.test(t) ? 'Near miss' : 'Observation';
-  const classification: Classification = condition === 'smoke' || condition === 'stopped' ? 'Unsafe condition' : 'Unsafe act';
+  const classification: Classification = condition === 'smoke' ? 'Unsafe condition' : 'Unsafe act';
 
   const rule = { subject, condition, durationSec, ppe, crowdOver, schedule, priority, qavach, classification, cameraIds, zoneIds, name: '' };
   rule.name = cap(describeRule(rule, best ? [best] : []).replace(/^A (person|vehicle) /, '$1 ').replace(/ for (\d+ (s|min)) or more$/, ' · $1+'));
@@ -300,6 +289,7 @@ const ACTION: Record<Condition, string> = {
   crosses: 'Security sent to the location; access checked.',
   'no-ppe': 'Worker stopped and asked to put on the missing PPE before going on.',
   crowd: 'Access to the gangway controlled until numbers came down.',
+  gathering: 'Supervisor sent to disperse the group and find out why people gathered.',
   smoke: 'Area cleared and the fire team informed.',
   stopped: 'Driver asked to move clear of the crossing.',
   near: 'Person moved clear of the moving vehicle; driver and supervisor told.',

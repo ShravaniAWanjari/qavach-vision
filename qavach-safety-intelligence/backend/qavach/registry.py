@@ -133,7 +133,7 @@ class Registry:
         except (ValueError, TypeError) as error:
             raise Invalid(f'The rule settings are out of range: {error}') from error
         rule = {k: data.get(k) for k in ('id', 'name', 'cameraIds', 'zoneIds', 'subject', 'condition', 'durationSec',
-                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'fireClasses', 'crowdOver', 'minPeople', 'nearPx', 'speedKmh', 'metersAcross', 'allowedDir', 'gapSec', 'ownerPx', 'runSpeed', 'schedule', 'mode', 'priority')}
+                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'fireClasses', 'crowdOver', 'minPeople', 'gatherReach', 'nearPx', 'speedKmh', 'metersAcross', 'allowedDir', 'gapSec', 'ownerPx', 'runSpeed', 'schedule', 'mode', 'priority')}
         rule['cameraIds'] = [str(c) for c in (rule['cameraIds'] or [])]
         rule['zoneIds'] = [str(z) for z in (rule['zoneIds'] or [])]
         with self.lock:
@@ -195,9 +195,14 @@ class Registry:
                     current[1].stop()
                     del self.runners[cam_id]
                 continue
+            if config.ONLY_CAMERAS and cam_id not in config.ONLY_CAMERAS:        # paused: saved, but not analysed
+                if current:
+                    current[1].stop()
+                    del self.runners[cam_id]
+                continue
             rules = self.rules_for(cam_id)
             source = camera['source']
-            signature = json.dumps([source.kind, source.url, source.upload_id, source.user, source.password,
+            signature = json.dumps([source.kind, source.url, source.upload_id, source.user, source.password, source.every_frame,
                                     camera['zones'], rules], sort_keys=True, default=str)
             if current and current[0] == signature:
                 continue
@@ -223,7 +228,7 @@ class Registry:
             cameras = [dict(id=c['id'], name=c['name'], zones=c['zones'],
                             source=dict(kind='upload' if c['source'].kind == 'upload' else 'link', url=c['source'].url,
                                         uploadId=c['source'].upload_id, user=c['source'].user,
-                                        password=c['source'].password))        # DEMO: stored in plain text so a restart keeps the camera
+                                        password=c['source'].password, everyFrame=c['source'].every_frame))        # DEMO: stored in plain text so a restart keeps the camera
                        for c in self.cameras.values()]
             config.DATA.mkdir(parents=True, exist_ok=True)
             tmp = config.STATE_FILE.with_suffix('.tmp')

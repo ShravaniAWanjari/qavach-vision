@@ -123,7 +123,7 @@ function cameraBody(cam: Camera) {
   return {
     name: cam.name,
     zones: cam.zones,
-    source: s.kind === 'upload' ? { kind: 'upload', uploadId: s.uploadId } : { kind: 'link', url: s.url, user: s.user ?? '', ...(password ? { password } : {}) },
+    source: s.kind === 'upload' ? { kind: 'upload', uploadId: s.uploadId, everyFrame: !!s.everyFrame } : { kind: 'link', url: s.url, user: s.user ?? '', ...(password ? { password } : {}) },
   };
 }
 

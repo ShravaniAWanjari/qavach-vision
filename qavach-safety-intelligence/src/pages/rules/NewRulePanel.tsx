@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Choice, Drawer, MultiSelect, PRIORITY_NAME, Seg } from '../../components/ui';
 import { AREAS } from '../../data/seed';
-import type { Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
+import type { Classification, Ppe, Priority, QavachRecordType, Rule, Schedule } from '../../data/types';
 import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
 import { nextRuleId, saveRule, toast, useCameras, useMe, useRules } from '../../state/store';
-import { EXAMPLES, useZoneOptions } from './RuleEditor';
+import { CONDITION_DEFAULTS, EXAMPLES, useZoneOptions } from './RuleEditor';
+import { countField, doesWhatOptions, gatherField, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
 
-const LOOK_FOR: Record<Subject, string> = { person: 'Person', vehicle: 'Vehicle', any: 'Person or vehicle' };
 const DURATIONS = [0, 1, 3, 5, 10, 15, 30, 60, 120, 300, 600];
 const secs = (n: number) => (n === 0 ? 'Straight away' : n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -160,19 +160,22 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
         />
 
         <div className="newrule__pair">
-          {!isFire && (
-            <Choice id="nr-subj" label="Look For" value={rule.subject} onChange={(subject) => set({ subject })} options={(Object.keys(LOOK_FOR) as Subject[]).map((s) => ({ value: s, label: LOOK_FOR[s] }))} />
-          )}
+          <Choice
+            id="nr-subj"
+            label="Looks For"
+            value={looksOf(rule)}
+            options={(Object.keys(LOOKS_FOR) as Looks[]).map((l) => ({ value: l, label: LOOKS_FOR[l] }))}
+            onChange={(looks) => set(switchLooks(rule, looks, (fire) => drawnZones(rule.cameraIds, fire)))}
+          />
           <Choice
             id="nr-cond"
             label="Does What"
             value={rule.condition}
-            options={(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: cap(CONDITION_LABEL[c].replace('N', String(rule.crowdOver))) }))}
+            options={doesWhatOptions(looksOf(rule), rule.condition, (c) => CONDITION_LABEL[c]).map((d) => ({ value: d.condition, label: d.label }))}
             onChange={(condition) => {
-              // Fire and smoke is about neither a person nor a vehicle, and its areas are of a different kind.
-              if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: drawnZones(rule.cameraIds, true), minFrames: 4, fireClasses: 'both' });
-              else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: drawnZones(rule.cameraIds, false), minFrames: 3 });
-              else set({ condition });
+              // Fire and smoke has its own areas and timing; the others start with what the service uses for that condition.
+              const { subject: _keep, ...defaults } = CONDITION_DEFAULTS[condition] ?? {};
+              set({ condition, ...defaults });
             }}
           />
         </div>
@@ -192,7 +195,32 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
           <MultiSelect id="nr-ppe" label="Missing PPE" placeholder="Choose PPE" options={(['helmet', 'vest', 'life jacket'] as Ppe[]).map((p) => ({ value: p, label: cap(p) }))} value={rule.ppe} onChange={(ppe) => set({ ppe })} />
         )}
         {rule.condition === 'crowd' && (
-          <Choice id="nr-crowd" label="More Than" value={rule.crowdOver} onChange={(crowdOver) => set({ crowdOver })} options={[...new Set([2, 3, 4, 5, 6, 8, 10, 15, 20, rule.crowdOver])].sort((a, b) => a - b).map((n) => ({ value: n, label: `${n} people` }))} />
+          <div className="field">
+            <label htmlFor="nr-crowd">{countField(rule.subject).label}</label>
+            <input id="nr-crowd" className="input" type="number" min={1} value={rule.crowdOver} onChange={(e) => set({ crowdOver: Math.max(1, Math.round(Number(e.target.value)) || 1) })} />
+            <span className="field__hint">{countField(rule.subject).hint}</span>
+          </div>
+        )}
+
+        {rule.condition === 'speeding' && (
+          <div className="newrule__pair">
+            <div className="field">
+              <label htmlFor="nr-kmh">{speedFields.limit}</label>
+              <input id="nr-kmh" className="input" type="number" min={1} value={rule.speedKmh ?? 30} onChange={(e) => set({ speedKmh: Math.max(1, Number(e.target.value)) })} />
+            </div>
+            <div className="field">
+              <label htmlFor="nr-across">{speedFields.across}</label>
+              <input id="nr-across" className="input" type="number" min={1} value={rule.metersAcross ?? 60} onChange={(e) => set({ metersAcross: Math.max(1, Number(e.target.value)) })} />
+              <span className="field__hint">{speedFields.acrossHint}</span>
+            </div>
+          </div>
+        )}
+        {rule.condition === 'gathering' && (
+          <div className="field">
+            <label htmlFor="nr-gather">{gatherField.label}</label>
+            <input id="nr-gather" className="input" type="number" min={3} value={rule.minPeople ?? 5} onChange={(e) => set({ minPeople: Math.max(3, Math.round(Number(e.target.value)) || 3) })} />
+            <span className="field__hint">{gatherField.hint}</span>
+          </div>
         )}
 
         <div className="newrule__pair">

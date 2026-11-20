@@ -15,6 +15,9 @@ SAMPLES = HERE / 'samples'          # demo videos shipped with the service; copi
 CLIPS = DATA / 'clips'              # a short clip of each incident, saved when its alert is raised
 SNAPSHOTS = DATA / 'snapshots'      # the frame each alert was raised on
 STATE_FILE = DATA / 'state.json'    # cameras and rules, so a restart does not forget them
+# Run only these cameras (comma separated ids, e.g. QAVACH_ONLY_CAMERAS=DCK-83); every other camera stays saved but is not analysed.
+# For testing one camera on a busy machine: the cameras share the detector, so fewer cameras means more frames for each.
+ONLY_CAMERAS = {c.strip() for c in os.environ.get('QAVACH_ONLY_CAMERAS', '').split(',') if c.strip()}
 
 PORT_SAFETY = Path(os.environ.get('QAVACH_PORT_SAFETY', Path.home() / 'Documents' / 'port-safety '))
 BARGE = PORT_SAFETY / 'barge-intrusion'

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
 import { CameraView, Choice, Drawer, Modal, PRIORITY_NAME, Seg, useConfirm } from '../../components/ui';
 import { describeRule } from '../../lib/qai';
+import { isActiveRule } from '../../lib/usecases';
 import { AREA_DEPARTMENT, AREAS, DEPARTMENTS } from '../../data/seed';
 import { cameraStore, nextCameraId, ruleStore } from '../../state/store';
 
@@ -26,7 +27,9 @@ export function CameraEditor() {
   const { cameraId } = useParams();
   const isNew = !cameraId;
   const cams = useCameras();
-  const rules = useRules();
+  const allRules = useRules();
+  // Only the rules of the use cases offered; the others (sample data) are left alone when the camera is saved.
+  const rules = useMemo(() => allRules.filter(isActiveRule), [allRules]);
   const walls = useWalls();
   const me = useMe();
   const nav = useNavigate();
@@ -179,7 +182,7 @@ export function CameraEditor() {
     setProgress(0);
     try {
       const r = await backend.upload(file, setProgress);
-      applyProbe(r, { kind: 'upload', uploadId: r.uploadId, fileName: file.name });
+      applyProbe(r, { kind: 'upload', uploadId: r.uploadId, fileName: file.name, everyFrame: true });
     } catch (e) {
       setTest('fail');
       setErr((e as Error).message);
@@ -197,7 +200,7 @@ export function CameraEditor() {
     setErr('');
     try {
       const r = await backend.probeUpload(video.id);
-      applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: video.fileName });
+      applyProbe(r, { kind: 'upload', uploadId: video.id, fileName: video.fileName, everyFrame: true });
       // The location takes the name a port would give that camera unless the admin typed their own (a name left by another sample is replaced).
       setCam((c) => (c ? { ...c, make: MAKES[0], name: !c.name || SAMPLE_VIDEOS.some((v) => v.label === c.name || v.cameraName === c.name) ? video.cameraName : c.name } : c));
     } catch (e) {
@@ -238,6 +241,7 @@ export function CameraEditor() {
     }
     // Rules: the camera joins the ones switched on, with the zones picked for each, and leaves the ones switched off.
     for (const r of ruleStore.get()) {
+      if (!isActiveRule(r)) continue;
       const want = ruleOn(r.id);
       const has = r.cameraIds.includes(cam.id);
       if (!want && !has) continue;
@@ -413,7 +417,19 @@ export function CameraEditor() {
                     </button>
                     {progress !== null && <span className="meta">Uploading {Math.round(progress * 100)}%</span>}
                   </div>
-                  <span className="field__hint">mp4, mov, avi, mkv or webm. It plays in real time and starts over when it ends, like a camera that is always on. Use it when the live feed has nothing happening.</span>
+                  <span className="field__hint">mp4, mov, avi, mkv or webm. It plays and starts over when it ends, like a camera that is always on. Use it when the live feed has nothing happening.</span>
+                </div>
+                <div className="field">
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={!!cam.source?.everyFrame}
+                      disabled={!cam.source || cam.source.kind !== 'upload'}
+                      onChange={(e) => setCam((c) => (c && c.source ? { ...c, source: { ...c.source, everyFrame: e.target.checked } } : c))}
+                    />
+                    Analyse every frame
+                  </label>
+                  <span className="field__hint">Nothing is skipped, so a video gives the same result each time it runs. On a slow computer it plays slower than real time. Turn it off to keep real-time playback and skip frames when the detector falls behind.</span>
                 </div>
                 </>
               )}

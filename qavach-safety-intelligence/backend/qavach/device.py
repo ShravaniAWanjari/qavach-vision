@@ -12,7 +12,8 @@ _cache = {}
 
 
 def pick_device(allow_mps=True):
-    """'cuda:0', 'cuda:N', 'mps' or 'cpu'. The tracker passes allow_mps=False: its re-identification runs on CUDA or CPU."""
+    """'cuda:0', 'cuda:N', 'mps' or 'cpu'. The pose model passes allow_mps=False (it misreads keypoints there); the tracker's
+    re-identification may use mps, and is told not to with QAVACH_TRACKER_MPS=0."""
     key = (os.environ.get('QAVACH_DEVICE', ''), allow_mps)
     if key in _cache:
         return _cache[key]

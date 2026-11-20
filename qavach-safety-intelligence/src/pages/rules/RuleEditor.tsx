@@ -4,8 +4,9 @@ import { Icon } from '../../components/Icon';
 import { ReadOnlyNote } from '../../components/Shell';
 import { CameraView, CHANNEL, Choice, looseMatch, Modal, PRIORITY_NAME, PriorityBadge, Seg, useConfirm } from '../../components/ui';
 import { AREAS } from '../../data/seed';
-import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule, Subject } from '../../data/types';
-import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, SUBJECT_LABEL, type RuleDraft } from '../../lib/qai';
+import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule } from '../../data/types';
+import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
+import { countField, doesWhatOptions, gatherField, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
 import { apiUrl } from '../../lib/backend';
 import { duration, hm } from '../../lib/time';
 import { useMatches } from '../../state/bridge';
@@ -15,10 +16,10 @@ import type { Alert } from '../../data/types';
 import './rules.css';
 
 export const EXAMPLES = [
-  'Alert me when a person moves away from the deck walkway for at least 5 seconds',
-  'Someone without a helmet or vest on the quay apron for 3 seconds',
-  'A truck stopped on the pedestrian crossing for 2 minutes',
-  'Anyone crosses the fence line at night, urgent',
+  'More than 10 people in the restricted area for 30 seconds',
+  'Someone using a phone in the restricted area for 3 seconds',
+  'A person enters the restricted area, urgent',
+  'Fire or smoke on the deck',
 ];
 
 type AiField = 'name' | 'cameras' | 'zones' | 'subject' | 'condition' | 'duration' | 'schedule' | 'priority' | 'qavach';
@@ -103,7 +104,7 @@ export function RuleEditor() {
   };
 
   const runBacktest = () => {
-    const base: Record<Condition, number> = { enters: 0.5, outside: 0.45, dwells: 0.35, crosses: 0.15, 'no-ppe': 0.7, crowd: 0.25, smoke: 0.02, stopped: 0.35, near: 0.3, fewer: 0.3, absent: 0.2, wrongway: 0.1, tailgate: 0.1, speeding: 0.2, running: 0.3, abandoned: 0.1, phone: 0.3, down: 0.1 };
+    const base: Record<Condition, number> = { enters: 0.5, outside: 0.45, dwells: 0.35, crosses: 0.15, 'no-ppe': 0.7, crowd: 0.25, gathering: 0.25, smoke: 0.02, stopped: 0.35, near: 0.3, fewer: 0.3, absent: 0.2, wrongway: 0.1, tailgate: 0.1, speeding: 0.2, running: 0.3, abandoned: 0.1, phone: 0.3, down: 0.1 };
     const seed = rule.cameraIds.join('').length + rule.durationSec * 7 + rule.zoneIds.length * 3;
     const factor = 1 / (1 + rule.durationSec / 12);
     const total = Math.round(base[rule.condition] * Math.max(1, chosen.length) * factor * (0.8 + (seed % 7) / 10));
@@ -247,22 +248,28 @@ export function RuleEditor() {
             )}
 
             <div className="grid-2" style={{ gap: 12 }}>
-              <div className="field" style={isFire ? { display: 'none' } : undefined}>
-                <Choice id="r-subj" label="Who or What" value={rule.subject} onChange={(subject) => set({ subject }, 'subject')} options={(Object.keys(SUBJECT_LABEL) as Subject[]).map((s) => ({ value: s, label: SUBJECT_LABEL[s] }))} />
+              <div className="field">
+                <Choice
+                  id="r-subj"
+                  label="Looks for"
+                  value={looksOf(rule)}
+                  options={(Object.keys(LOOKS_FOR) as Looks[]).map((l) => ({ value: l, label: LOOKS_FOR[l] }))}
+                  onChange={(looks) => {
+                    // On real cameras the rule starts with the areas drawn for its kind, as when the camera is chosen.
+                    const drawnFor = (fire: boolean) => realCams.flatMap((c) => c.zones.filter((z) => (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
+                    set(switchLooks(rule, looks, drawnFor), 'condition');
+                  }}
+                />
               </div>
               <div className="field">
                 <Choice
                   id="r-cond"
-                  label="Does What"
+                  label="Does what"
                   value={rule.condition}
-                  options={(Object.keys(CONDITION_LABEL) as Condition[]).map((c) => ({ value: c, label: CONDITION_LABEL[c] }))}
+                  options={doesWhatOptions(looksOf(rule), rule.condition, (c) => CONDITION_LABEL[c]).map((d) => ({ value: d.condition, label: d.label }))}
                   onChange={(condition) => {
-                    // Fire and smoke is about neither a person nor a vehicle, and its areas are of a different kind.
-                    // On real cameras the rule starts with the areas drawn for its kind, as when the camera is chosen.
-                    const drawnFor = (fire: boolean) => realCams.flatMap((c) => c.zones.filter((z) => (fire ? z.purpose === 'fire-watch' : !z.purpose.startsWith('fire-'))).map((z) => z.id));
-                    if (condition === 'smoke') set({ condition, subject: 'any', durationSec: 0, zoneIds: drawnFor(true), minFrames: 4, fireClasses: 'both' }, 'condition');
-                    else if (isFire) set({ condition, subject: 'person', durationSec: 3, zoneIds: drawnFor(false), minFrames: 3 }, 'condition');
-                    else set({ condition, ...(CONDITION_DEFAULTS[condition] ?? {}) }, 'condition');
+                    const { subject: _keep, ...defaults } = CONDITION_DEFAULTS[condition] ?? {};
+                    set({ condition, ...defaults }, 'condition');
                   }}
                 />
               </div>
@@ -282,12 +289,20 @@ export function RuleEditor() {
               </div>
             )}
             {rule.condition === 'crowd' && (
-              <div className="field" style={{ maxWidth: 220 }}>
-                <label htmlFor="r-crowd">More than how many people</label>
-                <input id="r-crowd" className="input" type="number" min={1} value={rule.crowdOver} onChange={(e) => set({ crowdOver: Math.max(1, Number(e.target.value)) })} />
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-crowd">{countField(rule.subject).label}</label>
+                <input id="r-crowd" className="input" type="number" min={1} value={rule.crowdOver} onChange={(e) => set({ crowdOver: Math.max(1, Math.round(Number(e.target.value)) || 1) })} />
+                <span className="field__hint">{countField(rule.subject).hint}</span>
               </div>
             )}
 
+            {rule.condition === 'gathering' && (
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="r-gather">{gatherField.label}</label>
+                <input id="r-gather" className="input" type="number" min={3} value={rule.minPeople ?? 5} onChange={(e) => set({ minPeople: Math.max(3, Math.round(Number(e.target.value)) || 3) })} />
+                <span className="field__hint">{gatherField.hint}</span>
+              </div>
+            )}
             {rule.condition === 'fewer' && (
               <div className="field" style={{ maxWidth: 260 }}>
                 <label htmlFor="r-minp">Fewer than how many people</label>
@@ -322,7 +337,7 @@ export function RuleEditor() {
             {rule.condition === 'speeding' && (
               <div className="grid-2" style={{ gap: 12 }}>
                 <div className="field">
-                  <label htmlFor="r-kmh">Speed limit (km/h)</label>
+                  <label htmlFor="r-kmh">{speedFields.limit}</label>
                   <input id="r-kmh" className="input" type="number" min={1} value={rule.speedKmh ?? 30} onChange={(e) => set({ speedKmh: Math.max(1, Number(e.target.value)) })} />
                 </div>
                 <div className="field">
@@ -584,14 +599,15 @@ export function RuleEditor() {
 }
 
 /** Conditions the detection service runs for real. The others (protective equipment) are still simulated. */
-const REAL_CONDITIONS: Condition[] = ['enters', 'dwells', 'outside', 'crosses', 'crowd', 'stopped', 'near', 'fewer', 'absent', 'wrongway', 'tailgate', 'speeding', 'running', 'abandoned', 'phone', 'down'];
+const REAL_CONDITIONS: Condition[] = ['enters', 'dwells', 'outside', 'crosses', 'crowd', 'gathering', 'stopped', 'near', 'fewer', 'absent', 'wrongway', 'tailgate', 'speeding', 'running', 'abandoned', 'phone', 'down'];
 
 /** What the rule starts with when the condition is changed to one of these, so the form shows what the service will use. */
-const CONDITION_DEFAULTS: Partial<Record<Condition, Partial<Rule>>> = {
-  dwells: { durationSec: 30, minConfidence: 0.4, minMovePx: 0, minFrames: 3 },
+export const CONDITION_DEFAULTS: Partial<Record<Condition, Partial<Rule>>> = {
+  dwells: { subject: 'vehicle', durationSec: 300, minConfidence: 0.3, minMovePx: 0, minFrames: 3 },
   outside: { durationSec: 3, minConfidence: 0.25, minMovePx: 10, minFrames: 3 },
   crosses: { durationSec: 0, minConfidence: 0.3, minFrames: 2 },
   crowd: { durationSec: 5, minConfidence: 0.3, minFrames: 2 },
+  gathering: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2, minPeople: 5 },
   stopped: { subject: 'vehicle', durationSec: 30, minConfidence: 0.3, minMovePx: 12, minFrames: 3 },
   near: { subject: 'any', durationSec: 0.5, minConfidence: 0.3, minFrames: 2, repeatSec: 10, nearPx: 80 },
   fewer: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2, minPeople: 2 },
@@ -606,10 +622,11 @@ const CONDITION_DEFAULTS: Partial<Record<Condition, Partial<Rule>>> = {
 };
 const NO_ZONE_HINT: Partial<Record<Condition, string>> = {
   enters: 'None picked: people anywhere in the view count, outside the drawn zones too',
-  dwells: 'None picked: anyone staying anywhere in the view counts',
+  dwells: 'None picked: a vehicle staying anywhere in the view counts',
   outside: 'Pick the allowed areas. With none picked this rule has nothing to watch',
   crosses: 'Pick a line drawn on the camera. With none picked this rule has nothing to watch',
   crowd: 'None picked: everyone in the view is counted together',
+  gathering: 'None picked: a group packed together anywhere in the view counts',
   stopped: 'None picked: a vehicle stopping anywhere in the view counts',
   near: 'None picked: a person near a moving vehicle anywhere in the view counts',
   fewer: 'None picked: everyone in the view is counted together',
@@ -625,6 +642,7 @@ const NO_ZONE_HINT: Partial<Record<Condition, string>> = {
 const REPEAT_HINT: Partial<Record<Condition, string>> = {
   crosses: 'After an alert, the same person crossing the same line raises no new one for this long.',
   crowd: 'While the crowd stays, it alerts again after this long.',
+  gathering: 'While the group stays together, it alerts again after this long.',
   stopped: 'While the vehicle stays stopped, it alerts again after this long.',
 };
 const MOVE_DEFAULT: Partial<Record<Condition, number>> = { stopped: 12 };

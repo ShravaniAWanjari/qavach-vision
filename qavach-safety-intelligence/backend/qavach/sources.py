@@ -28,6 +28,7 @@ class Source:
     upload_id: str = ''
     user: str = ''             # stream credentials: kept in memory only
     password: str = ''
+    every_frame: bool = False  # uploaded video only: analyse every frame (the video may play slower than real time) instead of skipping when behind
 
     @property
     def live(self):
@@ -54,7 +55,7 @@ def source_from_dict(data):
         upload_id = str(data.get('uploadId') or '')
         if not UPLOAD_ID.match(upload_id) or not upload_path(upload_id):
             raise SourceError('That uploaded video is no longer on the server; upload it again')
-        return Source('upload', upload_id=upload_id)
+        return Source('upload', upload_id=upload_id, every_frame=bool(data.get('everyFrame')))
     if kind == 'link':
         url = str(data.get('url') or '').strip()
         return Source(classify(url), url=url, user=str(data.get('user') or ''), password=str(data.get('password') or ''))

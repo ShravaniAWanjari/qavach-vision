@@ -20,7 +20,7 @@ Volume /data: state.json, uploads/, frames/, snapshots/
 - Service: detects on connected cameras. The console polls `/api/events` and creates alerts.
 - Demo cameras connected by default:
   - PER-11: public YouTube live stream, rule R-13 test mode. Needs outbound internet.
-- Sample videos for camera set-up: the files in `backend/samples/` (Fire and Smoke Detection Sample, Sample 2 and Sample 3, and Intrusion Detection Sample), listed in `src/data/samples.ts`. They ship in the image (`COPY backend/samples`) and are copied to `/data/uploads` at start (again when a file's size changes), so the "Sample Video" dropdown (Camera set-up, Upload a video) works on the live link with no upload. Each plays in a loop. To add another, put a file named with a 12-character hex id in `backend/samples/` and list it in `src/data/samples.ts`.
+- Sample videos for camera set-up: the files in `backend/samples/` (Fire and Smoke Detection Sample, Sample 2 and Sample 3, Intrusion Detection Sample, Large Crowd Gathering Sample, Crowd Limit Exceeded Sample, Phone Usage Sample and Vehicle Speeding Sample), listed in `src/data/samples.ts`. They ship in the image (`COPY backend/samples`) and are copied to `/data/uploads` at start (again when a file's size changes), so the "Sample Video" dropdown (Camera set-up, Upload a video) works on the live link with no upload. Each plays in a loop. To add another, put a file named with a 12-character hex id in `backend/samples/` and list it in `src/data/samples.ts`.
 - The site ships with its set-up, so a deployment comes up the same as the one it was built from:
   - `src/data/demo-state.json`: the cameras, rules, video walls and alerts a browser starts from on its first visit (a browser that already has saved data keeps it, until the saved-data version in `src/lib/persist.ts` changes). Made with *Save set-up* on the Cameras page.
   - `backend/seed/state.json`: the cameras and rules the detection service starts with, so they are already running before anyone opens the console. The service applies it once per version of the file. `backend/seed/snapshots/` and `backend/seed/clips/` hold the pictures and short clips of the sample alerts (a copy of each is also in `public/fallback/`, which the front end shows when the service is not running).
@@ -102,7 +102,7 @@ Image defaults: `QAVACH_HOST=0.0.0.0`, `QAVACH_DATA=/data`, `QAVACH_WEB=/app/dis
 
 ## 5. Hardware
 
-- Runs on CPU, NVIDIA GPU (CUDA) or Apple GPU (`mps`). `QAVACH_DEVICE=auto` picks CUDA, then `mps`, then CPU. The tracker uses CUDA or CPU. Half precision is on for CUDA.
+- Runs on CPU, NVIDIA GPU (CUDA) or Apple GPU (`mps`). `QAVACH_DEVICE=auto` picks CUDA, then `mps`, then CPU. The tracker's re-identification uses CUDA, then `mps`, then CPU (`QAVACH_TRACKER_MPS=0` keeps it off Apple's GPU); with many people in view it is 7 to 9 times faster on `mps` than on the CPU, with identical tracks. Half precision is on for CUDA.
 - The GPU path is untested (no NVIDIA GPU on the development machine). Confirm `device` in `/api/health` after deploy.
 - Development machine:
   - Apple M5 (Mac17,2), arm64, macOS 26.5
