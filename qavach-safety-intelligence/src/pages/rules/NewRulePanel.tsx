@@ -6,7 +6,7 @@ import type { Classification, Ppe, Priority, QavachRecordType, Rule, Schedule } 
 import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
 import { nextRuleId, saveRule, toast, useCameras, useMe, useRules } from '../../state/store';
 import { CONDITION_DEFAULTS, EXAMPLES, useZoneOptions } from './RuleEditor';
-import { countField, doesWhatOptions, gatherField, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
+import { countField, doesWhatOptions, gatherField, nearFields, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
 
 const DURATIONS = [0, 1, 3, 5, 10, 15, 30, 60, 120, 300, 600];
 const secs = (n: number) => (n === 0 ? 'Straight away' : n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
@@ -202,6 +202,22 @@ export function NewRulePanel({ onClose, inline, forCamera, onCreated }: { onClos
           </div>
         )}
 
+        {rule.condition === 'near' && (
+          <>
+            <div className="field">
+              <label htmlFor="nr-near">{nearFields.label}</label>
+              <input id="nr-near" className="input" type="number" min={0.1} step={0.1} value={rule.nearHeights ?? 1} onChange={(e) => set({ nearHeights: Math.max(0.1, Number(e.target.value) || 1) })} />
+              <span className="field__hint">{nearFields.hint}</span>
+            </div>
+            <div className="field">
+              <label htmlFor="nr-near-moving" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input id="nr-near-moving" type="checkbox" checked={rule.nearMovingOnly !== false} onChange={(e) => set({ nearMovingOnly: e.target.checked })} />
+                {nearFields.movingOnly}
+              </label>
+              <span className="field__hint">{nearFields.movingHint}</span>
+            </div>
+          </>
+        )}
         {rule.condition === 'speeding' && (
           <div className="newrule__pair">
             <div className="field">

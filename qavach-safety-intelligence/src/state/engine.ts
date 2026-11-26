@@ -104,7 +104,7 @@ function alertText(rule: Rule, zone: Zone | undefined): { title: string; detail:
     case 'stopped':
       return { title: rule.name, detail: `Vehicle stopped ${seen}s in ${zn}${need}` };
     case 'near':
-      return { title: rule.name, detail: `Person close to a moving vehicle in ${zn}` };
+      return { title: rule.name, detail: `Person close to a ${rule.nearMovingOnly === false ? '' : 'moving '}vehicle in ${zn}` };
     case 'fewer':
       return { title: rule.name, detail: `Fewer than ${rule.minPeople ?? 2} people in ${zn} for ${seen}s${need}` };
     case 'absent':
@@ -198,7 +198,7 @@ function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
     case 'stopped':
       return `Vehicle stopped in ${where} for ${seen} ${need}${back}`;
     case 'near':
-      return `Person ${Math.round(ev.distance ?? 0)}px from a moving vehicle in ${where}${back}`;
+      return `Person within ${rule.nearHeights ?? 1} person height${(rule.nearHeights ?? 1) === 1 ? '' : 's'} of a ${rule.nearMovingOnly === false ? '' : 'moving '}vehicle in ${where}${back}`;
     case 'fewer':
       return `${ev.count ?? 0} ${(ev.count ?? 0) === 1 ? 'person' : 'people'} in ${where}, fewer than ${ev.limit ?? rule.minPeople}, for ${seen} ${need}${back}`;
     case 'absent':

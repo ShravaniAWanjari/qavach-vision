@@ -55,6 +55,52 @@ def test_person_far_from_moving_vehicle_does_not_alert():
     assert run(engine, frames) == []
 
 
+def _alongside(gap, h=100, vehicle_moving=True, new_id_each_frame=False, n=15):
+    """A person (h px tall) and a vehicle (200 px wide) `gap` px from their side. The person shuffles or walks, so they are
+    not a sign; the vehicle drives along with them (when moving) or stays put."""
+    frames = []
+    for k in range(n):
+        px = 300 + (40 * k if vehicle_moving else 25 * (k % 3))
+        vx = (px if vehicle_moving else 300) + 0.2 * h + 100 + gap
+        vid = V + (k + 1 if new_id_each_frame else 1)
+        frames.append([box(vid, vx, 400, 200, 120), person(1, px, 400, h=h, w=0.4 * h)])
+    return frames
+
+
+def test_near_is_measured_in_person_heights_so_it_means_the_same_on_every_camera():
+    # a 100 px person: a vehicle 80 px away is 0.8 heights, 160 px away is 1.6
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.0), _alongside(80))
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.0), _alongside(160)) == []
+    # a 20 px person (far from the camera) with a vehicle 50 px away is 2.5 heights: not near, though 50 px < the old 80 px
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.0), _alongside(50, h=20)) == []
+    assert run(NearRule([FULL], rule(min_frames=2), near_px=80), _alongside(50, h=20))
+
+
+def test_a_vehicle_that_is_moving_is_seen_even_when_the_tracker_gives_it_a_new_id_every_frame():
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.5), _alongside(0, new_id_each_frame=True))
+
+
+def test_a_person_beside_a_parked_vehicle_alerts_only_when_parked_vehicles_count():
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.5), _alongside(0, vehicle_moving=False)) == []
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.5, moving_only=False), _alongside(0, vehicle_moving=False))
+
+
+def test_a_sign_the_detector_calls_a_person_never_alerts():
+    engine = NearRule([FULL], rule(min_frames=2), near_heights=1.5, moving_only=False)
+    frames = [[box(V + 1, 480, 400, 200, 120), person(1, 300 + (k % 2), 400)] for k in range(40)]     # does not move
+    assert run(engine, frames) == []
+
+
+def test_the_console_settings_for_near_reach_the_engine():
+    eng = build_engine(dict(condition='near', zoneIds=[], nearHeights=1.2, nearMovingOnly=False), [], W, H)
+    assert eng.near_heights == 1.2 and eng.moving_only is False
+    eng = build_engine(dict(condition='near', zoneIds=[]), [], W, H)
+    assert eng.near_heights is None and eng.moving_only is True
+    assert settings_for(dict(condition='near')).min_confidence == 0.45
+    with pytest.raises(ValueError):
+        settings_for(dict(condition='near', nearHeights=0))
+
+
 # ── fewer / absent ──────────────────────────────────────────────────────────────────────────────────────────────────
 def test_lone_worker_alerts_but_empty_zone_does_not():
     lone = CountBelowRule([FULL], rule(dwell_seconds=2.0), limit=2, kind='fewer', lone=True)

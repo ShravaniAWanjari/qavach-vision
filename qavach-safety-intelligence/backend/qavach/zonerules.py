@@ -29,6 +29,9 @@ The console's rule fields map like this (see settings_for):
   minMovePx     outside and enters: the feet must have moved this far (rules out a pole called a person);
                 stopped: how far a vehicle may creep before it counts as moving again
   crowdOver     crowd: alert when MORE than this many are in the zone
+  nearHeights   near: how close a person is to a vehicle, in person heights (box to box; about 1.8 m for 1). Replaces nearPx,
+                which is a fixed number of pixels and means a different distance on every camera
+  nearMovingOnly near: false also alerts for a person beside a parked vehicle (default true: only a moving vehicle counts)
   minPeople     gathering: alert when a group of at least this many people is packed together
   gatherReach   gathering: how close people stand to belong to one group, in body heights (default 0.5: shoulder to shoulder;
                 about 1 for a large, looser crowd)
@@ -106,10 +109,10 @@ def settings_for(data):
             raise ValueError('How close people stand must be between 0.2 and 3 body heights')
     elif kind == 'near':
         fields['dwell_seconds'] = _num(data, 'durationSec', 0.5)
-        fields['min_confidence'] = _num(data, 'minConfidence', 0.3)
+        fields['min_confidence'] = _num(data, 'minConfidence', 0.45)       # a sign or pole the detector calls a person scores about 0.37
         fields['min_frames'] = _num(data, 'minFrames', 2)
         fields['repeat_seconds'] = _num(data, 'repeatSec', 10.0)
-        if _num(data, 'nearPx', 80) <= 0:
+        if _num(data, 'nearPx', 80) <= 0 or _num(data, 'nearHeights', 1.0) <= 0:
             raise ValueError('A distance must be more than 0')
     elif kind in ('fewer', 'absent'):
         fields['dwell_seconds'] = _num(data, 'durationSec', 10.0)
@@ -647,7 +650,9 @@ def build_engine(rule, camera_zones, width, height):
     if kind in ('near', 'fewer', 'absent', 'speeding', 'running', 'abandoned', 'phone'):
         from qavach import moverules
         if kind == 'near':
-            return moverules.NearRule(polygons, settings, float(rule.get('nearPx') or moverules.NEAR_PX), scale=scale)
+            return moverules.NearRule(polygons, settings, float(rule.get('nearPx') or moverules.NEAR_PX), scale=scale,
+                                      near_heights=float(rule['nearHeights']) if rule.get('nearHeights') else None,
+                                      moving_only=rule.get('nearMovingOnly') is not False)
         if kind in ('fewer', 'absent'):
             return moverules.CountBelowRule(polygons, settings, limit=int(rule.get('minPeople') or 1) if kind == 'fewer' else 1,
                                             scale=scale, subject=subject, kind=kind, lone=kind == 'fewer')

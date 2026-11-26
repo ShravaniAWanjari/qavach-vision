@@ -31,6 +31,9 @@ FIRE_WEIGHTS = Path(os.environ.get('QAVACH_FIRE_WEIGHTS', BUNDLED / 'dfire-yolov
 POSE_WEIGHTS = Path(os.environ.get('QAVACH_POSE_WEIGHTS', BUNDLED / 'yolo11s-pose.pt'))
 TRACKER_PYTHON = Path(os.environ.get('QAVACH_TRACKER_PYTHON', BARGE / '.venv-boxmot/bin/python'))
 TRACKER_WORKER = Path(__file__).with_name('tracker_worker.py')
+# Cameras that share one tracker process. Each process holds PyTorch and the re-identification model once (about
+# 0.3 to 0.5 GB); its cameras take turns, so more cameras per process saves memory and fewer keeps them from waiting.
+TRACKER_CAMERAS = max(1, int(os.environ.get('QAVACH_TRACKER_CAMERAS', 8)))
 
 # Tallest stream the back-end asks YouTube for. Pedestrians in the ferry camera are about half as tall at 720p.
 MAX_STREAM_HEIGHT = int(os.environ.get('QAVACH_MAX_HEIGHT', 1080))

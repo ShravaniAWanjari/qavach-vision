@@ -3,6 +3,7 @@
 The settings are the ones the port-safety project settled on for small, distant pedestrians (docs/FINAL_APPROACH.md in
 barge-intrusion): person class only, a very low confidence floor so nobody is lost, and the rule decides what is
 confident enough to alert on."""
+import itertools
 import struct
 import subprocess
 import threading
@@ -34,11 +35,15 @@ class Detector:
         self.lock = _lock_for(self.device)
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
 
-    def detect(self, frame, size, classes=(0,)):
+    def detect(self, frame, size, classes=(0,), conf=0.05):
         """Boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class. `classes` are COCO ids: 0 is a person,
-        2, 3, 5 and 7 are the vehicles. One pass finds all of them, so a camera that watches people and vehicles pays once."""
+        2, 3, 5 and 7 are the vehicles. One pass finds all of them, so a camera that watches people and vehicles pays once.
+        `conf` is the lowest confidence kept. The network takes about 10 ms; removing overlapping boxes after it is most of the
+        time of a pass (120 ms at 0.05 in a crowd, 40 ms at 0.3), so a caller that throws away everything below 0.3 anyway
+        (crowd counting, vehicles) says so. Boxes at or above `conf` come out the same whatever it is: a weak box never
+        removes a stronger one."""
         with self.lock:          # reading results off the GPU is GPU work too: it stays inside the lock (mps crashes otherwise)
-            result = self.model.predict(frame, conf=0.05, iou=0.45, imgsz=size, device=self.device, half=self.half,
+            result = self.model.predict(frame, conf=conf, iou=0.45, imgsz=size, device=self.device, half=self.half,
                                         classes=list(classes), verbose=False)[0]
             boxes = result.boxes
             if len(boxes) == 0:
@@ -103,8 +108,8 @@ class PoseDetector:
         return [(tuple(float(v) for v in b), k.astype(float)) for b, k in zip(boxes, kps)]
 
 
-class TrackerClient:
-    """Talks to tracker_worker.py, which runs in the BoxMOT environment. One instance per running camera."""
+class _TrackerProcess:
+    """One tracker_worker.py process. It serves up to TRACKER_CAMERAS cameras, one request at a time."""
 
     def __init__(self):
         for path in (config.TRACKER_PYTHON, config.REID_WEIGHTS):
@@ -112,33 +117,89 @@ class TrackerClient:
                 raise FileNotFoundError(f'{path} is missing; set QAVACH_TRACKER_PYTHON / QAVACH_REID_WEIGHTS or see README.md')
         self.process = subprocess.Popen([str(config.TRACKER_PYTHON), str(config.TRACKER_WORKER), str(config.REID_WEIGHTS)],
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.lock = threading.Lock()       # a request and its answer go together: cameras on this process take turns
+        self.users = 0
+        self.dead = False
+
+    def ask(self, payload, answer):
+        """Send `payload` (bytes or a list of buffers) and return what `answer(read)` reads back."""
+        with self.lock:
+            if self.dead:
+                raise RuntimeError('tracker worker exited; check the back-end console')
+            try:
+                for part in (payload if isinstance(payload, list) else [payload]):
+                    self.process.stdin.write(part)
+                self.process.stdin.flush()
+                return answer(self._read)
+            except (BrokenPipeError, OSError, RuntimeError) as error:
+                self.dead = True            # the cameras on it reconnect, and get a new process
+                raise RuntimeError('tracker worker exited; check the back-end console') from error
+
+    def _read(self, count):
+        data = self.process.stdout.read(count)
+        if len(data) != count:
+            raise RuntimeError('tracker worker exited')
+        return data
+
+    def stop(self):
+        with self.lock:
+            try:
+                self.process.stdin.write(b'Q')
+                self.process.stdin.flush()
+                self.process.wait(timeout=3)
+            except Exception:
+                self.process.kill()
+            self.dead = True
+
+
+_POOL, _POOL_LOCK, _KEYS = [], threading.Lock(), itertools.count(1)
+
+
+class TrackerClient:
+    """The tracker of one camera. Cameras share tracker_worker.py processes (QAVACH_TRACKER_CAMERAS each, 8 by default)
+    instead of starting one each: a worker holds PyTorch and the re-identification model once, about 0.3 to 0.5 GB, so a
+    process per camera cost that much memory again for every camera. Each camera keeps its own tracks and ids."""
+
+    def __init__(self):
+        with _POOL_LOCK:
+            _POOL[:] = [p for p in _POOL if not p.dead]
+            proc = next((p for p in _POOL if p.users < config.TRACKER_CAMERAS), None)
+            if proc is None:
+                proc = _TrackerProcess()
+                _POOL.append(proc)
+            proc.users += 1
+        self.proc, self.key, self.closed = proc, next(_KEYS), False
 
     def reset(self, fps):
-        self.process.stdin.write(b'R' + struct.pack('<f', fps))
-        self.process.stdin.flush()
-        if self._read(1) != b'K':
+        if self.proc.ask(b'R' + struct.pack('<if', self.key, fps), lambda read: read(1)) != b'K':
             raise RuntimeError('tracker worker did not acknowledge reset')
 
     def update(self, frame, dets):
         """Tracks as an (m, 8) array: x1 y1 x2 y2 track_id confidence class detection_index."""
         height, width = frame.shape[:2]
         dets = np.ascontiguousarray(dets, dtype='<f4').reshape(-1, 6)
-        self.process.stdin.write(b'U' + struct.pack('<iii', height, width, len(dets)) + dets.tobytes())
-        self.process.stdin.write(np.ascontiguousarray(frame).data)
-        self.process.stdin.flush()
-        count = struct.unpack('<i', self._read(4))[0]
-        return np.frombuffer(self._read(count * 32), dtype='<f4').reshape(count, 8)
 
-    def _read(self, count):
-        data = self.process.stdout.read(count)
-        if len(data) != count:
-            raise RuntimeError('tracker worker exited; check the back-end console')
-        return data
+        def answer(read):
+            count = struct.unpack('<i', read(4))[0]
+            return np.frombuffer(read(count * 32), dtype='<f4').reshape(count, 8)
+        return self.proc.ask([b'U' + struct.pack('<iiii', self.key, height, width, len(dets)) + dets.tobytes(),
+                              np.ascontiguousarray(frame).data], answer)
+
+    @property
+    def process(self):
+        return self.proc.process
 
     def close(self):
+        if self.closed:
+            return
+        self.closed = True
         try:
-            self.process.stdin.write(b'Q')
-            self.process.stdin.flush()
-            self.process.wait(timeout=3)
-        except Exception:
-            self.process.kill()
+            self.proc.ask(b'D' + struct.pack('<i', self.key), lambda read: read(1))
+        except RuntimeError:
+            pass
+        with _POOL_LOCK:
+            self.proc.users -= 1
+            if self.proc.users <= 0:          # the last camera on it has gone: free its memory
+                if self.proc in _POOL:
+                    _POOL.remove(self.proc)
+                self.proc.stop()

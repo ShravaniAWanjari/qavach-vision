@@ -96,3 +96,26 @@ def test_a_looser_reach_makes_a_large_loose_crowd_one_group():
 def test_how_close_must_be_in_range():
     with pytest.raises(ValueError):
         settings_for(dict(condition='gathering', minPeople=5, gatherReach=5))
+
+
+# ── the detector's confidence floor per camera ──────────────────────────────────────────────────────────────────────
+from qavach.camera_runner import detect_floor, engine_needs
+
+
+def _needs(engines):
+    return set().union(*(engine_needs(e) for e, _ in engines))
+
+
+def test_a_camera_that_only_counts_people_does_not_keep_weak_boxes():
+    eng = engine()
+    assert detect_floor([(eng, {})], _needs([(eng, {})])) == 0.3
+
+
+def test_a_camera_that_tracks_people_keeps_weak_boxes():
+    eng = build_engine(dict(condition='enters', subject='person', zoneIds=['a1'], durationSec=1, minFrames=1), [AREA], W, H)
+    assert detect_floor([(eng, {})], _needs([(eng, {})])) == 0.05
+
+
+def test_a_vehicle_camera_uses_the_vehicle_floor():
+    eng = build_engine(dict(condition='speeding', subject='vehicle', zoneIds=['a1'], speedKmh=15, metersAcross=35, durationSec=0.5, minFrames=1), [AREA], W, H)
+    assert detect_floor([(eng, {})], _needs([(eng, {})])) == 0.25

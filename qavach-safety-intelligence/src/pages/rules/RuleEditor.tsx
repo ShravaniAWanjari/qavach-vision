@@ -6,7 +6,7 @@ import { CameraView, CHANNEL, Choice, looseMatch, Modal, PRIORITY_NAME, Priority
 import { AREAS } from '../../data/seed';
 import type { Camera, Classification, Condition, Ppe, Priority, QavachRecordType, Rule, Schedule } from '../../data/types';
 import { CONDITION_LABEL, defaultRuleName, describeRule, draftRuleFromText, SCHEDULE_LABEL, type RuleDraft } from '../../lib/qai';
-import { countField, doesWhatOptions, gatherField, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
+import { countField, doesWhatOptions, gatherField, nearFields, speedFields, LOOKS_FOR, looksOf, switchLooks, type Looks } from '../../lib/usecases';
 import { apiUrl } from '../../lib/backend';
 import { duration, hm } from '../../lib/time';
 import { useMatches } from '../../state/bridge';
@@ -311,11 +311,20 @@ export function RuleEditor() {
               </div>
             )}
             {rule.condition === 'near' && (
-              <div className="field" style={{ maxWidth: 260 }}>
-                <label htmlFor="r-near">Close means within (pixels)</label>
-                <input id="r-near" className="input" type="number" min={1} value={rule.nearPx ?? 80} onChange={(e) => set({ nearPx: Math.max(1, Number(e.target.value)) })} />
-                <span className="field__hint">Gap between the person and a vehicle that is moving, at 1280 pixels wide. A parked vehicle does not count.</span>
-              </div>
+              <>
+                <div className="field" style={{ maxWidth: 260 }}>
+                  <label htmlFor="r-near">{nearFields.label}</label>
+                  <input id="r-near" className="input" type="number" min={0.1} step={0.1} value={rule.nearHeights ?? 1} onChange={(e) => set({ nearHeights: Math.max(0.1, Number(e.target.value) || 1) })} />
+                  <span className="field__hint">{nearFields.hint}</span>
+                </div>
+                <div className="field">
+                  <label htmlFor="r-near-moving" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input id="r-near-moving" type="checkbox" checked={rule.nearMovingOnly !== false} onChange={(e) => set({ nearMovingOnly: e.target.checked })} />
+                    {nearFields.movingOnly}
+                  </label>
+                  <span className="field__hint">{nearFields.movingHint}</span>
+                </div>
+              </>
             )}
             {rule.condition === 'phone' && (
               <div className="field" style={{ maxWidth: 260 }}>
@@ -609,7 +618,7 @@ export const CONDITION_DEFAULTS: Partial<Record<Condition, Partial<Rule>>> = {
   crowd: { durationSec: 5, minConfidence: 0.3, minFrames: 2 },
   gathering: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2, minPeople: 5 },
   stopped: { subject: 'vehicle', durationSec: 30, minConfidence: 0.3, minMovePx: 12, minFrames: 3 },
-  near: { subject: 'any', durationSec: 0.5, minConfidence: 0.3, minFrames: 2, repeatSec: 10, nearPx: 80 },
+  near: { durationSec: 0.5, minConfidence: 0.45, minFrames: 2, repeatSec: 10, nearHeights: 1, nearMovingOnly: true },
   fewer: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2, minPeople: 2 },
   absent: { subject: 'person', durationSec: 10, minConfidence: 0.3, minFrames: 2 },
   wrongway: { durationSec: 0, minConfidence: 0.3, minFrames: 2, allowedDir: 1 },

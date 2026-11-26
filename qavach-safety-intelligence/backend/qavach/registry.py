@@ -133,7 +133,7 @@ class Registry:
         except (ValueError, TypeError) as error:
             raise Invalid(f'The rule settings are out of range: {error}') from error
         rule = {k: data.get(k) for k in ('id', 'name', 'cameraIds', 'zoneIds', 'subject', 'condition', 'durationSec',
-                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'fireClasses', 'crowdOver', 'minPeople', 'gatherReach', 'nearPx', 'speedKmh', 'metersAcross', 'allowedDir', 'gapSec', 'ownerPx', 'runSpeed', 'schedule', 'mode', 'priority')}
+                                         'minFrames', 'minConfidence', 'repeatSec', 'minMovePx', 'fireClasses', 'crowdOver', 'minPeople', 'gatherReach', 'nearHeights', 'nearMovingOnly', 'nearPx', 'speedKmh', 'metersAcross', 'allowedDir', 'gapSec', 'ownerPx', 'runSpeed', 'schedule', 'mode', 'priority')}
         rule['cameraIds'] = [str(c) for c in (rule['cameraIds'] or [])]
         rule['zoneIds'] = [str(z) for z in (rule['zoneIds'] or [])]
         with self.lock:

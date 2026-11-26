@@ -126,6 +126,10 @@ export interface Rule {
   gatherReach?: number;
   /** Near a vehicle: how close, in pixels at 1280 wide, counts as near. */
   nearPx?: number;
+  /** Pedestrian vehicle proximity: how close a person is to a vehicle, in person heights (box to box). Replaces nearPx. */
+  nearHeights?: number;
+  /** false: a person beside a parked vehicle counts too (default true: only a moving vehicle). */
+  nearMovingOnly?: boolean;
   /** Phone use: how sure the detector must be that the object is a phone (0 to 1). Look-alikes such as binoculars and radios score low. */
   phoneConfidence?: number;
   /** Speeding: the limit in km/h, and about how many metres the picture spans where vehicles drive (gives the scale). */

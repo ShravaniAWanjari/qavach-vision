@@ -74,7 +74,7 @@ def people_boxes(detector, frame, region, whole):
         tx1, ty1, tx2, ty2 = t
         if tx2 - tx1 < 32 or ty2 - ty1 < 32:
             continue
-        for b in detector.detect(np.ascontiguousarray(frame[ty1:ty2, tx1:tx2]), TILE_SIZE, (0,)):
+        for b in detector.detect(np.ascontiguousarray(frame[ty1:ty2, tx1:tx2]), TILE_SIZE, (0,), conf=PERSON_FLOOR):
             if b[4] >= PERSON_FLOOR:
                 found.append(((float(b[0]) + tx1, float(b[1]) + ty1, float(b[2]) + tx1, float(b[3]) + ty1, float(b[4])), t))
     return merge(whole, found, region)

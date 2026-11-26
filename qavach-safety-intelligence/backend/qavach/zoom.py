@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 PHONE_CLASS = 67
+PHONE_FLOOR = 0.25            # the same floor as moverules.PHONE_FLOOR: nothing weaker is used, so the detector need not keep it
 ZOOM_BELOW = 0.55          # people taller than this share of the picture height are big enough already
 ZOOM_MAX_PEOPLE = 4        # the smallest-cost choice: the biggest few people, so the extra work per frame stays bounded
 ZOOM_TARGET = 640          # the enlarged crop's long side, in pixels (the size the detector was trained at)
@@ -56,6 +57,6 @@ def zoom_phones(detector, frame, person_boxes):
             continue
         big = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         size = int(np.ceil(max(big.shape[:2]) / 32) * 32)
-        for b in detector.detect(np.ascontiguousarray(big), size, (PHONE_CLASS,)):
+        for b in detector.detect(np.ascontiguousarray(big), size, (PHONE_CLASS,), conf=PHONE_FLOOR):
             found.append([x1 + b[0] / scale, y1 + b[1] / scale, x1 + b[2] / scale, y1 + b[3] / scale, b[4], b[5]])
     return np.array(found, dtype=np.float32).reshape(-1, 6)

@@ -90,7 +90,7 @@ export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSe
     case 'stopped':
       return `A vehicle stopped ${inZone}${dur}`;
     case 'near':
-      return `${subj === 'Vehicle' ? 'A person' : 'A person'} close to a moving vehicle ${inZone}`;
+      return `A person close to a vehicle ${inZone}`;
     case 'fewer':
       return `Fewer than ${r.minPeople ?? 2} people ${inZone}${dur}`;
     case 'absent':
@@ -144,7 +144,7 @@ export function detectedText(r: Pick<Rule, 'subject' | 'condition' | 'ppe' | 'fi
     case 'stopped':
       return `Stopped vehicle detected${at('on')}`;
     case 'near':
-      return `Person close to a moving vehicle${at('in')}`;
+      return `Person close to a vehicle${at('in')}`;
     case 'fewer':
       return `Too few people${at('in')}`;
     case 'absent':

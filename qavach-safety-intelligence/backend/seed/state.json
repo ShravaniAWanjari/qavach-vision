@@ -282,6 +282,43 @@
     "user": "",
     "password": ""
    }
+  },
+  {
+   "id": "GTE-54",
+   "name": "Berth 3 · vehicle lane pedestrians",
+   "zones": [
+    {
+     "id": "GTE-54-Z-1",
+     "name": "Vehicle lane",
+     "purpose": "restricted",
+     "kind": "polygon",
+     "points": [
+      [
+       10.0,
+       50.0
+      ],
+      [
+       85.0,
+       50.0
+      ],
+      [
+       85.0,
+       98.0
+      ],
+      [
+       10.0,
+       98.0
+      ]
+     ]
+    }
+   ],
+   "source": {
+    "kind": "upload",
+    "url": "",
+    "uploadId": "5a3b1e000007",
+    "user": "",
+    "password": ""
+   }
   }
  ],
  "rules": [
@@ -1439,7 +1476,7 @@
   },
   {
    "id": "R-16",
-   "name": "Crowd Limit Exceeded",
+   "name": "People Count Limit Exceeded",
    "cameraIds": [
     "QUA-133"
    ],
@@ -1537,6 +1574,27 @@
    "minConfidence": 0.3,
    "repeatSec": 60,
    "minMovePx": 0,
+   "schedule": "always",
+   "mode": "live",
+   "priority": "P3"
+  },
+  {
+   "id": "R-21",
+   "name": "Pedestrian Vehicle Proximity",
+   "cameraIds": [
+    "GTE-54"
+   ],
+   "zoneIds": [
+    "GTE-54-Z-1"
+   ],
+   "subject": "person",
+   "condition": "near",
+   "durationSec": 0.5,
+   "minFrames": 2,
+   "minConfidence": 0.45,
+   "repeatSec": 30,
+   "nearHeights": 1.0,
+   "nearMovingOnly": false,
    "schedule": "always",
    "mode": "live",
    "priority": "P3"

@@ -19,6 +19,7 @@ export const DOES_WHAT: Record<Looks, DoesWhat[]> = {
     { condition: 'enters', label: 'Enters a restricted area' },
     { condition: 'crowd', label: 'People count' },
     { condition: 'gathering', label: 'Crowd gathering' },
+    { condition: 'near', label: 'Comes close to a vehicle' },
     { condition: 'phone', label: 'Uses a phone in a restricted zone' },
   ],
   vehicle: [
@@ -74,6 +75,14 @@ export const speedFields = {
   acrossHint: 'About how wide the road is in the picture, left edge to right. It is the scale for the speed, so the reading is rough, best for vehicles in the middle of the view.',
 };
 
+/** The fields for a pedestrian vehicle proximity rule. Distance is in person heights, so it means the same on every camera. */
+export const nearFields = {
+  label: 'Closer than (person heights)',
+  hint: 'Gap between the person and the vehicle, box to box. 1 is about 1.8 m: an arm\'s reach is 0.4, a car length is 2.5.',
+  movingOnly: 'Only when the vehicle is moving',
+  movingHint: 'Off also alerts for a person beside a parked vehicle, such as someone loading it.',
+};
+
 /** The field for a gathering rule: the smallest group, packed together at one place, that raises the alert. */
 export const gatherField = {
   label: 'Smallest group',
@@ -88,7 +97,6 @@ export const PARKED_USECASES: { condition: Condition; label: string; note: strin
   { condition: 'crosses', label: 'Line crossing', note: 'engine LineRule' },
   { condition: 'no-ppe', label: 'PPE not worn', note: 'console sample only, no detector' },
   { condition: 'stopped', label: 'Stopped vehicle', note: 'engine StoppedRule' },
-  { condition: 'near', label: 'Person near a moving vehicle', note: 'engine NearRule' },
   { condition: 'fewer', label: 'Lone worker', note: 'engine CountBelowRule' },
   { condition: 'absent', label: 'Post unattended', note: 'engine CountBelowRule' },
   { condition: 'wrongway', label: 'Wrong-way crossing', note: 'engine WrongWayRule' },

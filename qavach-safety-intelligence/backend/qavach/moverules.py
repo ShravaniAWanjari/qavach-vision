@@ -35,7 +35,11 @@ PHONE_FLOOR = 0.25                         # the detector keeps phones above thi
 PHONE_CONFIDENCE = 0.35                    # default: a phone must be at least this sure to count (look-alikes score 0.25 to 0.34)
 PHONE_PAD = 0.15                           # a phone this far outside the person's box (share of its width and height) is still in their hands
 MOVING_PX = 30.0                           # a vehicle that went this far (at 1280 px wide) in about a second is moving
-NEAR_PX = 80.0                             # default: this close (box to box, at 1280 px wide) is "near"
+NEAR_PX = 80.0                             # old default: this close (box to box, at 1280 px wide) is "near"
+NEAR_HEIGHTS = 1.0                         # default: within this many person heights (box to box) is "near"
+PERSON_MOVE_HEIGHTS = 0.4                 # a person who never moved this far (in their own heights) is a sign, pole or flag the detector
+                                           # calls a person, not someone to alert on: one such "person" at a car park exit gave 20 alerts
+VEHICLE_MOVING_WIDTHS = 0.3                # a vehicle whose centre goes this many of its own widths in a second is moving
 OWNER_PX = 150.0                           # default: an object this close to a person still has someone with it
 OBJECT_WOBBLE_PX = 10.0                    # a still object's box moves this much from noise alone
 TRAIL_SECONDS = 3.0
@@ -181,21 +185,48 @@ class NearRule(_SustainedRule):
     kind = 'near'
     subject = 'any'
 
-    def __init__(self, zones, rule, near_px=NEAR_PX, scale=1.0):
+    def __init__(self, zones, rule, near_px=NEAR_PX, scale=1.0, near_heights=None, moving_only=True):
         super().__init__(zones, rule, scale)
         self.near_px = near_px
+        self.near_heights = near_heights        # when set, "near" is this many person heights instead of near_px pixels
+        self.moving_only = moving_only          # False: a person beside a parked vehicle counts too
         self.vehicles = {}
+        self._previous = (None, [])             # (seconds, [(x1, y1, x2, y2)]) of the vehicles in the last frame
+        self._origin = {}                       # person track id -> (foot x, foot y) where it was first seen
+
+    def _speeds(self, seconds, boxes):
+        """Each vehicle's speed in its own widths a second, from the nearest vehicle of about its size in the last frame. The
+        vehicle tracker follows by overlap, which a vehicle at a few frames a second leaves behind, so its id says nothing
+        about motion; the size check stops a vehicle being matched to its neighbour."""
+        last_t, last = self._previous
+        self._previous = (seconds, list(boxes))
+        speeds = []
+        for b in boxes:
+            w = max(1.0, b[2] - b[0])
+            best = None
+            if last_t is not None and seconds > last_t:
+                for q in last:
+                    wq = q[2] - q[0]
+                    d = math.hypot((b[0] + b[2] - q[0] - q[2]) / 2, (b[1] + b[3] - q[1] - q[3]) / 2)
+                    if d <= 1.6 * w and 0.7 <= wq / w <= 1.4 and (best is None or d < best):
+                        best = d
+                if best is not None:
+                    best = best / w / (seconds - last_t)
+            speeds.append(best)
+        return speeds
 
     def update(self, seconds, tracks):
         """The alert is on the person; it carries `distance` (pixels, box to box) and the vehicle's id."""
         info, events = {}, []
         vehicles = [t for t in tracks if kind_of(int(t[0])) == 'vehicle']
         moving = []
-        for tid, x1, y1, x2, y2, conf in vehicles:
+        speeds = self._speeds(seconds, [t[1:5] for t in vehicles])
+        for (tid, x1, y1, x2, y2, conf), speed in zip(vehicles, speeds):
             trail = self.vehicles.setdefault(int(tid), _Watch())
             trail.last_seen = seconds
             trail.trail.add(seconds, _foot(x1, y1, x2, y2), y2 - y1)
-            if trail.trail.moved(seconds) >= MOVING_PX * self.scale:
+            if (not self.moving_only or trail.trail.moved(seconds) >= MOVING_PX * self.scale
+                    or (speed is not None and speed >= VEHICLE_MOVING_WIDTHS)):
                 moving.append((int(tid), (x1, y1, x2, y2)))
             info[int(tid)] = _info()
         for tid, x1, y1, x2, y2, conf in tracks:
@@ -204,16 +235,22 @@ class NearRule(_SustainedRule):
                 continue
             st = self.state.setdefault(tid, _Watch())
             st.last_seen = seconds
-            zone = _in_zones(self.zones, _foot(x1, y1, x2, y2))
+            foot = _foot(x1, y1, x2, y2)
+            origin = self._origin.setdefault(tid, foot)
+            st.extra = max(st.extra, math.hypot(foot[0] - origin[0], foot[1] - origin[1]))     # the furthest it has been from there
+            zone = _in_zones(self.zones, foot)
             nearest = None
-            if zone is not None:
+            if zone is not None and st.extra >= PERSON_MOVE_HEIGHTS * (y2 - y1):
+                reach = self.near_heights * (y2 - y1) if self.near_heights else self.near_px * self.scale
                 for vid, box in moving:
                     gap = _gap((x1, y1, x2, y2), box)
-                    if gap <= self.near_px * self.scale and (nearest is None or gap < nearest[0]):
+                    if gap <= reach and (nearest is None or gap < nearest[0]):
                         nearest = (gap, vid)
             if self._hold(st, seconds, nearest is not None, conf):
                 events.append(self._event(tid, seconds, zone, st, distance=round(nearest[0], 1), other=nearest[1] % VEHICLE_ID_OFFSET))
             info[tid] = _info(flagged=st.flagged and nearest is not None, zone=zone.id if zone else None)
+        for tid in [t for t in self._origin if t not in self.state]:
+            del self._origin[tid]
         self._forget(seconds)
         for vid, st in list(self.vehicles.items()):
             if seconds - st.last_seen > FORGET_AFTER_SECONDS:

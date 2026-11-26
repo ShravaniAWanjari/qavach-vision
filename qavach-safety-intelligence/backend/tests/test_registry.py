@@ -376,3 +376,44 @@ def test_the_new_conditions_run_for_real_and_keep_their_settings(registry):
         registry.put_rule(dict(RULE, id='R-bad', condition='speeding'))           # no limit or scale
     with pytest.raises(reg.Invalid):
         registry.put_rule(dict(RULE, id='R-bad2', condition='wrongway'))          # no allowed direction
+
+
+def test_the_live_buffer_keeps_only_frames_it_may_need_and_reads_past_the_rest():
+    """A steady camera keeps a few seconds at about 12 frames a second instead of 12 seconds at 25 a second."""
+    import numpy as np
+
+    from qavach.camera_runner import BUFFER_FPS, BUFFER_SECONDS_STEADY, LiveReader
+
+    calls = []
+
+    class Capture:
+        n = 0
+
+        def read(self):
+            calls.append('read')
+            Capture.n += 1
+            return (Capture.n < 200), np.zeros((8, 8, 3), dtype=np.uint8)
+
+        def grab(self):
+            calls.append('grab')
+            Capture.n += 1
+            return Capture.n < 200
+
+        def release(self):
+            pass
+
+    reader = LiveReader(Capture(), 25.0, keep_seconds=BUFFER_SECONDS_STEADY, keep_fps=BUFFER_FPS)
+    reader.run()                                    # reads until the capture ends
+    assert reader.step == 2 and calls.count('grab') >= calls.count('read') - 1
+    kept = [i for i, _ in reader.buffer]
+    assert all(i % 2 == 0 for i in kept) and len(kept) <= int(25 / 2 * BUFFER_SECONDS_STEADY)
+    assert reader.take(kept[0] + 1)[0] == kept[1]   # a frame that was not kept gives the next kept one
+
+
+def test_youtube_and_hls_get_the_long_buffer_and_rtsp_the_short_one():
+    from qavach.camera_runner import bursty
+    from qavach.sources import Source
+
+    assert bursty(Source('youtube', url='https://youtu.be/x'), 'https://manifest.googlevideo.com/a.m3u8')
+    assert bursty(Source('stream', url='https://cam/live.m3u8'), 'https://cam/live.m3u8')
+    assert not bursty(Source('stream', url='rtsp://10.0.0.5/stream1'), 'rtsp://10.0.0.5/stream1')

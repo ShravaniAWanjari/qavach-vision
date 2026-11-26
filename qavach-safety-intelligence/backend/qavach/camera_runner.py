@@ -32,6 +32,10 @@ STALL_SECONDS = 20          # a live stream that sends nothing for this long is 
 PHONE_POSE_SIZE = 320       # pose input for one person's crop (phone rule)
 PHONE_POSE_PEOPLE = 4       # people a frame the phone rule runs pose on
 PREVIEW_ONLY_FPS = 12       # preview rate of a camera that has no rule to run
+BUFFER_SECONDS_BURSTY = 12  # YouTube and other HLS streams deliver several seconds of video at once: keep that much
+BUFFER_SECONDS_STEADY = 3   # an RTSP camera delivers frame by frame: a few seconds covers a slow frame of the detector
+BUFFER_FPS = PREVIEW_ONLY_FPS   # frames a second kept in the live buffer: above the 5 to 6 a second analysed in production
+                                # and the preview rate of a camera without rules; the others are read past, not compressed
 
 
 def schedule_active(schedule, now=None):
@@ -77,6 +81,25 @@ def engine_needs(engine):
     if engine.kind in NEEDS:
         return set(NEEDS[engine.kind])
     return {'person', 'vehicle'} if engine.subject == 'any' else {engine.subject}
+
+
+PERSON_TRACK_FLOOR = 0.05          # the tracker wants weak person boxes too (it links a person across frames with them)
+
+
+def detect_floor(engines, needs):
+    """The lowest confidence the person and vehicle detector needs to keep for a camera. People that are tracked need the
+    weak boxes (0.05); a camera that only counts people, or only watches vehicles, objects and phones, uses nothing below its
+    own floor, and the detector spends a lot less time cleaning up overlapping boxes without them."""
+    floors = []
+    if 'person' in needs:
+        floors.append(PERSON_TRACK_FLOOR if needs_tracker(engines) else crowdcount.PERSON_FLOOR)
+    if 'vehicle' in needs:
+        floors.append(VEHICLE_FLOOR)
+    if 'object' in needs:
+        floors.append(OBJECT_FLOOR)
+    if 'phone' in needs:
+        floors.append(PHONE_FLOOR)
+    return min(floors) if floors else PERSON_TRACK_FLOOR
 
 
 def needs_tracker(engines):
@@ -129,6 +152,12 @@ def fire_rule(data):
                                    min_hits=data.get('minFrames'), repeat_seconds=data.get('repeatSec')))
 
 
+def bursty(source, address):
+    """Whether a live source delivers video in bursts (YouTube, HLS over HTTP) rather than frame by frame (RTSP)."""
+    a = str(address or '').lower()
+    return source.kind == 'youtube' or '.m3u8' in a or a.startswith(('http://', 'https://'))
+
+
 def is_fire(rule):
     return rule.get('condition') == 'smoke'
 
@@ -144,10 +173,13 @@ class LiveReader(threading.Thread):
     It owns the capture and releases it itself when it stops: releasing a capture while another thread is inside
     read() crashes OpenCV's FFmpeg and takes the whole service down."""
 
-    def __init__(self, capture, fps, keep_seconds=12):
+    def __init__(self, capture, fps, keep_seconds=BUFFER_SECONDS_BURSTY, keep_fps=None):
         super().__init__(daemon=True)
         self.capture = capture
-        self.buffer = deque(maxlen=max(30, int(fps * keep_seconds)))      # (frame index, JPEG bytes)
+        # Every frame is read (a stream must be read to move on), but only every `step`-th is kept: compressing all 25 a
+        # second to JPEG cost most of the CPU spent on a live camera and held 165 MB a camera at 1080p for 12 seconds.
+        self.step = max(1, round(fps / keep_fps)) if keep_fps else 1
+        self.buffer = deque(maxlen=max(8, int(fps / self.step * keep_seconds)))      # (frame index, JPEG bytes)
         self.count = 0                                                      # frames read so far
         self.failed = False
         self.stop_flag = threading.Event()
@@ -156,6 +188,13 @@ class LiveReader(threading.Thread):
     def run(self):
         try:
             while not self.stop_flag.is_set():
+                if self.count % self.step:          # a frame that is not kept: read past it without converting it
+                    if not self.capture.grab():
+                        self.failed = True
+                        return
+                    with self.lock:
+                        self.count += 1
+                    continue
                 ok, frame = self.capture.read()
                 if not ok:
                     self.failed = True
@@ -268,6 +307,7 @@ class CameraRunner:
         self.object_tracker = VehicleTracker(min_hits=3) if 'object' in needs else None
         self.detect_classes = (((PERSON_CLASS,) if 'person' in needs else ()) + (VEHICLE_CLASSES if 'vehicle' in needs else ())
                                + (OBJECT_CLASSES if 'object' in needs else ()) + ((PHONE_CLASS,) if 'phone' in needs else ()))
+        self.detect_floor = detect_floor(engines, needs)
         return needs
 
     def _poses(self, crop, tracks, region):
@@ -324,7 +364,8 @@ class CameraRunner:
             self.stats.update(source_fps=round(fps, 1), width=width, height=height, detecting=bool(engines or fire_engines))
             self.state, self.error = 'running', None
             if source.live:
-                reader = LiveReader(capture, fps)
+                reader = LiveReader(capture, fps, keep_seconds=BUFFER_SECONDS_BURSTY if bursty(source, address) else BUFFER_SECONDS_STEADY,
+                                    keep_fps=BUFFER_FPS)
                 reader.start()
             done, busy, opened = 0, 0.0, time.time()
             for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines), self.camera['source'].every_frame)):
@@ -400,7 +441,7 @@ class CameraRunner:
         if engines:
             x1, y1, x2, y2 = region
             crop = np.ascontiguousarray(frame[y1:y2, x1:x2])
-            found = detector.detect(crop, detect_size(region), self.detect_classes)
+            found = detector.detect(crop, detect_size(region), self.detect_classes, conf=getattr(self, 'detect_floor', PERSON_TRACK_FLOOR))
             if tracker is not None:
                 tracks = tracker.update(crop, found[found[:, 5] == PERSON_CLASS])
                 rows = [(int(t[4]), float(t[0]) + x1, float(t[1]) + y1, float(t[2]) + x1, float(t[3]) + y1, float(t[5]))
