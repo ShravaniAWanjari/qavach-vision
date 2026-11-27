@@ -6,10 +6,13 @@
 //   · in the console: qavach.status() prints the report now, qavach.stages() the time each stage takes per camera,
 //     qavach.quiet() / qavach.verbose() turn the report off and on (remembered in this browser)
 //
+// Only this console's own cameras and rules are reported. The detection service may also run cameras and rules kept
+// elsewhere (the Sentinel database); those are left out here, as the console leaves out their alerts.
+//
 // It reads the same /api/events the console already polls (asking for no events, only the camera statuses), on its own
 // timer, so it reports in every open window and changes nothing.
 import { backend, type CameraStatus } from './backend';
-import { cameraStore } from '../state/store';
+import { cameraStore, ruleStore } from '../state/store';
 
 /** Below this many analysed frames a second a camera is reported as slow: alerts come late and short events are missed. */
 const SLOW_FPS = 2;
@@ -49,7 +52,7 @@ const quiet = () => {
 };
 const nameOf = (id: string) => cameraStore.get().find((c) => c.id === id)?.name ?? '';
 const running = (s: Status) => s.state === 'running';
-const slow = (s: Status) => running(s) && s.detecting && (s.frames ?? 0) > 5 && s.fps > 0 && s.fps < SLOW_FPS;
+const slow = (s: Status) => running(s) && s.detecting && (s.frames ?? 0) > 2 && (s.frameMs ?? 0) > 1000 / SLOW_FPS;
 const slowest = (s: Status) => {
   const entries = Object.entries(s.stageMs ?? {}).sort((a, b) => b[1] - a[1]);
   return entries.length ? `${entries[0][0]} ${Math.round(entries[0][1])} ms` : '';
@@ -68,7 +71,7 @@ function report(statuses: Record<string, Status>) {
   const down = ids.filter((id) => !running(statuses[id]));
   const noSource = cameraStore.get().filter((c) => !c.source).length;
   console.info(
-    `${TAG} %c${ids.length} cameras on the detection service: ${ids.length - down.length} running${down.length ? `, ${down.length} not` : ''}` +
+    `${TAG} %c${ids.length} of our cameras on the detection service${device ? ` (models on ${device === 'cpu' ? 'the CPU, no GPU' : device})` : ''}: ${ids.length - down.length} running${down.length ? `, ${down.length} not` : ''}` +
       ` · ${rulesOn} of ${rules.length} rules running` +
       (slowIds.length ? ` · ${slowIds.length} slow (under ${SLOW_FPS} frames a second)` : '') +
       (noSource ? ` · ${noSource} cameras on the console have no video and are not analysed` : ''),
@@ -85,10 +88,10 @@ function report(statuses: Record<string, Status>) {
             location: nameOf(id),
             state: s.state + (s.error ? `: ${s.error}` : ''),
             'rules running': rulesLine(s),
-            'frames/s analysed': running(s) && s.detecting ? s.fps : s.detecting ? 0 : 'preview only',
+            'frames/s analysed': !running(s) ? '' : s.detecting ? (s.frameMs ? Math.round(10000 / s.frameMs) / 10 : s.fps) : 'preview only',
             'frames/s from camera': s.stream_fps || s.source_fps || '',
-            'ms per frame': s.frameMs ? Math.round(s.frameMs) : '',
-            'slowest stage': slowest(s),
+            'ms per frame': running(s) && s.frameMs ? Math.round(s.frameMs) : '',
+            'slowest stage': running(s) ? slowest(s) : '',
             people: s.people,
             alerts: s.alerts,
             slow: slow(s) ? 'SLOW' : '',
@@ -138,10 +141,23 @@ function changes(now: Record<string, Status>) {
   slowNow = new Set(Object.keys(now).filter((id) => slow(now[id])));
 }
 
+/** The statuses of this console's own cameras, each with only this console's own rules. */
+function ours(all: Record<string, Status>) {
+  const cams = new Set(cameraStore.get().map((c) => c.id));
+  const rules = new Set(ruleStore.get().map((r) => r.id));
+  return Object.fromEntries(
+    Object.entries(all)
+      .filter(([id]) => cams.has(id))
+      .map(([id, s]) => [id, { ...s, ruleStatus: (s.ruleStatus ?? []).filter((r) => rules.has(r.id)) }]),
+  );
+}
+
+let device = '';
 async function poll(force = false) {
   try {
+    if (!device || force) device = ((await backend.health()) as { device?: string | null }).device ?? '';
     const r = await backend.poll(Number.MAX_SAFE_INTEGER);
-    const statuses = r.cameras as Record<string, Status>;
+    const statuses = ours(r.cameras as Record<string, Status>);
     if (!quiet()) {
       changes(statuses);
       if (force || Date.now() - lastReport >= REPORT_MS) {
