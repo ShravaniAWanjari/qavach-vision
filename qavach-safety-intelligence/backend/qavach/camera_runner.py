@@ -150,7 +150,7 @@ def detection_region(engines, width, height):
 
 def detect_size(region):
     long_side = max(region[2] - region[0], region[3] - region[1])
-    return min(config.DETECT_SIZE, int(math.ceil(long_side / 32) * 32))
+    return min(config.detect_size_limit(), int(math.ceil(long_side / 32) * 32))
 
 
 def fire_rule(data):
@@ -572,7 +572,7 @@ class CameraRunner:
                         whole[:, [0, 2]] += x1
                         whole[:, [1, 3]] += y1
                     began = time.perf_counter()
-                    engine.people = crowdcount.people_boxes(detector, frame, _zones_box(engine, frame.shape), whole)
+                    engine.people = crowdcount.people_boxes(detector, frame, _zones_box(engine, frame.shape), whole, cache=engine)
                     lap('counting tiles', began)
                     if tracker is None:
                         # No tracker on a crowd-only camera: the counted people are the preview's boxes (numbered per frame).

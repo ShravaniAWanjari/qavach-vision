@@ -22,6 +22,39 @@ def _lock_for(device):
     return _MPS_LOCK if str(device).startswith('mps') else threading.Lock()
 
 
+def load_model(weights, device, task='detect', imgsz=960):
+    """(model, 'openvino' or 'pytorch'): the YOLO model for `weights`. On the CPU, the OpenVINO version of it when the openvino package is installed: about
+    1.5 to 3 times faster than PyTorch on a CPU, with the same detections. It is made once from the weights (a few seconds)
+    and kept under DATA/models; any problem, or QAVACH_OPENVINO=off, falls back to the PyTorch model."""
+    import os
+    import shutil
+    from pathlib import Path
+    from ultralytics import YOLO
+    weights = Path(weights)
+    if device != 'cpu' or os.environ.get('QAVACH_OPENVINO', '').strip().lower() in ('0', 'off', 'false', 'no'):
+        return YOLO(str(weights), task=task), 'pytorch'
+    try:
+        import openvino  # noqa: F401
+    except ImportError:
+        return YOLO(str(weights), task=task), 'pytorch'
+    try:
+        home = config.DATA / 'models'
+        stem = f'{weights.stem}-{int(weights.stat().st_mtime)}'
+        built = home / f'{stem}_openvino_model'
+        if not (built / 'metadata.yaml').exists():
+            home.mkdir(parents=True, exist_ok=True)
+            work = home / f'{stem}.pt'
+            shutil.copyfile(weights, work)          # the export is written next to the weights it is made from
+            YOLO(str(work), task=task).export(format='openvino', imgsz=imgsz, dynamic=True, half=False, verbose=False)
+            work.unlink(missing_ok=True)
+        model = YOLO(str(built), task=task)
+        print(f'{weights.name}: running with OpenVINO on the CPU', flush=True)
+        return model, 'openvino'
+    except Exception as error:                                                                          # noqa: BLE001
+        print(f'{weights.name}: OpenVINO not used ({type(error).__name__}: {error}); running with PyTorch', flush=True)
+        return YOLO(str(weights), task=task), 'pytorch'
+
+
 class Detector:
     """One model shared by every camera; calls are serialised because the GPU is shared too."""
 
@@ -31,7 +64,7 @@ class Detector:
             raise FileNotFoundError(f'{config.YOLO_WEIGHTS} is missing; set QAVACH_YOLO_WEIGHTS or see README.md')
         self.device = pick_device()
         self.half = half_precision(self.device)
-        self.model = YOLO(str(config.YOLO_WEIGHTS))
+        self.model, self.runtime = load_model(config.YOLO_WEIGHTS, self.device, imgsz=config.detect_size_limit())
         self.lock = _lock_for(self.device)
         self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
 
@@ -68,7 +101,7 @@ class FireDetector:
             raise FileNotFoundError(f'{config.FIRE_WEIGHTS} is missing; set QAVACH_FIRE_WEIGHTS or see README.md')
         self.device = pick_device()
         self.half = half_precision(self.device)
-        self.model = YOLO(str(config.FIRE_WEIGHTS))
+        self.model, self.runtime = load_model(config.FIRE_WEIGHTS, self.device, imgsz=self.SIZE)
         self.lock = _lock_for(self.device)
         self.detect(np.zeros((540, 960, 3), dtype=np.uint8))          # warm up the GPU kernels
 

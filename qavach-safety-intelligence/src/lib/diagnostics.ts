@@ -71,7 +71,7 @@ function report(statuses: Record<string, Status>) {
   const down = ids.filter((id) => !running(statuses[id]));
   const noSource = cameraStore.get().filter((c) => !c.source).length;
   console.info(
-    `${TAG} %c${ids.length} of our cameras on the detection service${device ? ` (models on ${device === 'cpu' ? 'the CPU, no GPU' : device})` : ''}: ${ids.length - down.length} running${down.length ? `, ${down.length} not` : ''}` +
+    `${TAG} %c${ids.length} of our cameras on the detection service${device ? ` (models on ${device === 'cpu' ? `the CPU, no GPU${runtime === 'openvino' ? ', with OpenVINO' : ', with PyTorch'}` : device})` : ''}: ${ids.length - down.length} running${down.length ? `, ${down.length} not` : ''}` +
       ` · ${rulesOn} of ${rules.length} rules running` +
       (slowIds.length ? ` · ${slowIds.length} slow (under ${SLOW_FPS} frames a second)` : '') +
       (noSource ? ` · ${noSource} cameras on the console have no video and are not analysed` : ''),
@@ -153,9 +153,14 @@ function ours(all: Record<string, Status>) {
 }
 
 let device = '';
+let runtime = '';
 async function poll(force = false) {
   try {
-    if (!device || force) device = ((await backend.health()) as { device?: string | null }).device ?? '';
+    if (!device || force) {
+      const h = (await backend.health()) as { device?: string | null; runtime?: string | null };
+      device = h.device ?? '';
+      runtime = h.runtime ?? '';
+    }
     const r = await backend.poll(Number.MAX_SAFE_INTEGER);
     const statuses = ours(r.cameras as Record<string, Status>);
     if (!quiet()) {

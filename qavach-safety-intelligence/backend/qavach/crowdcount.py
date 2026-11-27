@@ -7,9 +7,11 @@ found whole in the neighbouring tile, as the tiles overlap). The count is approx
 """
 import numpy as np
 
+from qavach import config
+
 TILE_GRID = 2                # tiles across and down the region
 TILE_OVERLAP = 0.25          # share of a tile that overlaps its neighbour
-TILE_SIZE = 1280             # detector input for one tile
+TILE_SIZE = 1280             # detector input for one tile, at most (never more than the detection size, config.detect_size_limit)
 PERSON_FLOOR = 0.3           # people less sure than this are not counted
 EDGE_PX = 3                  # a box this close to a tile's inner edge is cut by it
 SAME_PERSON = 0.5            # a tile box covered this much by a box already found is that person
@@ -65,16 +67,27 @@ def merge(whole, found, region):
     return list(whole) + kept
 
 
-def people_boxes(detector, frame, region, whole):
+def people_boxes(detector, frame, region, whole, cache=None):
     """Person boxes in picture pixels, (x1, y1, x2, y2, confidence): `whole` (the region pass, already in picture pixels) plus
-    the people only the tiles find. Costs TILE_GRID squared extra detector calls."""
+    the people only the tiles find. Costs one detector pass per tile looked at. With `cache` (any object; the rule's engine)
+    and config.tiles_per_frame() set, only that many tiles are looked at this frame, in turn, and the others keep the people
+    they found last time, kept on `cache`; the region pass still runs every frame."""
     whole = [tuple(float(v) for v in b[:5]) for b in whole if b[4] >= PERSON_FLOOR]
-    found = []
-    for t in tiles(region):
+    size = min(TILE_SIZE, config.detect_size_limit())
+    grid = [t for t in tiles(region) if t[2] - t[0] >= 32 and t[3] - t[1] >= 32]
+    per_frame = config.tiles_per_frame()
+    held = getattr(cache, '_tiles', None) if cache is not None else None
+    if not per_frame or cache is None or held is None or held['region'] != tuple(region):
+        held = dict(region=tuple(region), found={}, next=0)        # every tile this time
+        look = grid
+    else:
+        look = [grid[(held['next'] + i) % len(grid)] for i in range(min(per_frame, len(grid)))]
+        held['next'] = (held['next'] + len(look)) % max(1, len(grid))
+    for t in look:
         tx1, ty1, tx2, ty2 = t
-        if tx2 - tx1 < 32 or ty2 - ty1 < 32:
-            continue
-        for b in detector.detect(np.ascontiguousarray(frame[ty1:ty2, tx1:tx2]), TILE_SIZE, (0,), conf=PERSON_FLOOR):
-            if b[4] >= PERSON_FLOOR:
-                found.append(((float(b[0]) + tx1, float(b[1]) + ty1, float(b[2]) + tx1, float(b[3]) + ty1, float(b[4])), t))
-    return merge(whole, found, region)
+        held['found'][t] = [((float(b[0]) + tx1, float(b[1]) + ty1, float(b[2]) + tx1, float(b[3]) + ty1, float(b[4])), t)
+                            for b in detector.detect(np.ascontiguousarray(frame[ty1:ty2, tx1:tx2]), size, (0,), conf=PERSON_FLOOR)
+                            if b[4] >= PERSON_FLOOR]
+    if cache is not None and per_frame:
+        cache._tiles = held
+    return merge(whole, [f for t in grid for f in held['found'].get(t, [])], region)

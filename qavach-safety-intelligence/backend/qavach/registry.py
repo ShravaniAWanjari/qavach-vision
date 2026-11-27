@@ -82,6 +82,12 @@ class Registry:
         loaded = self._detector or self._fire_detector
         return loaded.device if loaded else None
 
+    @property
+    def runtime(self):
+        """'openvino' or 'pytorch' for the loaded detector, or None."""
+        loaded = self._detector or self._fire_detector
+        return getattr(loaded, 'runtime', None) if loaded else None
+
     # ── events ───────────────────────────────────────────────────────────────────────────────────────────────────
     def emit(self, event):
         with self.events_lock:

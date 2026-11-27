@@ -85,7 +85,7 @@ def bad(error):
 
 @app.get('/api/health')
 def health():
-    return dict(ok=True, epoch=registry.epoch, detector=registry.detector_loaded, device=registry.device,
+    return dict(ok=True, epoch=registry.epoch, detector=registry.detector_loaded, device=registry.device, runtime=registry.runtime,
                 cameras=len(registry.cameras), rules=len(registry.rules))
 
 

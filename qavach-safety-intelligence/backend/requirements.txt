@@ -6,6 +6,8 @@ torchvision==0.29.1
 ultralytics==8.3.221
 opencv-python==4.11.0.86
 numpy==2.5.4
+# On a server with no GPU the detectors run through OpenVINO, about 1.5 to 3 times faster on a CPU (detector.load_model).
+openvino==2026.4.1
 fastapi==0.118.0
 uvicorn==0.37.0
 # Not pinned on purpose: YouTube changes often and an old yt-dlp stops working. Rebuild the image to update it.

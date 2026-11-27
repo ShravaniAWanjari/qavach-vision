@@ -41,8 +41,30 @@ MAX_STREAM_HEIGHT = int(os.environ.get('QAVACH_MAX_HEIGHT', 1080))
 # the steps of connecting a camera without a real RTSP camera on the network. The console still shows what was typed.
 # Set QAVACH_DEMO_RTSP_URL to an empty value to turn it off and open real RTSP addresses.
 DEMO_RTSP_URL = os.environ.get('QAVACH_DEMO_RTSP_URL', 'https://www.youtube.com/live/QO-hO_kwwmY').strip()
-# Detection runs on the area around the drawn zones, resized so its long side is at most this many pixels.
-DETECT_SIZE = int(os.environ.get('QAVACH_DETECT_SIZE', 1280))
+# Detection runs on the area around the drawn zones, resized so its long side is at most this many pixels: 1280 on a GPU.
+# A server with no GPU uses CPU_DETECT_SIZE, as a pass at 1280 costs it seconds; QAVACH_DETECT_SIZE sets it either way.
+_DETECT_SIZE_SET = os.environ.get('QAVACH_DETECT_SIZE', '').strip()
+DETECT_SIZE = int(_DETECT_SIZE_SET or 1280)
+CPU_DETECT_SIZE = 960
+# People counting looks again in tiles of the picture (crowdcount.py), one detector pass per tile. On a GPU every tile is looked at
+# every frame (0 = all); with no GPU only this many a frame, in turn, the others keeping their last result, as a crowd changes
+# slowly. QAVACH_TILES_PER_FRAME sets it either way.
+_TILES_SET = os.environ.get('QAVACH_TILES_PER_FRAME', '').strip()
+CPU_TILES_PER_FRAME = 1
+
+
+def on_cpu():
+    """Whether the models run on the CPU (no GPU found, or QAVACH_DEVICE=cpu)."""
+    from qavach.device import pick_device
+    return pick_device() == 'cpu'
+
+
+def detect_size_limit():
+    return DETECT_SIZE if _DETECT_SIZE_SET or not on_cpu() else CPU_DETECT_SIZE
+
+
+def tiles_per_frame():
+    return int(_TILES_SET) if _TILES_SET else CPU_TILES_PER_FRAME if on_cpu() else 0
 # The live preview is downscaled to this width before it is JPEG-encoded.
 PREVIEW_WIDTH = int(os.environ.get('QAVACH_PREVIEW_WIDTH', 960))
 
