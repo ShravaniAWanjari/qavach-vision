@@ -1594,7 +1594,7 @@
    "minConfidence": 0.45,
    "repeatSec": 30,
    "nearHeights": 1.0,
-   "nearMovingOnly": false,
+   "nearMovingOnly": true,
    "schedule": "always",
    "mode": "live",
    "priority": "P3"

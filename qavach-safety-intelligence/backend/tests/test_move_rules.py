@@ -272,3 +272,19 @@ def test_zoom_boxes_only_small_people_and_merge_keeps_surer():
     b = np.array([[11, 11, 31, 31, 0.6, 67], [200, 200, 220, 220, 0.5, 67]], dtype=np.float32)
     m = zoom.merge(a, b)
     assert len(m) == 2 and abs(float(m[0][4]) - 0.6) < 1e-6
+
+
+def test_a_parked_vehicle_whose_box_wobbles_is_not_taken_for_a_moving_one():
+    # a small parked car (40 px wide) whose box jumps 3 px back and forth each frame: 0.4 of its width a second over one frame
+    frames = [[box(V + 1 + k, 300 + (3 if k % 2 else 0), 400, 40, 30), person(1, 300 + 30 * (k % 3) - 30, 400, h=60, w=24)] for k in range(20)]
+    assert run(NearRule([FULL], rule(min_frames=2), near_heights=1.5), frames) == []
+
+
+def test_a_parked_vehicle_missed_for_a_frame_is_not_matched_to_its_neighbour():
+    # two parked cars side by side; the detector misses the one beside the person now and then, so on the next frame it is
+    # nearest to where its neighbour was: one frame reads as fast driving, but a second earlier it stood just there
+    frames = []
+    for k in range(25):
+        cars = [box(V + 1, 300, 400, 100, 60)] + ([] if k % 4 == 1 else [box(V + 2, 420, 400, 100, 60)])
+        frames.append(cars + [person(1, 520 + 20 * (k % 3), 400, h=60, w=24)])
+    assert run(NearRule([FULL], rule(min_frames=1), near_heights=1.5), frames) == []

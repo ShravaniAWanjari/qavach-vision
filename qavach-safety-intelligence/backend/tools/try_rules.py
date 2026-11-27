@@ -90,6 +90,14 @@ def main():
 
     found = []
     runner = CameraRunner.__new__(CameraRunner)
+    # Everything CameraRunner.__init__ sets that the frame code reads, without starting its reading thread (this tool feeds frames
+    # itself). One viewer, so the camera makes the annotated picture this tool saves.
+    import collections
+    import threading
+    for k, v in dict(pose_detector=None, fire_cache=None, state='running', error=None, phone_scenes={}, jpeg=None, jpeg_overlay=None,
+                     overlay=None, overlay_seq=0, viewers=1, wanted_until=0.0, _clip_at=0.0, full=None, full_at=0.0, file_pos=0.0,
+                     stop_flag=threading.Event(), external=False).items():
+        setattr(runner, k, v)
     runner.camera = dict(id='CAM-X', zones=cfg['zones'], source=sources.Source('stream', url='x'))
     runner.rules = cfg['rules']
     runner.stats = dict(alerts=0, fps=args.fps, people=0, vehicles=0)

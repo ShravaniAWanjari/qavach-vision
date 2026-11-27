@@ -40,6 +40,8 @@ NEAR_HEIGHTS = 1.0                         # default: within this many person he
 PERSON_MOVE_HEIGHTS = 0.4                 # a person who never moved this far (in their own heights) is a sign, pole or flag the detector
                                            # calls a person, not someone to alert on: one such "person" at a car park exit gave 20 alerts
 VEHICLE_MOVING_WIDTHS = 0.3                # a vehicle whose centre goes this many of its own widths in a second is moving
+VEHICLE_FAST_WIDTHS = 0.8                 # judged on one frame alone, a vehicle counts as moving only this fast (box wobble stays below it)
+SPEED_WINDOW = 1.0                        # seconds a vehicle's speed is measured over
 OWNER_PX = 150.0                           # default: an object this close to a person still has someone with it
 OBJECT_WOBBLE_PX = 10.0                    # a still object's box moves this much from noise alone
 TRAIL_SECONDS = 3.0
@@ -191,44 +193,84 @@ class NearRule(_SustainedRule):
         self.near_heights = near_heights        # when set, "near" is this many person heights instead of near_px pixels
         self.moving_only = moving_only          # False: a person beside a parked vehicle counts too
         self.vehicles = {}
-        self._previous = (None, [])             # (seconds, [(x1, y1, x2, y2)]) of the vehicles in the last frame
+        self._history = deque()                 # (seconds, [(x1, y1, x2, y2)]) of the vehicles, over the last second or so
+        self._fast_last = []                    # vehicles measured as moving in the last frame
         self._origin = {}                       # person track id -> (foot x, foot y) where it was first seen
 
     def _speeds(self, seconds, boxes):
-        """Each vehicle's speed in its own widths a second, from the nearest vehicle of about its size in the last frame. The
-        vehicle tracker follows by overlap, which a vehicle at a few frames a second leaves behind, so its id says nothing
-        about motion; the size check stops a vehicle being matched to its neighbour."""
-        last_t, last = self._previous
-        self._previous = (seconds, list(boxes))
+        """Each vehicle's speed in its own widths a second, or None when it cannot be told. The vehicle tracker follows by
+        overlap, which a vehicle at a few frames a second leaves behind, so its id says nothing about motion; vehicles are
+        matched by place and size instead.
+
+        Measured over about a second, against the nearest vehicle of about its size then (the slowest reading over the
+        frames 0.6 to 1.3 seconds back, as the detector misses a vehicle now and then): a parked vehicle's box wobbles by
+        a few pixels from frame to frame, which over one frame reads as slow driving but does not add up over a second. A
+        vehicle too fast to be matched a second later is judged on the last frame alone, and only when it is clearly fast
+        and nothing of its size stood where it is now a second ago (so a parked vehicle the detector missed for a frame and
+        then matched to its neighbour is not taken for a moving one)."""
+        history = self._history
+        history.append((seconds, list(boxes)))
+        while history and seconds - history[0][0] > SPEED_WINDOW + 0.5:
+            history.popleft()
+        last = history[-2] if len(history) >= 2 else None
+        # every frame from 0.6 to 1.3 seconds back: the detector misses a vehicle now and then, so one of them may lack it
+        earlier = [h for h in history if SPEED_WINDOW * 0.6 <= seconds - h[0] <= SPEED_WINDOW + 0.3]
+        recent_frames = [h for h in history if 0.3 <= seconds - h[0] < SPEED_WINDOW * 0.6]
         speeds = []
         for b in boxes:
             w = max(1.0, b[2] - b[0])
-            best = None
-            if last_t is not None and seconds > last_t:
-                for q in last:
-                    wq = q[2] - q[0]
-                    d = math.hypot((b[0] + b[2] - q[0] - q[2]) / 2, (b[1] + b[3] - q[1] - q[3]) / 2)
-                    if d <= 1.6 * w and 0.7 <= wq / w <= 1.4 and (best is None or d < best):
-                        best = d
-                if best is not None:
-                    best = best / w / (seconds - last_t)
-            speeds.append(best)
+            found = [v for v in (self._nearest(b, h, seconds, reach=1.6 * w * (seconds - h[0])) for h in earlier) if v is not None]
+            steady = min(found) if found else None      # if it stood about here in any of them, it is not driving
+            if steady is None and any(self._nearest(b, h, seconds, reach=0.15 * w) is not None for h in list(history)[:-1]):
+                steady = 0.0                            # too soon to say over a second, but it stood just here a moment ago
+            if steady is not None and steady >= VEHICLE_MOVING_WIDTHS:
+                # cross-check over the last half second: a parked vehicle the detector missed for a whole second is matched to
+                # a neighbour then, but it stood still just now
+                recent = [v for v in (self._nearest(b, h, seconds, reach=1.6 * w * (seconds - h[0])) for h in recent_frames) if v is not None]
+                if recent and min(recent) < VEHICLE_MOVING_WIDTHS / 2:
+                    steady = min(recent)
+            if steady is not None:
+                speeds.append(steady)
+                continue
+            quick = self._nearest(b, last, seconds, reach=1.6 * w)
+            speeds.append(quick if quick is not None and quick >= VEHICLE_FAST_WIDTHS else None)
         return speeds
+
+    @staticmethod
+    def _nearest(b, frame, seconds, reach):
+        """Widths a second from `b` to the nearest vehicle of about its size in `frame` (seconds, boxes), within `reach` px."""
+        if frame is None or seconds <= frame[0]:
+            return None
+        w = max(1.0, b[2] - b[0])
+        best = None
+        for q in frame[1]:
+            d = math.hypot((b[0] + b[2] - q[0] - q[2]) / 2, (b[1] + b[3] - q[1] - q[3]) / 2)
+            if d <= reach and 0.7 <= (q[2] - q[0]) / w <= 1.4 and (best is None or d < best):
+                best = d
+        return None if best is None else best / w / (seconds - frame[0])
 
     def update(self, seconds, tracks):
         """The alert is on the person; it carries `distance` (pixels, box to box) and the vehicle's id."""
         info, events = {}, []
         vehicles = [t for t in tracks if kind_of(int(t[0])) == 'vehicle']
-        moving = []
+        moving, fast_now = [], []
         speeds = self._speeds(seconds, [t[1:5] for t in vehicles])
         for (tid, x1, y1, x2, y2, conf), speed in zip(vehicles, speeds):
             trail = self.vehicles.setdefault(int(tid), _Watch())
             trail.last_seen = seconds
             trail.trail.add(seconds, _foot(x1, y1, x2, y2), y2 - y1)
-            if (not self.moving_only or trail.trail.moved(seconds) >= MOVING_PX * self.scale
-                    or (speed is not None and speed >= VEHICLE_MOVING_WIDTHS)):
-                moving.append((int(tid), (x1, y1, x2, y2)))
+            box = (x1, y1, x2, y2)
+            fast = speed is not None and speed >= VEHICLE_MOVING_WIDTHS
+            if fast:
+                fast_now.append(box)
+            # Measured moving in this frame and the last, about here: a parked vehicle the detector sees only now and then
+            # can measure as moving once (matched to a neighbour), but a vehicle that is driving is seen frame after frame.
+            confirmed = fast and any(math.hypot((x1 + x2 - q[0] - q[2]) / 2, (y1 + y2 - q[1] - q[3]) / 2) <= 1.6 * max(1.0, x2 - x1)
+                                     for q in self._fast_last)
+            if not self.moving_only or trail.trail.moved(seconds) >= MOVING_PX * self.scale or confirmed:
+                moving.append((int(tid), box))
             info[int(tid)] = _info()
+        self._fast_last = fast_now
         for tid, x1, y1, x2, y2, conf in tracks:
             tid = int(tid)
             if kind_of(tid) != 'person':
