@@ -10,6 +10,7 @@ import { apiUrl, streamUrl, stillUrl } from '../lib/backend';
 import { hms } from '../lib/time';
 import { useService } from '../state/bridge';
 import { Icon, type IconName } from './Icon';
+import { DirectVideo, directSource, LiveStream } from './LiveView';
 import './ui.css';
 
 export const PRIORITY_NAME: Record<Priority, string> = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
@@ -695,12 +696,14 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
   const [bump, setBump] = useState(0);
   const [badBump, setBadBump] = useState(-1); // the refresh that found no picture yet
   const [failed, setFailed] = useState<string | null>(null); // the last address that could not be loaded at all
+  const [directBroken, setDirectBroken] = useState(false); // the browser could not play the camera's video itself
   // A frame is fetched afresh while a still is wanted, and also for a connected camera that has no saved still (the sample
   // cameras were never connection-tested), so zone drawing has a picture to draw on.
   const refreshing = serviceUp && !snapshot && ((!!still && !frozen) || (!!frozen && !cam.source?.frameUrl));
   useEffect(() => {
     setBroken(false);
     setFailed(null);
+    setDirectBroken(false);
   }, [cam.id, serviceUp]);
   useEffect(() => {
     if (!refreshing) return;
@@ -713,7 +716,8 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
   const offlineFrames = !serviceUp && cam.source?.kind === 'upload' && hasFallbackFrames(cam.source.uploadId) ? cam.source.uploadId : undefined;
   const snapFile = snapshot?.split('/').pop();
   const offlineSnap = !serviceUp && snapFile && offlineFrames ? assetUrl(`fallback/snapshots/${snapFile}`) : undefined;
-  const latest = refreshing && badBump !== bump ? `${apiUrl(`/api/cameras/${encodeURIComponent(cam.id)}/frame.jpg`)}?t=${bump}` : undefined;
+  // A still on the video wall is a thumbnail: the service sends a small one (much cheaper than the full picture).
+  const latest = refreshing && badBump !== bump ? `${apiUrl(`/api/cameras/${encodeURIComponent(cam.id)}/frame.jpg`)}?t=${bump}${still && !frozen ? '&w=640' : ''}` : undefined;
   const src = snapshot ? (offlineSnap ?? apiUrl(snapshot)) : !still && !frozen && serviceUp && !broken ? streamUrl(cam) : (latest ?? fallback);
   const missing = (!offlineFrames || !!snapshot) && (!src || failed === src);
   useEffect(() => onMissing(missing), [missing, onMissing]);
@@ -740,6 +744,12 @@ function RealPicture({ cam, still, frozen, snapshot, serviceUp, onMissing }: { c
     else if (src === latest) setBadBump(bump);
     else setBroken(true);
   };
+  // Live: the browser plays the camera's video itself where it can, else reads the service's picture stream; the boxes are
+  // drawn here either way (see LiveView).
+  const live = src === streamUrl(cam);
+  const direct = live && !directBroken ? directSource(cam) : undefined;
+  if (direct) return <DirectVideo cam={cam} src={direct.src} synced={direct.synced} onBroken={() => setDirectBroken(true)} />;
+  if (live) return <LiveStream cam={cam} onBroken={() => setBroken(true)} />;
   return <img className="camview__img" src={src} alt="" onError={onError} draggable={false} />;
 }
 

@@ -10,6 +10,8 @@ import asyncio
 import os
 import re
 import hashlib
+import json
+import time
 import shutil
 import uuid
 from pathlib import Path
@@ -169,6 +171,19 @@ def snapshot_file(event_id: str):
     return serve_jpeg(config.SNAPSHOTS, event_id, EVENT_ID)
 
 
+VIDEO_TYPES = {'.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo'}
+
+
+@app.get('/api/uploads/{upload_id}/video')
+def upload_video(upload_id: str):
+    """The uploaded video itself, so the browser plays it directly (with seeking) and the service sends only the boxes."""
+    path = sources.upload_path(upload_id)
+    if path is None or not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type=VIDEO_TYPES.get(path.suffix.lower(), 'application/octet-stream'),
+                        headers={'Cache-Control': 'max-age=3600'})
+
+
 # ── cameras and rules pushed by the console ──────────────────────────────────────────────────────────────────────────
 def guarded(fn, *args):
     try:
@@ -230,28 +245,65 @@ def runner_or_404(camera_id):
 
 
 @app.get('/api/cameras/{camera_id}/frame.jpg')
-def camera_frame(camera_id: str):
-    data = runner_or_404(camera_id).snapshot()
+def camera_frame(camera_id: str, w: int | None = None):
+    """The latest picture. `w` asks for a thumbnail at most that wide (the video wall's stills), much cheaper to make."""
+    runner = runner_or_404(camera_id)
+    runner.want_frame()
+    # A camera with no rule that nobody was watching has not read a picture lately: give it a moment to read one.
+    deadline = time.time() + 1.0
+    while time.time() - runner.full_at > 2.0 and time.time() < deadline and runner.state == 'running':
+        time.sleep(0.05)
+    data = runner.snapshot(width=max(160, min(w, 3840)) if w else None)
     if data is None:
         raise HTTPException(404, 'No picture yet')
     return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
 
 
+def overlay_header(overlay):
+    return json.dumps(overlay, separators=(',', ':')).encode() if overlay else b'null'
+
+
 @app.get('/api/cameras/{camera_id}/stream.mjpg')
 async def camera_stream(camera_id: str):
+    """The live picture, without boxes: each part carries its boxes in an X-Overlay header (JSON, see
+    camera_runner.overlay_of) and the console draws them. The camera makes this picture only while a stream is open."""
     runner = runner_or_404(camera_id)
 
     async def frames():
-        last = 0
-        while runner.state != 'stopped' and not runner.stop_flag.is_set():
-            if runner.seq != last and runner.jpeg:
-                last, data = runner.seq, runner.jpeg
-                yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + str(len(data)).encode() + b'\r\n\r\n' + data + b'\r\n'
-            else:
-                await asyncio.sleep(0.02)
+        with runner.watch():
+            last = 0
+            while runner.state != 'stopped' and not runner.stop_flag.is_set():
+                if runner.seq != last and runner.jpeg:
+                    last, data, overlay = runner.seq, runner.jpeg, runner.jpeg_overlay
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + str(len(data)).encode()
+                           + b'\r\nX-Overlay: ' + overlay_header(overlay) + b'\r\n\r\n' + data + b'\r\n')
+                else:
+                    await asyncio.sleep(0.02)
 
     return StreamingResponse(frames(), media_type='multipart/x-mixed-replace; boundary=frame',
                              headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/cameras/{camera_id}/overlay')
+async def camera_overlay(camera_id: str):
+    """Only the boxes, as server-sent events: for a browser that plays the video itself. Each event is one analysed
+    frame's overlay; `t` places it in the video. Opening this does not make the camera produce pictures."""
+    runner = runner_or_404(camera_id)
+
+    async def events():
+        last, quiet = 0, time.time()
+        yield b'retry: 2000\n\n'
+        while runner.state != 'stopped' and not runner.stop_flag.is_set():
+            if runner.overlay_seq != last and runner.overlay:
+                last, quiet = runner.overlay_seq, time.time()
+                yield b'data: ' + overlay_header(runner.overlay) + b'\n\n'
+            else:
+                if time.time() - quiet > 15:            # keep the connection alive through proxies
+                    quiet = time.time()
+                    yield b': ping\n\n'
+                await asyncio.sleep(0.03)
+
+    return StreamingResponse(events(), media_type='text/event-stream', headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
 
 
 if config.WEB and (config.WEB / 'index.html').exists():

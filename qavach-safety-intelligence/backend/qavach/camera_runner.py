@@ -2,6 +2,7 @@
 publishes a live preview plus alert events.
 
 A camera with no usable rule still runs as a preview, so the video wall and the zone editor have a picture."""
+import contextlib
 import logging
 import math
 import threading
@@ -35,6 +36,12 @@ PREVIEW_ONLY_FPS = 12       # preview rate of a camera that has no rule to run
 BUFFER_SECONDS_BURSTY = 12  # YouTube and other HLS streams deliver several seconds of video at once: keep that much
 BUFFER_SECONDS_STEADY = 3   # an RTSP camera delivers frame by frame: a few seconds covers a slow frame of the detector
 BUFFER_FPS = PREVIEW_ONLY_FPS   # frames a second kept in the live buffer: above the 5 to 6 a second analysed in production
+# The live picture is made only while someone is looking at it: a stream open in a browser, or a still asked for in the last few
+# seconds. Box positions go out as data (the browser draws them), so no picture is drawn on here at all.
+WATCH_SECONDS = 5.0
+CLIP_FPS = 3                 # pictures a second kept for an alert clip of a live camera (24 kept: the last 8 seconds)
+CLIP_WIDTH = 640             # their width when nobody is watching (a watched camera reuses the live picture)
+STATES = ('seen', 'inside', 'waiting', 'flagged')
                                 # and the preview rate of a camera without rules; the others are read past, not compressed
 
 
@@ -173,9 +180,10 @@ class LiveReader(threading.Thread):
     It owns the capture and releases it itself when it stops: releasing a capture while another thread is inside
     read() crashes OpenCV's FFmpeg and takes the whole service down."""
 
-    def __init__(self, capture, fps, keep_seconds=BUFFER_SECONDS_BURSTY, keep_fps=None):
+    def __init__(self, capture, fps, keep_seconds=BUFFER_SECONDS_BURSTY, keep_fps=None, idle=None):
         super().__init__(daemon=True)
         self.capture = capture
+        self.idle = idle            # () -> True while nothing needs the pictures: read past every frame without keeping it
         # Every frame is read (a stream must be read to move on), but only every `step`-th is kept: compressing all 25 a
         # second to JPEG cost most of the CPU spent on a live camera and held 165 MB a camera at 1080p for 12 seconds.
         self.step = max(1, round(fps / keep_fps)) if keep_fps else 1
@@ -188,7 +196,7 @@ class LiveReader(threading.Thread):
     def run(self):
         try:
             while not self.stop_flag.is_set():
-                if self.count % self.step:          # a frame that is not kept: read past it without converting it
+                if self.count % self.step or (self.idle is not None and self.idle()):     # not kept: read past it unconverted
                     if not self.capture.grab():
                         self.failed = True
                         return
@@ -254,11 +262,18 @@ class CameraRunner:
         self.detect_classes = (PERSON_CLASS,)
         self.phone_scenes = {}           # phone rule -> (scene.SceneWatch, phonecues.StaticLights)
         self.stats = dict(fps=0.0, source_fps=0.0, stream_fps=0.0, people=0, vehicles=0, hazards=0, frames=0, detecting=False, alerts=0, width=0, height=0)
-        self.jpeg = None
+        self.jpeg = None                 # the live picture (no boxes), made only while watched
+        self.jpeg_overlay = None         # the boxes that go with that picture
         self.seq = 0
+        self.overlay = None              # the boxes of the latest analysed frame (see overlay_of)
+        self.overlay_seq = 0
+        self.viewers = 0                 # live streams open in a browser
+        self.wanted_until = 0.0          # a still was asked for: keep pictures coming until then
+        self._clip_at = 0.0
         self.full = None                 # latest full-size frame
+        self.full_at = 0.0
         self.file_pos = 0.0              # seconds into the video file for the frame being analysed
-        self.recent = deque(maxlen=24)   # the last pictures of the preview, for the clip of a live camera
+        self.recent = deque(maxlen=24)   # (JPEG, boxes) of the last moments, for the clip of a live camera
         self.stop_flag = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -267,6 +282,23 @@ class CameraRunner:
         self.stop_flag.set()
         self.thread.join(timeout=10)
         self.state = 'stopped'
+
+    # ── who is looking ──────────────────────────────────────────────────────────────────────────────────────────
+    def watched(self):
+        return self.viewers > 0 or time.time() < self.wanted_until
+
+    def want_frame(self):
+        """A still was asked for: decode and keep the latest frame for the next few seconds, even on a camera with no rule."""
+        self.wanted_until = max(self.wanted_until, time.time() + WATCH_SECONDS)
+
+    @contextlib.contextmanager
+    def watch(self):
+        """While a live stream is open the camera makes its live picture."""
+        self.viewers += 1
+        try:
+            yield
+        finally:
+            self.viewers -= 1
 
     # ── the outer loop: connect, run, and start again when the stream drops or a file ends ──────────────────────
     def _run(self):
@@ -365,7 +397,7 @@ class CameraRunner:
             self.state, self.error = 'running', None
             if source.live:
                 reader = LiveReader(capture, fps, keep_seconds=BUFFER_SECONDS_BURSTY if bursty(source, address) else BUFFER_SECONDS_STEADY,
-                                    keep_fps=BUFFER_FPS)
+                                    keep_fps=BUFFER_FPS, idle=lambda: not self.stats['detecting'] and not self.watched())
                 reader.start()
             done, busy, opened = 0, 0.0, time.time()
             for frame, seconds in (self._live_frames(reader, fps) if reader else self._file_frames(capture, fps, bool(engines or fire_engines), self.camera['source'].every_frame)):
@@ -396,8 +428,22 @@ class CameraRunner:
         falls behind. With `every_frame` nothing is skipped: each frame is analysed in order, so the video plays slower
         than real time when the detector cannot keep up (and never faster than real time). Times stay the video's own
         either way. The caller starts it again when the file ends, with fresh tracking."""
-        started, number = time.time(), 0
+        started, number, skipped, total = time.time(), 0, False, None
         while not self.stop_flag.is_set():
+            if not detecting and not self.watched():
+                # A camera with no rule and nobody watching: the video's clock runs on without reading the file at all,
+                # and reading starts again at the right place when someone looks.
+                self.stop_flag.wait(0.1)
+                number = int((time.time() - started) * fps)
+                if total is None:
+                    total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                if total and number >= total:
+                    return
+                skipped = True
+                continue
+            if skipped:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, number)
+                skipped = False
             if not every_frame and time.time() - (started + number / fps) > 1.5 / fps:
                 if not capture.grab():
                     return
@@ -418,6 +464,14 @@ class CameraRunner:
         while not self.stop_flag.is_set():
             if reader.count != last_count:
                 last_count, last_new = reader.count, time.time()
+            if not self.stats['detecting'] and not self.watched():
+                wanted = reader.count               # a camera with no rule and nobody watching: nothing to decode
+                if reader.failed:
+                    raise sources.SourceError('The stream stopped; reconnecting')
+                if time.time() - last_new > STALL_SECONDS:
+                    raise sources.SourceError('The stream sent nothing for 20 seconds; reconnecting')
+                self.stop_flag.wait(0.1)
+                continue
             got = reader.take(wanted)
             if got is None:
                 if reader.failed:
@@ -436,7 +490,7 @@ class CameraRunner:
 
     # ── per frame ───────────────────────────────────────────────────────────────────────────────────────────────
     def _process(self, frame, seconds, engines, tracker, detector, region, width, height, fire_engines=(), fire_detector=None):
-        self.full = frame
+        self.full, self.full_at = frame, time.time()
         rows, flagged, inside, waiting, labels = [], set(), set(), set(), {}
         if engines:
             x1, y1, x2, y2 = region
@@ -515,7 +569,7 @@ class CameraRunner:
                         text = (f'group of {st.now} (alert at {engine.limit + 1})' if engine.kind == 'gathering'
                                 else f'{st.now} / {engine.limit} {word}')
                         notes.append((float(x), float(y), text, RED if st.flagged else AMBER))
-        self._draw(frame, rows, flagged, inside, waiting - flagged, fires, labels, notes)
+        self._publish(frame, seconds, overlay_of(frame, seconds, rows, flagged, inside, waiting - flagged, fires, labels, notes))
         return rows, fires
 
     def _person_pose(self, frame, box):
@@ -602,7 +656,7 @@ class CameraRunner:
             if source.kind == 'upload':
                 made = clips.from_file(sources.upload_path(source.upload_id), self.file_pos, event_id)
             else:
-                made = clips.from_frames(list(self.recent), event_id, fps=max(2, min(6, round(self.stats.get('fps') or 3))))
+                made = clips.from_frames([annotate(data, overlay) for data, overlay in list(self.recent)], event_id, fps=CLIP_FPS)
         except Exception as error:      # a clip is a bonus: the alert goes out without one
             print(f'clip {event_id}: {error}', flush=True)
             made = False
@@ -660,37 +714,92 @@ class CameraRunner:
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(view, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
 
-    def _draw(self, frame, rows, flagged, inside, waiting=frozenset(), fires=(), labels=None, notes=()):
-        """The live preview: the frame, downscaled, with a box on every tracked person. Zones are drawn by the page."""
-        height, width = frame.shape[:2]
-        scale = min(1.0, config.PREVIEW_WIDTH / width)
-        view = cv2.resize(frame, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA) if scale < 1 else frame.copy()
-        for track_id, x1, y1, x2, y2, _ in rows:
-            colour = RED if track_id in flagged else STATIC if track_id in waiting else AMBER if track_id in inside else GREY
-            p1, p2 = (int(x1 * scale) - 2, int(y1 * scale) - 2), (int(x2 * scale) + 2, int(y2 * scale) + 2)
-            cv2.rectangle(view, p1, p2, colour, 2 if track_id in flagged else 1)
-            text = TRACK_LABELS.get((labels or {}).get(track_id), '#{id}').format(id=track_id % VEHICLE_ID_OFFSET)
-            if track_id in flagged and text:
-                self._label(view, text, p1, colour)
-        for name, conf, (x1, y1, x2, y2), status in fires:
-            p1, p2 = (int(x1 * scale), int(y1 * scale)), (int(x2 * scale), int(y2 * scale))
-            if status == 'ignored':
-                cv2.rectangle(view, p1, p2, GREY, 1)            # seen, but outside the watch areas or in an ignore area
-                continue
-            colour = FIRE_RED if name == 'fire' else FIRE_ORANGE
-            cv2.rectangle(view, p1, p2, colour, 2)
-            self._label(view, f'{name.upper()} {int(conf * 100)}%', p1, colour)
-        for x, y, text, colour in notes:               # a crowd zone's count against its limit, inside its bottom left corner
-            self._label(view, text, (int(x * scale) + 6, int(y * scale) - 4), colour)
-        ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
-        self.jpeg = buffer.tobytes()
-        self.recent.append(self.jpeg)
-        self.seq += 1
+    def _publish(self, frame, seconds, overlay):
+        """Hands out what this frame found. The boxes always (as data, for the browser to draw over the picture); the live
+        picture only while someone watches; and, on a live camera with rules, a small picture a few times a second for the
+        clip of an alert (the boxes are drawn on those only when a clip is made)."""
+        overlay['seq'] = self.overlay_seq = self.overlay_seq + 1
+        self.overlay = overlay
+        watched = self.watched()
+        if watched:
+            height, width = frame.shape[:2]
+            scale = min(1.0, config.PREVIEW_WIDTH / width)
+            view = cv2.resize(frame, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA) if scale < 1 else frame
+            ok, buffer = cv2.imencode('.jpg', view, [cv2.IMWRITE_JPEG_QUALITY, 72])
+            self.jpeg, self.jpeg_overlay = buffer.tobytes(), overlay
+            self.seq += 1
+        now = time.time()
+        if self.camera['source'].live and self.stats.get('detecting') and now - self._clip_at >= 1.0 / CLIP_FPS:
+            self._clip_at = now
+            if watched:
+                data = self.jpeg
+            else:
+                height, width = frame.shape[:2]
+                scale = min(1.0, CLIP_WIDTH / width)
+                small = cv2.resize(frame, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_LINEAR) if scale < 1 else frame
+                data = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, 70])[1].tobytes()
+            self.recent.append((data, overlay))
 
-    def snapshot(self):
-        """JPEG bytes of the latest full-size frame, or None before the first one."""
+    def snapshot(self, width=None):
+        """JPEG bytes of the latest frame (full size, or at most `width` pixels wide for a thumbnail), or None before the first one."""
         frame = self.full
         if frame is None:
             return None
-        ok, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        if width and frame.shape[1] > width:
+            scale = width / frame.shape[1]
+            frame = cv2.resize(frame, (int(width), int(frame.shape[0] * scale)), interpolation=cv2.INTER_AREA)
+        ok, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 88 if width is None else 80])
         return buffer.tobytes()
+
+
+# ── boxes as data ──────────────────────────────────────────────────────────────────────────────────────────────────
+def overlay_of(frame, seconds, rows, flagged, inside, waiting=frozenset(), fires=(), labels=None, notes=()):
+    """What one analysed frame found, as data the browser draws over the picture: positions are fractions of the
+    picture (0 to 1), so they fit a picture of any size. `t` is the frame's time in the video (seconds into a file), so a
+    browser playing the file itself can show each set of boxes on the frame it belongs to.
+      boxes  [x1, y1, x2, y2, state, label]   state: flagged (alert), waiting (in a zone, not moving yet), inside, seen
+      fires  [x1, y1, x2, y2, kind, label]     kind: fire, smoke or ignored (outside the watch areas)
+      notes  [x, y, text, level]               a crowd zone's count against its limit; level: alert or warn"""
+    height, width = frame.shape[:2]
+    r = lambda v, size: round(min(1.0, max(0.0, v / size)), 4)
+    boxes = []
+    for track_id, x1, y1, x2, y2, _ in rows:
+        state = 'flagged' if track_id in flagged else 'waiting' if track_id in waiting else 'inside' if track_id in inside else 'seen'
+        text = TRACK_LABELS.get((labels or {}).get(track_id), '#{id}').format(id=track_id % VEHICLE_ID_OFFSET) if state == 'flagged' else ''
+        boxes.append([r(x1, width), r(y1, height), r(x2, width), r(y2, height), state, text])
+    fire_list = [[r(x1, width), r(y1, height), r(x2, width), r(y2, height), name if status != 'ignored' else 'ignored',
+                  f'{name.upper()} {int(conf * 100)}%' if status != 'ignored' else '']
+                 for name, conf, (x1, y1, x2, y2), status in fires]
+    note_list = [[r(x, width), r(y, height), text, 'alert' if colour == RED else 'warn'] for x, y, text, colour in notes]
+    return dict(t=round(float(seconds), 3), w=int(width), h=int(height), boxes=boxes, fires=fire_list, notes=note_list)
+
+
+_STATE_COLOUR = dict(flagged=RED, waiting=STATIC, inside=AMBER, seen=GREY)
+_FIRE_COLOUR = dict(fire=FIRE_RED, smoke=FIRE_ORANGE, ignored=GREY)
+
+
+def draw_overlay(view, overlay):
+    """Draws an overlay's boxes onto a picture of any size (used for alert clips; the live view draws in the browser)."""
+    height, width = view.shape[:2]
+    for x1, y1, x2, y2, state, text in overlay['boxes']:
+        p1, p2 = (int(x1 * width) - 2, int(y1 * height) - 2), (int(x2 * width) + 2, int(y2 * height) + 2)
+        colour = _STATE_COLOUR[state]
+        cv2.rectangle(view, p1, p2, colour, 2 if state == 'flagged' else 1)
+        if text:
+            CameraRunner._label(view, text, p1, colour)
+    for x1, y1, x2, y2, kind, text in overlay['fires']:
+        p1, p2 = (int(x1 * width), int(y1 * height)), (int(x2 * width), int(y2 * height))
+        cv2.rectangle(view, p1, p2, _FIRE_COLOUR[kind], 1 if kind == 'ignored' else 2)
+        if text:
+            CameraRunner._label(view, text, p1, _FIRE_COLOUR[kind])
+    for x, y, text, level in overlay['notes']:
+        CameraRunner._label(view, text, (int(x * width) + 6, int(y * height) - 4), RED if level == 'alert' else AMBER)
+    return view
+
+
+def annotate(jpeg, overlay):
+    """A kept picture with its boxes drawn on, for a clip."""
+    view = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if view is None:
+        return jpeg
+    return cv2.imencode('.jpg', draw_overlay(view, overlay), [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()

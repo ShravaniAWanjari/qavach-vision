@@ -14,6 +14,7 @@
 .camview__degraded { position: absolute; top: 6px; left: 6px; font-size: 10.5px; font-weight: 600; color: var(--c-black); background: var(--c-orange); padding: 1px 6px; border-radius: 3px; }
 
 .camview__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; }
+.camview__overlay { pointer-events: none; background: transparent; }
 .camview__nopic { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center; color: var(--c-grey); font-size: 12.5px; background: var(--q-night); }
 .camview__nopic small { color: var(--c-grey); font-size: 11px; }
 .camview__nopic--lost { color: var(--c-red); } .camview__nopic--lost small { color: var(--c-grey); }

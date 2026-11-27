@@ -394,6 +394,19 @@ export function CameraEditor() {
                       </div>
                     </div>
                   )}
+                  {service.online && cam.source?.kind === 'link' && (
+                    <div className="field">
+                      <label htmlFor="c-view">Viewing address (optional)</label>
+                      <input
+                        id="c-view"
+                        className="input mono"
+                        value={cam.source.viewUrl ?? ''}
+                        onChange={(e) => setCam((c) => (c && c.source ? { ...c, source: { ...c.source, viewUrl: e.target.value || undefined } } : c))}
+                        placeholder="https://media-server/berth3/index.m3u8"
+                      />
+                      <span className="field__hint">The same camera from your video recorder or media server, in a form a browser plays (HLS .m3u8). Screens then play it directly and the detection service only sends the boxes, which saves its processing. Leave blank to watch through the service. No passwords in this address.</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>

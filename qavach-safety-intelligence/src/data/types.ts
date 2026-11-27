@@ -33,6 +33,9 @@ export interface CameraSource {
   user?: string;
   uploadId?: string;
   fileName?: string;
+  /** A browser-playable address of the same camera from a media server (HLS .m3u8, or a video file), for watching it live
+   *  without the detection service making pictures. The service still analyses `url`. */
+  viewUrl?: string;
   /** Uploaded video: analyse every frame, so nothing is skipped; the video plays slower than real time if the service cannot keep up. */
   everyFrame?: boolean;
   /** The still frame taken when the connection was tested; zones are drawn on it. Relative to the detection service. */
