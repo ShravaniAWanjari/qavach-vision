@@ -376,6 +376,7 @@ class CameraRunner:
         fps = fps if 1 <= fps <= 120 else 25.0
         width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         engines = self._build_engines(width, height)
+        self._engines = engines
         if self.fire_cache is None or self.fire_cache[0] != (width, height):
             self.fire_cache = ((width, height), self._build_fire_engines(width, height))
         fire_engines = self.fire_cache[1]
@@ -407,6 +408,7 @@ class CameraRunner:
                 rows, fires = self._process(frame, seconds, engines, tracker, detector, region, width, height, fire_engines, fire_detector)
                 done += 1
                 busy += time.time() - tick
+                self._time_frame((time.time() - tick) * 1000)
                 self.stats.update(fps=round(done / max(busy, 1e-6), 1), people=sum(1 for r in rows if kind_of(r[0]) == 'person'),
                                   vehicles=sum(1 for r in rows if kind_of(r[0]) == 'vehicle'),
                                   hazards=sum(1 for f in fires if f[3] == 'counted'), frames=self.stats['frames'] + 1,
@@ -489,19 +491,53 @@ class CameraRunner:
             wanted = index + max(floor, math.ceil((time.time() - began) * fps))
 
     # ── per frame ───────────────────────────────────────────────────────────────────────────────────────────────
+    # ── what runs and how long it takes, for the console's status report (/api/events → cameras) ──────────────
+    def _time_frame(self, total_ms, weight=0.2):
+        """Smoothed milliseconds per frame, in all and per stage, so one slow frame does not swing the report."""
+        old, laps = self.stats.get('stageMs') or {}, getattr(self, 'laps', {})
+        # A new dict each time: the status report may be reading the old one on another thread.
+        self.stats['stageMs'] = {name: round(old.get(name, 0.0) * (1 - weight) + laps.get(name, 0.0) * weight, 1) for name in set(old) | set(laps)}
+        self.stats['frameMs'] = round(self.stats.get('frameMs', total_ms) * (1 - weight) + total_ms * weight, 1)
+
+    def rule_report(self):
+        """Each rule on this camera and whether it is running now, and if not, why."""
+        built = {r.get('id') for _, r in getattr(self, '_engines', [])} | {r.get('id') for _, r in ((self.fire_cache or (None, []))[1])}
+        now, out = datetime.now(), []
+        for rule in self.rules:
+            if rule.get('id') not in built:
+                why = 'not running: nothing to watch (its zone is missing or the wrong shape)' if self.state == 'running' else f'not running: camera {self.state}'
+            elif not schedule_active(rule.get('schedule', 'always'), now):
+                why = f"paused: outside its schedule ({rule.get('schedule')})"
+            elif self.state != 'running':
+                why = f'not running: camera {self.state}'
+            else:
+                why = 'running' + (' (test mode: logged, nobody told)' if rule.get('mode') == 'test' else '')
+            out.append(dict(id=rule.get('id'), name=rule.get('name') or rule.get('id'), condition=rule.get('condition'), status=why))
+        return out
+
     def _process(self, frame, seconds, engines, tracker, detector, region, width, height, fire_engines=(), fire_detector=None):
         self.full, self.full_at = frame, time.time()
         rows, flagged, inside, waiting, labels = [], set(), set(), set(), {}
+        laps = self.laps = {}          # milliseconds spent in each stage of this frame, for the console's status report
+
+        def lap(name, began):
+            laps[name] = laps.get(name, 0.0) + (time.perf_counter() - began) * 1000
         if engines:
             x1, y1, x2, y2 = region
             crop = np.ascontiguousarray(frame[y1:y2, x1:x2])
+            began = time.perf_counter()
             found = detector.detect(crop, detect_size(region), self.detect_classes, conf=getattr(self, 'detect_floor', PERSON_TRACK_FLOOR))
+            lap('detector', began)
             if tracker is not None:
+                began = time.perf_counter()
                 tracks = tracker.update(crop, found[found[:, 5] == PERSON_CLASS])
+                lap('person tracker', began)
                 rows = [(int(t[4]), float(t[0]) + x1, float(t[1]) + y1, float(t[2]) + x1, float(t[3]) + y1, float(t[5]))
                         for t in tracks]       # plain floats: they end up in the JSON alert events
                 if self.pose_detector is not None and any(e.kind == 'down' for e, _ in engines):
+                    began = time.perf_counter()
                     poses = self._poses(crop, tracks, region)
+                    lap('pose', began)
                     for engine, _ in engines:
                         if engine.kind == 'down':
                             engine.pose = poses
@@ -514,6 +550,7 @@ class CameraRunner:
                 rows += [(OBJECT_ID_OFFSET + t[0], float(t[1]) + x1, float(t[2]) + y1, float(t[3]) + x1, float(t[4]) + y1, float(t[5]))
                          for t in self.object_tracker.update(seconds, things[:, :5])]
             if PHONE_CLASS in self.detect_classes:
+                began = time.perf_counter()
                 phones = found[(found[:, 5] == PHONE_CLASS) & (found[:, 4] >= PHONE_FLOOR)].copy()
                 phones[:, [0, 2]] += x1                 # into picture pixels, like the person rows
                 phones[:, [1, 3]] += y1
@@ -524,6 +561,7 @@ class CameraRunner:
                     phones = zoom.merge(phones, seen[seen[:, 4] >= PHONE_FLOOR])
                 rows += [(PHONE_ID_OFFSET + i, float(p[0]), float(p[1]), float(p[2]), float(p[3]), float(p[4])) for i, p in enumerate(phones)]
                 self._phone_cues(frame, rows, engines)
+                lap('phone close-ups', began)
             # A people crowd is counted from every person box, the region's and the small ones its tiles find, not only from
             # the tracks: people packed together are missed by the tracker's detector pass.
             whole = None
@@ -533,7 +571,9 @@ class CameraRunner:
                         whole = found[found[:, 5] == PERSON_CLASS].copy()
                         whole[:, [0, 2]] += x1
                         whole[:, [1, 3]] += y1
+                    began = time.perf_counter()
                     engine.people = crowdcount.people_boxes(detector, frame, _zones_box(engine, frame.shape), whole)
+                    lap('counting tiles', began)
                     if tracker is None:
                         # No tracker on a crowd-only camera: the counted people are the preview's boxes (numbered per frame).
                         known = {tuple(round(v) for v in r[1:5]) for r in rows}
@@ -542,6 +582,7 @@ class CameraRunner:
                                 known.add(tuple(round(v) for v in b[:4]))
                                 rows.append((len(rows) + 1, *b[:5]))
             now = datetime.now()
+            began = time.perf_counter()
             for engine, rule in engines:
                 if not schedule_active(rule.get('schedule', 'always'), now):
                     continue
@@ -557,7 +598,11 @@ class CameraRunner:
                 for event in events:
                     if event['type'] == 'alert':
                         self._alert(frame, rows, rule, engine, event, width, height)
+            lap('rules', began)
+        began = time.perf_counter()
         fires = self._process_fire(frame, seconds + self.loop_offset, fire_engines, fire_detector, width, height)
+        if fire_engines:
+            lap('fire and smoke', began)
         notes = []
         for engine, _ in engines:
             if engine.kind in ('crowd', 'gathering'):

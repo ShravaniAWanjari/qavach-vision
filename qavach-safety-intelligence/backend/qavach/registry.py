@@ -220,6 +220,8 @@ class Registry:
             out = {}
             for cam_id, (_, runner) in self.runners.items():
                 out[cam_id] = dict(state=runner.state, error=runner.error, rules=len(runner.rules), **runner.stats)
+                report = getattr(runner, 'rule_report', None)
+                out[cam_id]['ruleStatus'] = report() if report else []
             return out
 
     # ── persistence ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { backend, isOnline, setOnline, type BackendEvent, type CameraStatus } from '../lib/backend';
+import { startDiagnostics } from '../lib/diagnostics';
 import { createStore, useStore } from '../lib/persist';
 import { isLeader, raiseFromEvent } from './engine';
 import { activityStore, alertStore, cameraStore, removalStore, ruleStore, toast } from './store';
@@ -135,6 +136,7 @@ export function useBackendBridge() {
     };
     const t = window.setInterval(tick, 1000);
     tick();
+    startDiagnostics(); // the detection service's status in the browser console (F12)
     return () => window.clearInterval(t);
   }, []);
 }
